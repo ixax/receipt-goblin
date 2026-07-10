@@ -1,1 +1,0 @@
-{"turn_id": 1, "sequence_id": 4, "tool_starts": {}, "turn_prompt": "", "permission_starts": {}, "transcript_offset": 2, "cumulative_usage": {"input_tokens": 100, "cached_input_tokens": 20, "output_tokens": 30, "reasoning_output_tokens": 5}}
