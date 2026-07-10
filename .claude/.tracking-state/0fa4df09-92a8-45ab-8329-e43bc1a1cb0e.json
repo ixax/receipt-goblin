@@ -1,0 +1,1 @@
+{"turn_id": 16, "sequence_id": 29, "tool_starts": {}, "turn_skill": {}, "turn_mcp_tool": "", "turn_prompt": "", "permission_starts": {"tool:AskUserQuestion": 1783700356.2057989, "tool:Bash": 1783704947.454741, "tool:Edit": 1783702658.414536, "tool:WebFetch": 1783702262.196173}, "transcript_offset": 532, "subagent_prompt": ""}

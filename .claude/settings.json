@@ -1,0 +1,162 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_session.py\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_session.py\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolBatch": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

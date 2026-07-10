@@ -1,0 +1,8 @@
+<clickhouse>
+    <!-- Cap ClickHouse's own memory usage at 85% of what's actually
+         available to it (cgroup memory limit, i.e. the docker-compose
+         mem_limit below) rather than the host's total RAM, to avoid the
+         OOM killer taking the process down when the container is capped
+         well below the host's memory. -->
+    <max_server_memory_usage_to_ram_ratio>0.85</max_server_memory_usage_to_ram_ratio>
+</clickhouse>

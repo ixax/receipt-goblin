@@ -1,0 +1,110 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: agent-tracking-clickhouse
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DATABASE:-default}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      # Must be non-empty: ClickHouse's entrypoint restricts the 'default'
+      # user to localhost-only network access when CLICKHOUSE_PASSWORD is
+      # unset, which breaks ingest-api/grafana connecting over the docker
+      # network.
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-changeme}
+    mem_limit: 2g
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      # Runs automatically on first container start (empty data dir only) -
+      # this is how schema.sql gets applied without a manual step.
+      - ./clickhouse/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      # Caps ClickHouse's own memory usage at 85% of the mem_limit above
+      # (see clickhouse/config.d/memory.xml) instead of the host's RAM.
+      - ./clickhouse/config.d/memory.xml:/etc/clickhouse-server/config.d/memory.xml:ro
+    healthcheck:
+      # clickhouse/clickhouse-server:24.8 doesn't ship curl - only wget.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - agent-tracking
+
+  ingest-api:
+    build: ./ingest-api
+    container_name: agent-tracking-ingest-api
+    ports:
+      - "8000:8000"
+    environment:
+      CLICKHOUSE_HOST: ${CLICKHOUSE_HOST:-clickhouse}
+      CLICKHOUSE_PORT: ${CLICKHOUSE_PORT:-8123}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-changeme}
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-default}
+    mem_limit: 256m
+    restart: always
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - agent-tracking
+
+  mcp-clickhouse:
+    build: ./mcp-clickhouse
+    container_name: agent-tracking-mcp-clickhouse
+    ports:
+      - "8001:8001"
+    environment:
+      CLICKHOUSE_HOST: ${CLICKHOUSE_HOST:-clickhouse}
+      CLICKHOUSE_PORT: ${CLICKHOUSE_PORT:-8123}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-changeme}
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-default}
+    mem_limit: 256m
+    restart: always
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - agent-tracking
+
+  grafana:
+    image: grafana/grafana:13.1.0
+    container_name: agent-tracking-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      CLICKHOUSE_HOST: ${CLICKHOUSE_HOST:-clickhouse}
+      CLICKHOUSE_PORT: ${CLICKHOUSE_PORT:-8123}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-changeme}
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-default}
+    entrypoint: ["/bin/sh", "/docker-entrypoint-custom.sh"]
+    mem_limit: 1g
+    restart: always
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/docker-entrypoint.sh:/docker-entrypoint-custom.sh:ro
+      # Datasource YAML is a template rendered by docker-entrypoint.sh at
+      # container start (env-var substitution) into the real provisioning
+      # path below - not bind-mounted there directly.
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning-templates/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - agent-tracking
+
+networks:
+  agent-tracking:
+    driver: bridge
+
+volumes:
+  clickhouse-data:
+  grafana-data:
