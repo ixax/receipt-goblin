@@ -10,7 +10,7 @@ standalone, e.g. after editing an agent/skill without starting a new session:
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "hooks"))
 from common import agents_dir, debug, get_user_id, parse_frontmatter, post_json, skills_dir  # noqa: E402
 
 

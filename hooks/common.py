@@ -1,4 +1,5 @@
-"""Shared helpers for Claude Code tracking hooks.
+"""Shared helpers for the agent-tracking hooks, imported directly by both
+`.claude/hooks/` (Claude Code) and `.codex/hooks/` (Codex CLI).
 
 Stdlib only - no third-party dependencies, so these hooks run on any host
 that has a plain Python 3 interpreter (Windows/macOS/Linux), no venv needed.
