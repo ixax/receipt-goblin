@@ -1,7 +1,7 @@
 ---
 name: whatsup
-version: 2.0.0
 description: Report token/cost spend and top spenders from the last 24h, from ClickHouse
+version: 2.0.0
 ---
 
 # whatsup
@@ -9,7 +9,7 @@ description: Report token/cost spend and top spenders from the last 24h, from Cl
 Report the last 24 hours of spend from the local agent-tracking stack.
 Reads go through the `mcp-clickhouse` MCP server, not `docker exec` -
 `ingest-api` is still write-only, but `mcp-clickhouse` is the dedicated
-read path (see `.claude/CLAUDE.md` → MCP server).
+read path (see `README.md` → "MCP server (`mcp-clickhouse`)").
 
 Call the `mcp__clickhouse__whatsup` tool with `hours: 24`. If the call
 fails (connection refused, timeout), say the `mcp-clickhouse` service
@@ -45,6 +45,6 @@ Top spenders:
 If `cost_has_gaps` is `true`, or any `top_spenders[].cost` is `null` (no
 matching `model_pricing` row for one or more usage rows), still report the
 tokens number and add a one-line note that some usage has no matching
-price - see `.claude/CLAUDE.md` → Schema and pricing for how to add one.
+price - see `README.md` → "Schema" for how to add one.
 If `total_tokens` is `0`, say there's no usage in the last 24h plainly
 instead of printing an empty report.

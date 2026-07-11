@@ -1,7 +1,9 @@
 ---
 name: test-linter
+description: >
+  Minimal test skill that checks a file for obvious style issues.
+  Use to verify the tracking stack end to end.
 version: 2.0.0
-description: Minimal test skill that checks a file for obvious style issues. Use to verify the tracking stack end to end.
 ---
 
 # test-linter

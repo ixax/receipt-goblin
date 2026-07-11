@@ -23,31 +23,33 @@ payload shapes still differ in real ways:
   payload.info for a token_count event_msg is not confirmed from public
   docs at the time this was written - _find_dict_with_key searches for it
   defensively instead of assuming one fixed path. Run with
-  CLAUDE_TRACKING_DEBUG=1 and check stderr after a real Codex session if
+  AGENT_CLI_TRACKING_DEBUG=1 and check stderr after a real Codex session if
   usage rows come through empty.
 """
 import json
 import sys
-from functools import partial
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / ".claude" / "hooks"))
-import common  # noqa: E402
-from common import debug, get_user_id, post_json, read_hook_input  # noqa: E402
+from common import (  # noqa: E402
+    debug,
+    get_state_value,
+    get_user_id,
+    mark_permission_request,
+    mark_tool_start,
+    next_ids,
+    pop_permission_wait_ms,
+    pop_tool_latency_ms,
+    post_json,
+    read_hook_input,
+    set_state_value,
+)
 
-# common.py's state functions take an explicit `namespace` param (default
-# ".claude") so Claude Code and Codex CLI hooks - which both import this
-# module directly, no copy-paste - keep separate state directories.
-# Binding it once here means every call site below stays unchanged from
-# what it'd look like calling common.py directly.
-STATE_NAMESPACE = ".codex"
-next_ids = partial(common.next_ids, namespace=STATE_NAMESPACE)
-mark_tool_start = partial(common.mark_tool_start, namespace=STATE_NAMESPACE)
-pop_tool_latency_ms = partial(common.pop_tool_latency_ms, namespace=STATE_NAMESPACE)
-mark_permission_request = partial(common.mark_permission_request, namespace=STATE_NAMESPACE)
-pop_permission_wait_ms = partial(common.pop_permission_wait_ms, namespace=STATE_NAMESPACE)
-get_state_value = partial(common.get_state_value, namespace=STATE_NAMESPACE)
-set_state_value = partial(common.set_state_value, namespace=STATE_NAMESPACE)
+# common.py's state functions key everything by session_id alone (under
+# .state/tracking/<session_id>/) - Claude Code and Codex CLI hooks both
+# import this module directly (no copy-paste), and each product's
+# session_id already comes from its own id space, so no extra namespacing
+# is needed here.
 
 NEW_TURN_EVENTS = {"UserPromptSubmit"}
 # Codex has no dedicated failure event per tool call - PostToolUse fires

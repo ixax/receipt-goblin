@@ -7,7 +7,7 @@ turn/sequence counters and HTTP plumbing from common.py.
 Field names read off the hook JSON (tool_input.subagent_type,
 message.usage, transcript line shape, etc.) are best-effort: Claude Code's
 exact hook payload shape can change between versions. Run with
-CLAUDE_TRACKING_DEBUG=1 to print the raw payload to stderr and adjust the
+AGENT_CLI_TRACKING_DEBUG=1 to print the raw payload to stderr and adjust the
 extraction helpers below if your installed version differs.
 """
 import json

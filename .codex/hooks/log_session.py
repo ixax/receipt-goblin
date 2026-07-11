@@ -5,15 +5,10 @@ PermissionRequest), so there's nothing to mirror .claude/hooks/log_session.py's
 SessionEnd branch. Also skips that script's registry scan - Codex has no
 .claude/agents or .claude/skills equivalent to register."""
 import sys
-from functools import partial
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / ".claude" / "hooks"))
-import common  # noqa: E402
-from common import get_user_id, post_json, read_hook_input  # noqa: E402
-
-# See log_event.py for why this is a bound partial rather than a global.
-next_ids = partial(common.next_ids, namespace=".codex")
+from common import get_user_id, next_ids, post_json, read_hook_input  # noqa: E402
 
 
 def main():

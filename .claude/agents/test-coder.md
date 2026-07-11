@@ -1,7 +1,9 @@
 ---
 name: test-coder
+description: >
+  Minimal test agent that writes small pieces of code.
+  Use to verify the tracking stack end to end.
 version: 2.0.0
-description: Minimal test agent that writes small pieces of code. Use to verify the tracking stack end to end.
 tools: Read, Write, Edit, Bash
 model: claude-haiku-4-5
 ---

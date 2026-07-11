@@ -1,11 +1,15 @@
 {
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "clickhouse"
+  ],
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_session.py\""
+            "command": "${AGENT_CLI_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_session.py\""
           }
         ]
       }
@@ -15,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_session.py\""
+            "command": "${AGENT_CLI_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_session.py\""
           }
         ]
       }
@@ -25,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+            "command": "${AGENT_CLI_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
           }
         ]
       }
@@ -36,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+            "command": "${AGENT_CLI_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
           }
         ]
       }
@@ -47,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+            "command": "${AGENT_CLI_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
           }
         ]
       }
@@ -58,7 +62,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+            "command": "${AGENT_CLI_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
           }
         ]
       }
@@ -69,7 +73,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+            "command": "${AGENT_CLI_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
           }
         ]
       }
@@ -80,7 +84,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+            "command": "${AGENT_CLI_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
           }
         ]
       }
@@ -91,7 +95,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+            "command": "${AGENT_CLI_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
           }
         ]
       }
@@ -102,7 +106,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+            "command": "${AGENT_CLI_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
           }
         ]
       }
@@ -113,7 +117,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+            "command": "${AGENT_CLI_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
           }
         ]
       }
@@ -123,7 +127,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+            "command": "${AGENT_CLI_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
           }
         ]
       }
@@ -133,7 +137,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+            "command": "${AGENT_CLI_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
           }
         ]
       }
@@ -143,7 +147,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+            "command": "${AGENT_CLI_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
           }
         ]
       }
@@ -153,7 +157,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
+            "command": "${AGENT_CLI_HOOK_PYTHON:-python3} \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.py\""
           }
         ]
       }
