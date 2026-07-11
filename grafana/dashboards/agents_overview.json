@@ -79,7 +79,7 @@
                     "properties": [
                       {
                         "id": "unit",
-                        "value": "short"
+                        "value": "locale"
                       }
                     ]
                   },
@@ -91,7 +91,7 @@
                     "properties": [
                       {
                         "id": "unit",
-                        "value": "short"
+                        "value": "locale"
                       }
                     ]
                   },
@@ -127,7 +127,7 @@
                     "properties": [
                       {
                         "id": "unit",
-                        "value": "short"
+                        "value": "locale"
                       }
                     ]
                   }
@@ -331,7 +331,7 @@
               },
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "locale",
                   "custom": {
                     "drawStyle": "line",
                     "lineInterpolation": "smooth",
@@ -417,7 +417,7 @@
               },
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "locale",
                   "custom": {
                     "drawStyle": "line",
                     "lineInterpolation": "smooth",
@@ -675,7 +675,7 @@
               },
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "locale",
                   "custom": {
                     "drawStyle": "line",
                     "lineInterpolation": "smooth",
@@ -847,7 +847,7 @@
               },
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "locale",
                   "custom": {
                     "drawStyle": "line",
                     "lineInterpolation": "smooth",
@@ -1099,7 +1099,7 @@
                     "properties": [
                       {
                         "id": "unit",
-                        "value": "short"
+                        "value": "locale"
                       }
                     ]
                   }
@@ -1168,7 +1168,7 @@
                       },
                       {
                         "id": "unit",
-                        "value": "short"
+                        "value": "locale"
                       }
                     ]
                   },
@@ -1184,7 +1184,7 @@
                       },
                       {
                         "id": "unit",
-                        "value": "short"
+                        "value": "locale"
                       }
                     ]
                   },
@@ -2135,7 +2135,7 @@
                     "properties": [
                       {
                         "id": "unit",
-                        "value": "short"
+                        "value": "locale"
                       }
                     ]
                   }
@@ -2591,7 +2591,8 @@
                   "color": {
                     "mode": "fixed",
                     "fixedColor": "blue"
-                  }
+                  },
+                  "unit": "locale"
                 },
                 "overrides": []
               }
