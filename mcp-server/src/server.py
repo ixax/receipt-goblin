@@ -56,8 +56,7 @@ _client = None
 # The tables this stack actually writes to - anything else (system.*,
 # information_schema.*, a typo'd table name) is out of scope for `query`.
 _ALLOWED_TABLES = {
-    "agent_events", "agent_usage", "agent_messages",
-    "agent_registry", "skill_registry",
+    "agent_events", "agent_usage", "agent_messages", "session_git_branch",
 }
 
 # Word-boundary matched against the uppercased query - catches these
@@ -170,13 +169,12 @@ def whatsup(hours: int = 24) -> dict:
 @mcp.tool()
 def query(sql: str, max_rows: int = 200) -> dict:
     """Run a read-only SQL query against the agent-tracking ClickHouse tables
-    (agent_events, agent_usage, agent_messages, agent_registry,
-    skill_registry). Only a single SELECT/WITH statement is
-    allowed - no DDL/DML, no system tables, no remote/file/URL table
-    functions. Results are capped at max_rows (default 200, hard cap 1000);
-    set truncated=True in the response means there were more rows than that.
-    Prefer aggregating/filtering in the query itself over relying on this
-    cap, since rows beyond it are silently dropped, not sampled."""
+    (agent_events, agent_usage, agent_messages). Only a single SELECT/WITH
+    statement is allowed - no DDL/DML, no system tables, no remote/file/URL
+    table functions. Results are capped at max_rows (default 200, hard cap
+    1000); set truncated=True in the response means there were more rows
+    than that. Prefer aggregating/filtering in the query itself over relying
+    on this cap, since rows beyond it are silently dropped, not sampled."""
     validated = _validate_readonly_sql(sql)
     capped_rows = max(1, min(max_rows, _MAX_ROWS_HARD_CAP))
 

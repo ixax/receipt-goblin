@@ -1,5 +1,5 @@
 .idea
 .claude/settings.local.json
-.state
 .env
+MIN_DUMP.md
 webhook/captures/

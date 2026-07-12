@@ -36,11 +36,9 @@ DROP:
 
 ## 2. Write the snapshot
 
-Write (create or overwrite) `.state/MIN_DUMP.md` - one fixed path, not
-per-session, so a later /min or a fresh session can find it without
-knowing any session id:
-
-    mkdir -p .state
+Write (create or overwrite) `MIN_DUMP.md` in the project root - one fixed
+path, not per-session, so a later /min or a fresh session can find it
+without knowing any session id:
 
     # Session state — <ISO timestamp>
     ## Open tasks
@@ -68,10 +66,10 @@ No tool call can trigger `/compact` from inside a turn on either CLI - it's
 a command the user types, not something invocable via a tool. Do NOT
 attempt to compact yourself. Print exactly this and stop:
 
-    Snapshot written to .state/MIN_DUMP.md
+    Snapshot written to MIN_DUMP.md
     Run this to compact:
     /compact <instruction string above>
 
 ## 4. Report back
 
-After handing off the command, give a short summary: how many open tasks/bugs survived, and point to `.state/MIN_DUMP.md` as the on-disk backup.
+After handing off the command, give a short summary: how many open tasks/bugs survived, and point to `MIN_DUMP.md` as the on-disk backup.

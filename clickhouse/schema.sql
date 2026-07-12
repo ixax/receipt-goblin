@@ -1,30 +1,8 @@
 -- Schema for the local AI agent cost/efficiency tracking stack.
 -- Applies automatically on first container start via
 -- docker-entrypoint-initdb.d (see docker-compose.yml). To reapply manually
--- (e.g. after the volume already exists): docker exec -i agent-tracking-clickhouse
+-- (e.g. after the volume already exists): docker exec -i receipt-goblin-clickhouse
 -- clickhouse-client --multiquery < clickhouse/schema.sql
-
-CREATE TABLE IF NOT EXISTS agent_registry
-(
-    agent_name    String,
-    version       String,
-    description   String,
-    source_file   String,
-    registered_at DateTime64(3) DEFAULT now64(3)
-)
-ENGINE = ReplacingMergeTree(registered_at)
-ORDER BY (agent_name, version);
-
-CREATE TABLE IF NOT EXISTS skill_registry
-(
-    skill_name    String,
-    version       String,
-    description   String,
-    source_file   String,
-    registered_at DateTime64(3) DEFAULT now64(3)
-)
-ENGINE = ReplacingMergeTree(registered_at)
-ORDER BY (skill_name, version);
 
 -- agent_id -> subagent_type lookup, recovered from the orchestrator's own
 -- LiteLLM call: an Agent tool_use block paired with the tool_result that
@@ -43,6 +21,24 @@ CREATE TABLE IF NOT EXISTS agent_invocations
 )
 ENGINE = ReplacingMergeTree(spawned_at)
 ORDER BY (agent_id);
+
+-- session_id -> git branch, captured once at SessionStart by
+-- hooks/report_git_branch.py (Claude Code and Codex CLI both run it - see
+-- .claude/settings.json / .codex/hooks.json). This is the one lifecycle
+-- hook this stack still has: neither LiteLLM's StandardLoggingPayload nor
+-- ANTHROPIC_CUSTOM_HEADERS (a static env var) can carry the client's cwd/
+-- git state, which is otherwise invisible to webhook/src/clickhouse_ingest.py
+-- - see AGENTS.md for why every other hook was removed in favor of that
+-- payload. Branch is a snapshot from session start, not live - a
+-- mid-session `git checkout` won't update the row.
+CREATE TABLE IF NOT EXISTS session_git_branch
+(
+    session_id  String,
+    git_branch  String,
+    captured_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(captured_at)
+ORDER BY (session_id);
 
 -- One row per lifecycle event (hook invocation). raw_payload keeps the full
 -- untouched JSON Claude Code sent, so any field missed by the extracted
@@ -82,9 +78,7 @@ CREATE TABLE IF NOT EXISTS agent_events
     user_id           LowCardinality(String),
     session_id        String,
     trace_id          String,
-    parent_session_id String,
     turn_id           UInt32,
-    sequence_id        UInt32,
     event_type        LowCardinality(String),
     tool_name         LowCardinality(String),
     agent_name        LowCardinality(String),
@@ -160,15 +154,11 @@ CREATE TABLE IF NOT EXISTS agent_usage
     -- refusal) - lets a truncated or refused turn be told apart from a
     -- normal completion.
     stop_reason           LowCardinality(String) DEFAULT '',
-    service_tier          LowCardinality(String) DEFAULT '',
-    speed                 LowCardinality(String) DEFAULT '',
     -- cache_creation_tokens above stays the sum of these two, for the
     -- existing cost/token panels; 1h vs 5m ephemeral cache writes are
     -- priced differently, hence the separate breakdown.
     cache_creation_1h_tokens UInt32 DEFAULT 0,
     cache_creation_5m_tokens UInt32 DEFAULT 0,
-    web_search_requests   UInt32 DEFAULT 0,
-    web_fetch_requests    UInt32 DEFAULT 0,
     -- From LiteLLM's own response_cost/cost_breakdown (total/input/output
     -- split) - see the table comment above for why these replaced a local
     -- price table instead of being derived from one.

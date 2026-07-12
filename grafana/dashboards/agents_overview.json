@@ -15,7 +15,7 @@
         "spec": {
           "id": 19,
           "title": "Overview",
-          "description": "",
+          "description": "Top-line KPIs for the current filters/time range: total tokens and cost all-time vs. in the selected period. Single stat row meant as the dashboard's front page, not a trend view - see the per-user/agent/skill panels below for trends.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -34,7 +34,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  (SELECT sum(input_tokens + output_tokens) FROM agent_usage WHERE has([${user_id:singlequote}], user_id) AND has([${model:singlequote}], model) AND has([${session_id:singlequote}], session_id) AND has([${agent_name:singlequote}], agent_name) AND has([${skill_name:singlequote}], skill_name) AND has([${command_name:singlequote}], command_name) AND has([${mcp_tool:singlequote}], mcp_tool_name)) AS \"Tokens (all time)\",\n  (SELECT sum(input_tokens + output_tokens) FROM agent_usage WHERE $__timeFilter(timestamp) AND has([${user_id:singlequote}], user_id) AND has([${model:singlequote}], model) AND has([${session_id:singlequote}], session_id) AND has([${agent_name:singlequote}], agent_name) AND has([${skill_name:singlequote}], skill_name) AND has([${command_name:singlequote}], command_name) AND has([${mcp_tool:singlequote}], mcp_tool_name)) AS \"Tokens (period)\",\n  (SELECT sum(cost) FROM agent_usage WHERE has([${user_id:singlequote}], user_id) AND has([${model:singlequote}], model) AND has([${session_id:singlequote}], session_id) AND has([${agent_name:singlequote}], agent_name) AND has([${skill_name:singlequote}], skill_name) AND has([${command_name:singlequote}], command_name) AND has([${mcp_tool:singlequote}], mcp_tool_name)) AS \"Cost (all time)\",\n  (SELECT sum(cost) FROM agent_usage WHERE $__timeFilter(timestamp) AND has([${user_id:singlequote}], user_id) AND has([${model:singlequote}], model) AND has([${session_id:singlequote}], session_id) AND has([${agent_name:singlequote}], agent_name) AND has([${skill_name:singlequote}], skill_name) AND has([${command_name:singlequote}], command_name) AND has([${mcp_tool:singlequote}], mcp_tool_name)) AS \"Cost (period)\",\n  (SELECT count(DISTINCT user_id) FROM agent_events WHERE has([${user_id:singlequote}], user_id) AND has([${session_id:singlequote}], session_id) AND has([${agent_name:singlequote}], agent_name) AND has([${skill_name:singlequote}], skill_name) AND has([${command_name:singlequote}], command_name) AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))) AS \"Users\""
+                        "rawSql": "SELECT\n  (SELECT sum(input_tokens + output_tokens) FROM agent_usage LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE has([${user_id:singlequote}], user_id) AND has([${model:singlequote}], model) AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, '')) AND has([${agent_name:singlequote}], agent_name) AND has([${skill_name:singlequote}], skill_name) AND has([${command_name:singlequote}], command_name) AND has([${mcp_tool:singlequote}], mcp_tool_name)) AS \"Tokens (all time)\",\n  (SELECT sum(input_tokens + output_tokens) FROM agent_usage LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp) AND has([${user_id:singlequote}], user_id) AND has([${model:singlequote}], model) AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, '')) AND has([${agent_name:singlequote}], agent_name) AND has([${skill_name:singlequote}], skill_name) AND has([${command_name:singlequote}], command_name) AND has([${mcp_tool:singlequote}], mcp_tool_name)) AS \"Tokens (period)\",\n  (SELECT sum(cost) FROM agent_usage LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE has([${user_id:singlequote}], user_id) AND has([${model:singlequote}], model) AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, '')) AND has([${agent_name:singlequote}], agent_name) AND has([${skill_name:singlequote}], skill_name) AND has([${command_name:singlequote}], command_name) AND has([${mcp_tool:singlequote}], mcp_tool_name)) AS \"Cost (all time)\",\n  (SELECT sum(cost) FROM agent_usage LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp) AND has([${user_id:singlequote}], user_id) AND has([${model:singlequote}], model) AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, '')) AND has([${agent_name:singlequote}], agent_name) AND has([${skill_name:singlequote}], skill_name) AND has([${command_name:singlequote}], command_name) AND has([${mcp_tool:singlequote}], mcp_tool_name)) AS \"Cost (period)\",\n  (SELECT count(DISTINCT user_id) FROM agent_events LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE has([${user_id:singlequote}], user_id) AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, '')) AND has([${agent_name:singlequote}], agent_name) AND has([${skill_name:singlequote}], skill_name) AND has([${command_name:singlequote}], command_name) AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))) AS \"Users\",\n  (SELECT count(DISTINCT session_id, prompt_text) FROM agent_messages LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp) AND has([${user_id:singlequote}], user_id) AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, '')) AND has([${agent_name:singlequote}], agent_name) AND has([${skill_name:singlequote}], skill_name) AND has([${command_name:singlequote}], command_name)) AS \"Prompts (period)\",\n  (SELECT count(DISTINCT session_id, prompt_text) FROM agent_messages LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE has([${user_id:singlequote}], user_id) AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, '')) AND has([${agent_name:singlequote}], agent_name) AND has([${skill_name:singlequote}], skill_name) AND has([${command_name:singlequote}], command_name)) AS \"Prompts (all time)\",\n  (SELECT count(DISTINCT session_id) FROM agent_events LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp) AND has([${user_id:singlequote}], user_id) AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, '')) AND has([${agent_name:singlequote}], agent_name) AND has([${skill_name:singlequote}], skill_name) AND has([${command_name:singlequote}], command_name) AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))) AS \"Sessions (period)\",\n  (SELECT count(DISTINCT session_id) FROM agent_events LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE has([${user_id:singlequote}], user_id) AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, '')) AND has([${agent_name:singlequote}], agent_name) AND has([${skill_name:singlequote}], skill_name) AND has([${command_name:singlequote}], command_name) AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))) AS \"Sessions (all time)\""
                       }
                     },
                     "refId": "A",
@@ -130,6 +130,54 @@
                         "value": "locale"
                       }
                     ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Prompts (period)"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "locale"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Prompts (all time)"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "locale"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Sessions (period)"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "locale"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Sessions (all time)"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "locale"
+                      }
+                    ]
                   }
                 ]
               }
@@ -142,7 +190,7 @@
         "spec": {
           "id": 30,
           "title": "Tokens by user over time",
-          "description": "",
+          "description": "Input/output token volume over time, one series per user (↓ = input, ↑ = output tokens). Shows which user's usage is driving overall volume, or a sudden spike from one account.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -161,7 +209,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH filtered AS (\n  SELECT u.timestamp AS time, u.user_id AS metric,\n    u.input_tokens AS in_val, u.output_tokens AS out_val\n  FROM agent_usage u\n  WHERE $__timeFilter(u.timestamp)\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${session_id:singlequote}], u.session_id)\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT $__timeInterval(u.timestamp) AS time, u.user_id AS metric,\n    sum(u.input_tokens) AS in_val, sum(u.output_tokens) AS out_val\n  FROM agent_usage u\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' ↓') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' ↑') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -181,10 +229,14 @@
               "options": {
                 "legend": {
                   "showLegend": false
+                },
+                "tooltip": {
+                  "mode": "single"
                 }
               },
               "fieldConfig": {
                 "defaults": {
+                  "unit": "locale",
                   "color": {
                     "mode": "fixed",
                     "fixedColor": "blue"
@@ -212,7 +264,7 @@
         "spec": {
           "id": 31,
           "title": "Cost by user over time",
-          "description": "",
+          "description": "Spend over time (USD), one series per user, from agent_usage.cost (LiteLLM's own response_cost). Companion to 'Tokens by user over time' - tracks cost independently of raw token counts, since model mix changes $/token.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -231,7 +283,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  u.timestamp AS time,\n  u.user_id AS metric,\n  u.cost AS value\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nORDER BY time"
+                        "rawSql": "SELECT\n  $__timeInterval(u.timestamp) AS time,\n  u.user_id AS metric,\n  sum(u.cost) AS value\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -251,6 +303,9 @@
               "options": {
                 "legend": {
                   "showLegend": false
+                },
+                "tooltip": {
+                  "mode": "single"
                 }
               },
               "fieldConfig": {
@@ -283,7 +338,7 @@
         "spec": {
           "id": 1,
           "title": "Tokens by agent/version over time",
-          "description": "",
+          "description": "Input/output tokens over time per agent name+version (main-session calls bucketed as 'main agent'). Lets a new agent version be compared against its predecessor's token footprint.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -302,7 +357,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    if(u.agent_name = '', 'main agent', if(u.agent_version = '', u.agent_name, concat(u.agent_name, ' v', u.agent_version))) AS metric,\n    u.input_tokens AS in_val,\n    u.output_tokens AS out_val\n  FROM agent_usage u\n  WHERE $__timeFilter(u.timestamp)\n    AND (u.agent_name != '' OR u.skill_name = '')\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${session_id:singlequote}], u.session_id)\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    $__timeInterval(u.timestamp) AS time,\n    if(u.agent_name = '', 'main agent', if(u.agent_version = '', u.agent_name, concat(u.agent_name, ' v', u.agent_version))) AS metric,\n    sum(u.input_tokens) AS in_val,\n    sum(u.output_tokens) AS out_val\n  FROM agent_usage u\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n    AND (u.agent_name != '' OR u.skill_name = '')\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' ↓') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' ↑') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -369,7 +424,7 @@
         "spec": {
           "id": 2,
           "title": "Tokens by skill/version over time",
-          "description": "",
+          "description": "Same as 'Tokens by agent/version' but sliced by skill name+version instead - shows how a skill's token footprint evolves across its own versions.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -388,7 +443,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    timestamp AS time,\n    if(skill_version = '', skill_name, concat(skill_name, ' v', skill_version)) AS metric,\n    input_tokens AS in_val,\n    output_tokens AS out_val\n  FROM agent_usage\n  WHERE $__timeFilter(timestamp)\n    AND skill_name != ''\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${session_id:singlequote}], session_id)\n    AND has([${command_name:singlequote}], command_name)\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    $__timeInterval(timestamp) AS time,\n    if(skill_version = '', skill_name, concat(skill_name, ' v', skill_version)) AS metric,\n    sum(input_tokens) AS in_val,\n    sum(output_tokens) AS out_val\n  FROM agent_usage\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n    AND skill_name != ''\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${command_name:singlequote}], command_name)\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' ↓') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' ↑') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -455,7 +510,7 @@
         "spec": {
           "id": 3,
           "title": "Cost by agent/version over time",
-          "description": "",
+          "description": "Spend (USD) over time per agent name+version - the cost counterpart to 'Tokens by agent/version over time', for the same before/after version comparison.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -474,7 +529,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    if(u.agent_name = '', 'main agent', if(u.agent_version = '', u.agent_name, concat(u.agent_name, ' v', u.agent_version))) AS metric,\n    u.input_cost AS in_val,\n    u.output_cost AS out_val\n  FROM agent_usage u\n  WHERE $__timeFilter(u.timestamp)\n    AND (u.agent_name != '' OR u.skill_name = '')\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${session_id:singlequote}], u.session_id)\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    $__timeInterval(u.timestamp) AS time,\n    if(u.agent_name = '', 'main agent', if(u.agent_version = '', u.agent_name, concat(u.agent_name, ' v', u.agent_version))) AS metric,\n    sum(u.input_cost) AS in_val,\n    sum(u.output_cost) AS out_val\n  FROM agent_usage u\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n    AND (u.agent_name != '' OR u.skill_name = '')\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' ↓') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' ↑') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -541,7 +596,7 @@
         "spec": {
           "id": 4,
           "title": "Cost by skill/version over time",
-          "description": "",
+          "description": "Spend (USD) over time per skill name+version - the cost counterpart to 'Tokens by skill/version over time'.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -560,7 +615,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    if(u.skill_version = '', u.skill_name, concat(u.skill_name, ' v', u.skill_version)) AS metric,\n    u.input_cost AS in_val,\n    u.output_cost AS out_val\n  FROM agent_usage u\n  WHERE $__timeFilter(u.timestamp)\n    AND u.skill_name != ''\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${session_id:singlequote}], u.session_id)\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    $__timeInterval(u.timestamp) AS time,\n    if(u.skill_version = '', u.skill_name, concat(u.skill_name, ' v', u.skill_version)) AS metric,\n    sum(u.input_cost) AS in_val,\n    sum(u.output_cost) AS out_val\n  FROM agent_usage u\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n    AND u.skill_name != ''\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' ↓') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' ↑') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -627,7 +682,7 @@
         "spec": {
           "id": 13,
           "title": "Tokens by MCP tool over time",
-          "description": "",
+          "description": "Input/output tokens over time per MCP tool call (mcp_tool_name), so one MCP integration's token cost can be tracked and compared against the others.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -646,7 +701,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    timestamp AS time,\n    replaceOne(mcp_tool_name, 'mcp__', '') AS metric,\n    input_tokens AS in_val,\n    output_tokens AS out_val\n  FROM agent_usage\n  WHERE $__timeFilter(timestamp)\n    AND mcp_tool_name != ''\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${session_id:singlequote}], session_id)\n    AND has([${command_name:singlequote}], command_name)\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    $__timeInterval(timestamp) AS time,\n    replaceOne(mcp_tool_name, 'mcp__', '') AS metric,\n    sum(input_tokens) AS in_val,\n    sum(output_tokens) AS out_val\n  FROM agent_usage\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n    AND mcp_tool_name != ''\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${command_name:singlequote}], command_name)\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' ↓') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' ↑') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -713,7 +768,7 @@
         "spec": {
           "id": 14,
           "title": "Cost by MCP tool over time",
-          "description": "",
+          "description": "Spend (USD) over time per MCP tool call - the cost counterpart to 'Tokens by MCP tool over time'.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -732,7 +787,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    replaceOne(u.mcp_tool_name, 'mcp__', '') AS metric,\n    u.input_cost AS in_val,\n    u.output_cost AS out_val\n  FROM agent_usage u\n  WHERE $__timeFilter(u.timestamp)\n    AND u.mcp_tool_name != ''\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${session_id:singlequote}], u.session_id)\n    AND has([${command_name:singlequote}], u.command_name)\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    $__timeInterval(u.timestamp) AS time,\n    replaceOne(u.mcp_tool_name, 'mcp__', '') AS metric,\n    sum(u.input_cost) AS in_val,\n    sum(u.output_cost) AS out_val\n  FROM agent_usage u\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n    AND u.mcp_tool_name != ''\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${command_name:singlequote}], u.command_name)\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' ↓') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' ↑') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -799,7 +854,7 @@
         "spec": {
           "id": 16,
           "title": "Tokens by model & scope over time",
-          "description": "",
+          "description": "Input/output tokens over time, split by model and by scope (agent/skill/main session), to see which model+scope combination consumes the most tokens.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -818,7 +873,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    timestamp AS time,\n    concat(multiIf(agent_name != '', 'subagent', skill_name != '', 'skill', 'main agent'), ' - ', model) AS metric,\n    input_tokens AS in_val,\n    output_tokens AS out_val\n  FROM agent_usage\n  WHERE $__timeFilter(timestamp)\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${session_id:singlequote}], session_id)\n    AND has([${command_name:singlequote}], command_name)\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    $__timeInterval(timestamp) AS time,\n    concat(multiIf(agent_name != '', 'subagent', skill_name != '', 'skill', 'main agent'), ' - ', model) AS metric,\n    sum(input_tokens) AS in_val,\n    sum(output_tokens) AS out_val\n  FROM agent_usage\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${command_name:singlequote}], command_name)\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' ↓') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' ↑') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -885,7 +940,7 @@
         "spec": {
           "id": 17,
           "title": "Cost by model & scope over time",
-          "description": "",
+          "description": "Spend (USD) over time, split by model and scope - the cost counterpart to 'Tokens by model & scope over time'; useful when a pricier/cheaper model shifts the cost picture more than tokens alone would show.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -904,7 +959,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    concat(multiIf(u.agent_name != '', 'subagent', u.skill_name != '', 'skill', 'main agent'), ' - ', u.model) AS metric,\n    u.input_cost AS in_val,\n    u.output_cost AS out_val\n  FROM agent_usage u\n  WHERE $__timeFilter(u.timestamp)\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${session_id:singlequote}], u.session_id)\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    $__timeInterval(u.timestamp) AS time,\n    concat(multiIf(u.agent_name != '', 'subagent', u.skill_name != '', 'skill', 'main agent'), ' - ', u.model) AS metric,\n    sum(u.input_cost) AS in_val,\n    sum(u.output_cost) AS out_val\n  FROM agent_usage u\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' ↓') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' ↑') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -971,7 +1026,7 @@
         "spec": {
           "id": 22,
           "title": "Cache hit rate by agent/skill/model over time",
-          "description": "",
+          "description": "Share of calls with cache_hit=1 over time, by agent/skill/model - shows whether prompt caching is actually landing for a given agent, skill, or model, and whether that's improving or regressing.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -990,7 +1045,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    timestamp AS time,\n    concat(multiIf(agent_name != '', 'subagent', skill_name != '', 'skill', 'main agent'), ' - ', model) AS metric,\n    cache_read_tokens AS cache_read,\n    input_tokens AS input_tok\n  FROM agent_usage\n  WHERE $__timeFilter(timestamp)\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${session_id:singlequote}], session_id)\n    AND has([${command_name:singlequote}], command_name)\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n)\nSELECT time, metric, cache_read / nullIf(cache_read + input_tok, 0) AS value\nFROM filtered\nORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    $__timeInterval(timestamp) AS time,\n    concat(multiIf(agent_name != '', 'subagent', skill_name != '', 'skill', 'main agent'), ' - ', model) AS metric,\n    sum(cache_read_tokens) AS cache_read,\n    sum(input_tokens) AS input_tok\n  FROM agent_usage\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${command_name:singlequote}], command_name)\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n  GROUP BY time, metric\n)\nSELECT time, metric, cache_read / nullIf(cache_read + input_tok, 0) AS value\nFROM filtered\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -1010,6 +1065,9 @@
               "options": {
                 "legend": {
                   "showLegend": false
+                },
+                "tooltip": {
+                  "mode": "single"
                 }
               },
               "fieldConfig": {
@@ -1042,7 +1100,7 @@
         "spec": {
           "id": 10,
           "title": "Spend by user",
-          "description": "",
+          "description": "Total spend (USD) per user over the selected time range - a single ranked bar per user, for a quick 'who is spending the most' snapshot without a time axis.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1061,7 +1119,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  u.user_id,\n  sum(u.cost) AS cost,\n  sum(u.input_tokens + u.output_tokens) AS tokens\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY u.user_id\nORDER BY cost DESC"
+                        "rawSql": "SELECT\n  u.user_id,\n  sum(u.cost) AS cost,\n  sum(u.input_tokens + u.output_tokens) AS tokens\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY u.user_id\nORDER BY cost DESC"
                       }
                     },
                     "refId": "A",
@@ -1132,7 +1190,7 @@
         "spec": {
           "id": 20,
           "title": "Top 10 users by tokens",
-          "description": "",
+          "description": "The 10 users with the highest total token usage in the selected time range, ranked bar - the token counterpart to 'Spend by user'.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1151,7 +1209,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH session_durations_period AS (\n  SELECT session_id, user_id, dateDiff('second', min(timestamp), max(timestamp)) AS duration_s\n  FROM agent_events\n  WHERE $__timeFilter(timestamp)\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${session_id:singlequote}], session_id)\n  GROUP BY session_id, user_id\n),\nsession_durations_all AS (\n  SELECT session_id, user_id, dateDiff('second', min(timestamp), max(timestamp)) AS duration_s\n  FROM agent_events\n  WHERE has([${user_id:singlequote}], user_id)\n    AND has([${session_id:singlequote}], session_id)\n  GROUP BY session_id, user_id\n),\nuser_duration_period AS (\n  SELECT user_id, sum(duration_s) AS duration_s FROM session_durations_period GROUP BY user_id\n),\nuser_duration_all AS (\n  SELECT user_id, sum(duration_s) AS duration_s FROM session_durations_all GROUP BY user_id\n)\nSELECT\n  u.user_id,\n  sum(u.input_tokens) AS tokens_in,\n  sum(u.output_tokens) AS tokens_out,\n  sum(u.cost) AS cost,\n  any(udp.duration_s) AS session_duration_period_s,\n  any(uda.duration_s) AS session_duration_all_s\nFROM agent_usage u\nLEFT JOIN user_duration_period udp ON udp.user_id = u.user_id\nLEFT JOIN user_duration_all uda ON uda.user_id = u.user_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY u.user_id\nORDER BY (tokens_in + tokens_out) DESC\nLIMIT 10"
+                        "rawSql": "WITH session_durations_period AS (\n  SELECT session_id, user_id, dateDiff('second', min(timestamp), max(timestamp)) AS duration_s\n  FROM agent_events\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  GROUP BY session_id, user_id\n),\nsession_durations_all AS (\n  SELECT session_id, user_id, dateDiff('second', min(timestamp), max(timestamp)) AS duration_s\n  FROM agent_events\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE has([${user_id:singlequote}], user_id)\n    AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  GROUP BY session_id, user_id\n),\nuser_duration_period AS (\n  SELECT user_id, sum(duration_s) AS duration_s FROM session_durations_period GROUP BY user_id\n),\nuser_duration_all AS (\n  SELECT user_id, sum(duration_s) AS duration_s FROM session_durations_all GROUP BY user_id\n)\nSELECT\n  u.user_id,\n  sum(u.input_tokens) AS tokens_in,\n  sum(u.output_tokens) AS tokens_out,\n  sum(u.cost) AS cost,\n  any(udp.duration_s) AS session_duration_period_s,\n  any(uda.duration_s) AS session_duration_all_s\nFROM agent_usage u\nLEFT JOIN user_duration_period udp ON udp.user_id = u.user_id\nLEFT JOIN user_duration_all uda ON uda.user_id = u.user_id\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY u.user_id\nORDER BY (tokens_in + tokens_out) DESC\nLIMIT 10"
                       }
                     },
                     "refId": "A",
@@ -1287,7 +1345,7 @@
         "spec": {
           "id": 29,
           "title": "Active users & sessions per day",
-          "description": "",
+          "description": "Daily count of distinct users and distinct sessions - a basic adoption/activity trend, independent of how much any single session costs.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1306,7 +1364,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  toStartOfDay(timestamp) AS time,\n  uniqExact(user_id) AS active_users,\n  uniqExact(session_id) AS sessions\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${command_name:singlequote}], command_name)\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nGROUP BY time\nORDER BY time"
+                        "rawSql": "SELECT\n  toStartOfDay(timestamp) AS time,\n  uniqExact(user_id) AS active_users,\n  uniqExact(session_id) AS sessions\nFROM agent_events\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${command_name:singlequote}], command_name)\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nGROUP BY time\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -1330,10 +1388,14 @@
                   "showLegend": true,
                   "displayMode": "list",
                   "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
                 }
               },
               "fieldConfig": {
                 "defaults": {
+                  "unit": "locale",
                   "custom": {
                     "drawStyle": "line",
                     "lineInterpolation": "smooth",
@@ -1357,7 +1419,7 @@
         "spec": {
           "id": 5,
           "title": "Error rate by tool_name",
-          "description": "",
+          "description": "Share of calls ending in status=failure, grouped by tool_name, over the selected time range - flags which tools are least reliable right now.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1376,7 +1438,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  tool_name,\n  countIf(status = 'success') AS successes,\n  countIf(status = 'failure') AS failures,\n  countIf(status = 'failure') / nullIf(countIf(status = 'success') + countIf(status = 'failure'), 0) AS error_rate\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${command_name:singlequote}], command_name)\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nGROUP BY tool_name\nORDER BY error_rate DESC"
+                        "rawSql": "SELECT\n  tool_name,\n  countIf(status = 'success') AS successes,\n  countIf(status = 'failure') AS failures,\n  countIf(status = 'failure') / nullIf(countIf(status = 'success') + countIf(status = 'failure'), 0) AS error_rate\nFROM agent_events\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], command_name)\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nGROUP BY tool_name\nORDER BY error_rate DESC"
                       }
                     },
                     "refId": "A",
@@ -1407,7 +1469,7 @@
         "spec": {
           "id": 6,
           "title": "Latency percentiles (p50/p95) by tool_name",
-          "description": "",
+          "description": "p50/p95 of agent_events.latency_ms (full call duration, endTime-startTime) grouped by tool_name - flags which tools are slow. Distinct from ttft_ms, which measures only time-to-first-token.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1426,7 +1488,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  tool_name,\n  quantile(0.5)(latency_ms) AS p50_ms,\n  quantile(0.95)(latency_ms) AS p95_ms\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND status = 'success'\n  AND latency_ms IS NOT NULL\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${command_name:singlequote}], command_name)\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nGROUP BY tool_name\nORDER BY p95_ms DESC"
+                        "rawSql": "SELECT\n  tool_name,\n  quantile(0.5)(latency_ms) AS p50_ms,\n  quantile(0.95)(latency_ms) AS p95_ms\nFROM agent_events\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n  AND status = 'success'\n  AND latency_ms IS NOT NULL\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], command_name)\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nGROUP BY tool_name\nORDER BY p95_ms DESC"
                       }
                     },
                     "refId": "A",
@@ -1459,7 +1521,7 @@
         "spec": {
           "id": 11,
           "title": "MCP tool calls",
-          "description": "",
+          "description": "Call volume per MCP tool (mcp__... names) over the selected time range - shows which MCP integrations are actually being exercised.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1478,7 +1540,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  tool_name,\n  countIf(status = 'success') AS calls,\n  countIf(status = 'failure') AS failures,\n  quantile(0.5)(latency_ms) AS p50_ms,\n  quantile(0.95)(latency_ms) AS p95_ms\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND startsWith(tool_name, 'mcp__')\n  AND has([${mcp_tool:singlequote}], tool_name)\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${command_name:singlequote}], command_name)\nGROUP BY tool_name\nORDER BY calls DESC"
+                        "rawSql": "SELECT\n  tool_name,\n  countIf(status = 'success') AS calls,\n  countIf(status = 'failure') AS failures,\n  quantile(0.5)(latency_ms) AS p50_ms,\n  quantile(0.95)(latency_ms) AS p95_ms\nFROM agent_events\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n  AND startsWith(tool_name, 'mcp__')\n  AND has([${mcp_tool:singlequote}], tool_name)\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], command_name)\nGROUP BY tool_name\nORDER BY calls DESC"
                       }
                     },
                     "refId": "A",
@@ -1534,7 +1596,7 @@
         "spec": {
           "id": 15,
           "title": "Top 10 slowest tool calls",
-          "description": "",
+          "description": "The 10 individual calls with the highest latency_ms in the selected time range, with tool_name/session_id - for drilling into specific slow calls rather than aggregate percentiles.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1553,7 +1615,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  timestamp,\n  user_id,\n  session_id,\n  tool_name,\n  substring(JSONExtractString(raw_payload, 'response', 'choices', 1, 'message', 'tool_calls', 1, 'function', 'arguments'), 1, 300) AS tool_detail,\n  latency_ms\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND status = 'success'\n  AND latency_ms IS NOT NULL\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${command_name:singlequote}], command_name)\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nORDER BY latency_ms DESC\nLIMIT 10"
+                        "rawSql": "SELECT\n  timestamp,\n  user_id,\n  session_id,\n  tool_name,\n  substring(JSONExtractString(raw_payload, 'response', 'choices', 1, 'message', 'tool_calls', 1, 'function', 'arguments'), 1, 300) AS tool_detail,\n  latency_ms\nFROM agent_events\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n  AND status = 'success'\n  AND latency_ms IS NOT NULL\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], command_name)\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nORDER BY latency_ms DESC\nLIMIT 10"
                       }
                     },
                     "refId": "A",
@@ -1597,7 +1659,7 @@
         "spec": {
           "id": 27,
           "title": "Error rate over time by tool_name",
-          "description": "",
+          "description": "Same metric as 'Error rate by tool_name' but as a trend over time instead of a single aggregate, so a reliability regression on one tool can be spotted as it happens.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1616,7 +1678,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  toStartOfHour(timestamp) AS time,\n  tool_name AS metric,\n  countIf(status = 'failure') / nullIf(countIf(status IN ('success', 'failure')), 0) AS value\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${command_name:singlequote}], command_name)\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nGROUP BY time, metric\nORDER BY time"
+                        "rawSql": "SELECT\n  toStartOfHour(timestamp) AS time,\n  tool_name AS metric,\n  countIf(status = 'failure') / nullIf(countIf(status IN ('success', 'failure')), 0) AS value\nFROM agent_events\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], command_name)\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nGROUP BY time, metric\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -1636,6 +1698,9 @@
               "options": {
                 "legend": {
                   "showLegend": false
+                },
+                "tooltip": {
+                  "mode": "single"
                 }
               },
               "fieldConfig": {
@@ -1687,7 +1752,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH selected_session_count AS (\n  SELECT count() AS n FROM (SELECT arrayJoin([${session_id:singlequote}]) AS s) WHERE s != ''\n),\navailable_session_count AS (\n  SELECT countDistinct(session_id) AS n FROM agent_events WHERE has([${user_id:singlequote}], user_id)\n)\nSELECT\n  ev.user_id,\n  ev.session_id,\n  ev.turn_id,\n  ev.sequence_id,\n  ev.timestamp,\n  ev.event_type,\n  ev.tool_name,\n  substring(JSONExtractString(ev.raw_payload, 'response', 'choices', 1, 'message', 'tool_calls', 1, 'function', 'arguments'), 1, 300) AS tool_detail,\n  ev.agent_name,\n  ev.agent_version,\n  ev.skill_name,\n  ev.skill_version,\n  ev.status,\n  ev.latency_ms,\n  m.prompt_text,\n  m.response_text,\n  ev.raw_payload\nFROM agent_events ev\nLEFT JOIN agent_messages m\n  ON m.session_id = ev.session_id AND m.timestamp = ev.timestamp\nWHERE has([${session_id:singlequote}], ev.session_id)\n  AND has([${user_id:singlequote}], ev.user_id)\n  AND has([${agent_name:singlequote}], ev.agent_name)\n  AND has([${skill_name:singlequote}], ev.skill_name)\n  AND (NOT startsWith(ev.tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], ev.tool_name))\n  AND has([${command_name:singlequote}], ev.command_name)\n  AND (SELECT n FROM selected_session_count) > 0\n  AND (SELECT n FROM selected_session_count) < (SELECT n FROM available_session_count)\nORDER BY ev.session_id, ev.turn_id ASC, ev.sequence_id ASC"
+                        "rawSql": "WITH selected_session_count AS (\n  SELECT count() AS n FROM (SELECT arrayJoin([${session_id:singlequote}]) AS s) WHERE s != ''\n),\navailable_session_count AS (\n  SELECT countDistinct(session_id) AS n FROM agent_events WHERE has([${user_id:singlequote}], user_id)\n)\nSELECT\n  ev.user_id,\n  ev.session_id,\n  ev.turn_id,\n  ev.timestamp,\n  ev.event_type,\n  ev.tool_name,\n  substring(JSONExtractString(ev.raw_payload, 'response', 'choices', 1, 'message', 'tool_calls', 1, 'function', 'arguments'), 1, 300) AS tool_detail,\n  ev.agent_name,\n  ev.agent_version,\n  ev.skill_name,\n  ev.skill_version,\n  ev.status,\n  ev.latency_ms,\n  m.prompt_text,\n  m.response_text,\n  ev.raw_payload\nFROM agent_events ev\nLEFT JOIN agent_messages m\n  ON m.session_id = ev.session_id AND m.timestamp = ev.timestamp\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = ev.session_id\nWHERE has([${session_id:singlequote}], ev.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${user_id:singlequote}], ev.user_id)\n  AND has([${agent_name:singlequote}], ev.agent_name)\n  AND has([${skill_name:singlequote}], ev.skill_name)\n  AND (NOT startsWith(ev.tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], ev.tool_name))\n  AND has([${command_name:singlequote}], ev.command_name)\n  AND (SELECT n FROM selected_session_count) > 0\n  AND (SELECT n FROM selected_session_count) < (SELECT n FROM available_session_count)\nORDER BY ev.session_id, ev.turn_id ASC"
                       }
                     },
                     "refId": "A",
@@ -1780,7 +1845,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH selected_session_count AS (\n  SELECT count() AS n FROM (SELECT arrayJoin([${session_id:singlequote}]) AS s) WHERE s != ''\n),\navailable_session_count AS (\n  SELECT countDistinct(session_id) AS n FROM agent_events WHERE has([${user_id:singlequote}], user_id)\n),\nusage_by_call AS (\n  SELECT u.session_id, u.timestamp,\n    sum(u.input_tokens + u.output_tokens) AS tok,\n    sum(u.cost) AS cost\n  FROM agent_usage u\n  WHERE has([${session_id:singlequote}], u.session_id)\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n    AND (SELECT n FROM selected_session_count) > 0\n    AND (SELECT n FROM selected_session_count) < (SELECT n FROM available_session_count)\n  GROUP BY u.session_id, u.timestamp\n)\nSELECT\n  ev.timestamp AS time,\n  ev.session_id AS session_id,\n  concat(\n    if(ev.agent_name != '', concat('[', ev.agent_name, if(ev.agent_version != '', concat(' v', ev.agent_version), ''), '] '), ''),\n    if(ev.command_name != '', concat('/', ev.command_name, ' '), ''),\n    if(ev.skill_name != '', concat('(', ev.skill_name, if(ev.skill_version != '', concat(' v', ev.skill_version), ''), ') '), ''),\n    if(ev.tool_name = '', 'reply', concat(\n      ev.tool_name,\n      ' `', substring(replaceRegexpAll(JSONExtractString(ev.raw_payload, 'response', 'choices', 1, 'message', 'tool_calls', 1, 'function', 'arguments'), '\\\\s+', ' '), 1, 70), '`'\n    )),\n    if(ev.status = 'failure', ' [FAIL]', ''),\n    if(ev.latency_ms IS NOT NULL, concat(' - ', toString(ev.latency_ms), 'ms'), ''),\n    if(u.tok > 0, concat(' - ', toString(u.tok), ' tok - $', toString(round(u.cost, 4))), '')\n  ) AS call,\n  ev.raw_payload AS raw_payload\nFROM agent_events ev\nLEFT JOIN usage_by_call u ON u.session_id = ev.session_id AND u.timestamp = ev.timestamp\nWHERE has([${session_id:singlequote}], ev.session_id)\n  AND has([${user_id:singlequote}], ev.user_id)\n  AND has([${agent_name:singlequote}], ev.agent_name)\n  AND has([${skill_name:singlequote}], ev.skill_name)\n  AND has([${command_name:singlequote}], ev.command_name)\n  AND (NOT startsWith(ev.tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], ev.tool_name))\n  AND (SELECT n FROM selected_session_count) > 0\n  AND (SELECT n FROM selected_session_count) < (SELECT n FROM available_session_count)\nORDER BY ev.session_id, ev.timestamp"
+                        "rawSql": "WITH selected_session_count AS (\n  SELECT count() AS n FROM (SELECT arrayJoin([${session_id:singlequote}]) AS s) WHERE s != ''\n),\navailable_session_count AS (\n  SELECT countDistinct(session_id) AS n FROM agent_events WHERE has([${user_id:singlequote}], user_id)\n),\nusage_by_call AS (\n  SELECT u.session_id, u.timestamp,\n    sum(u.input_tokens + u.output_tokens) AS tok,\n    sum(u.cost) AS cost\n  FROM agent_usage u\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n    AND (SELECT n FROM selected_session_count) > 0\n    AND (SELECT n FROM selected_session_count) < (SELECT n FROM available_session_count)\n  GROUP BY u.session_id, u.timestamp\n)\nSELECT\n  ev.timestamp AS time,\n  ev.session_id AS session_id,\n  concat(\n    if(ev.agent_name != '', concat('[', ev.agent_name, if(ev.agent_version != '', concat(' v', ev.agent_version), ''), '] '), ''),\n    if(ev.command_name != '', concat('/', ev.command_name, ' '), ''),\n    if(ev.skill_name != '', concat('(', ev.skill_name, if(ev.skill_version != '', concat(' v', ev.skill_version), ''), ') '), ''),\n    if(ev.tool_name = '', 'reply', concat(\n      ev.tool_name,\n      ' `', substring(replaceRegexpAll(JSONExtractString(ev.raw_payload, 'response', 'choices', 1, 'message', 'tool_calls', 1, 'function', 'arguments'), '\\\\s+', ' '), 1, 70), '`'\n    )),\n    if(ev.status = 'failure', ' [FAIL]', ''),\n    if(ev.latency_ms IS NOT NULL, concat(' - ', toString(ev.latency_ms), 'ms'), ''),\n    if(u.tok > 0, concat(' - ', toString(u.tok), ' tok - $', toString(round(u.cost, 4))), '')\n  ) AS call,\n  ev.raw_payload AS raw_payload\nFROM agent_events ev\nLEFT JOIN usage_by_call u ON u.session_id = ev.session_id AND u.timestamp = ev.timestamp\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = ev.session_id\nWHERE has([${session_id:singlequote}], ev.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${user_id:singlequote}], ev.user_id)\n  AND has([${agent_name:singlequote}], ev.agent_name)\n  AND has([${skill_name:singlequote}], ev.skill_name)\n  AND has([${command_name:singlequote}], ev.command_name)\n  AND (NOT startsWith(ev.tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], ev.tool_name))\n  AND (SELECT n FROM selected_session_count) > 0\n  AND (SELECT n FROM selected_session_count) < (SELECT n FROM available_session_count)\nORDER BY ev.session_id, ev.timestamp"
                       }
                     },
                     "refId": "A",
@@ -1903,7 +1968,7 @@
         "spec": {
           "id": 8,
           "title": "Top 10 most expensive sessions",
-          "description": "",
+          "description": "The 10 sessions with the highest total cost in the selected time range - a quick way to find outlier sessions worth inspecting in the Sessions & Debugging tab.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1922,7 +1987,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  u.session_id,\n  u.user_id,\n  any(ev.started_at) AS started_at,\n  sum(u.input_tokens + u.output_tokens) AS tokens,\n  sum(u.cost) AS cost,\n  any(ev.duration_s) AS duration_s\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, min(timestamp) AS started_at, dateDiff('second', min(timestamp), max(timestamp)) AS duration_s\n  FROM agent_events\n  GROUP BY session_id\n) ev ON u.session_id = ev.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY u.session_id, u.user_id\nORDER BY cost DESC\nLIMIT 10"
+                        "rawSql": "SELECT\n  u.session_id,\n  u.user_id,\n  any(ev.started_at) AS started_at,\n  sum(u.input_tokens + u.output_tokens) AS tokens,\n  sum(u.cost) AS cost,\n  any(ev.duration_s) AS duration_s\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, min(timestamp) AS started_at, dateDiff('second', min(timestamp), max(timestamp)) AS duration_s\n  FROM agent_events\n  GROUP BY session_id\n) ev ON u.session_id = ev.session_id\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY u.session_id, u.user_id\nORDER BY cost DESC\nLIMIT 10"
                       }
                     },
                     "refId": "A",
@@ -2016,7 +2081,7 @@
         "spec": {
           "id": 21,
           "title": "Top 10 most expensive prompts by tokens",
-          "description": "",
+          "description": "The 10 individual prompts (from agent_messages) with the highest input+output token count - complements 'Top 10 most expensive sessions' at the level of a single turn instead of a whole session.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2035,7 +2100,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  u.session_id,\n  u.user_id,\n  u.agent_name,\n  m.prompt_text,\n  m.response_text,\n  sum(u.input_tokens + u.output_tokens) AS total_tokens\nFROM agent_usage u\nLEFT JOIN agent_messages m\n  ON m.session_id = u.session_id AND m.timestamp = u.timestamp\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY u.session_id, u.user_id, u.agent_name, m.prompt_text, m.response_text\nORDER BY total_tokens DESC\nLIMIT 10"
+                        "rawSql": "SELECT\n  u.session_id,\n  u.user_id,\n  m.prompt_text,\n  argMax(m.response_text, u.timestamp) AS response_text,\n  sum(u.input_tokens + u.output_tokens) AS total_tokens\nFROM agent_usage u\nLEFT JOIN agent_messages m\n  ON m.session_id = u.session_id AND m.timestamp = u.timestamp\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY u.session_id, u.user_id, m.prompt_text\nORDER BY total_tokens DESC\nLIMIT 10"
                       }
                     },
                     "refId": "A",
@@ -2134,56 +2199,6 @@
           }
         }
       },
-      "panel-9": {
-        "kind": "Panel",
-        "spec": {
-          "id": 9,
-          "title": "Current agent/skill versions",
-          "description": "Currently always empty: agent_registry/skill_registry are only ever written by the retired transcript-reading hooks pipeline (.claude/hooks/register_agents.py, deleted). Nothing in the current LiteLLM-only ingestion path writes to these tables. Needs a future client-side hook to populate again - not a query bug.",
-          "links": [],
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "query": {
-                      "kind": "DataQuery",
-                      "group": "grafana-clickhouse-datasource",
-                      "version": "v0",
-                      "datasource": {
-                        "name": "clickhouse"
-                      },
-                      "spec": {
-                        "editorType": "sql",
-                        "format": 1,
-                        "rawSql": "SELECT 'agent' AS kind, agent_name AS name, version, description, registered_at\nFROM agent_registry\nWHERE (agent_name, registered_at) IN (\n  SELECT agent_name, max(registered_at) FROM agent_registry GROUP BY agent_name\n)\nUNION ALL\nSELECT 'skill' AS kind, skill_name AS name, version, description, registered_at\nFROM skill_registry\nWHERE (skill_name, registered_at) IN (\n  SELECT skill_name, max(registered_at) FROM skill_registry GROUP BY skill_name\n)\nORDER BY kind, name"
-                      }
-                    },
-                    "refId": "A",
-                    "hidden": false
-                  }
-                }
-              ],
-              "transformations": [],
-              "queryOptions": {}
-            }
-          },
-          "vizConfig": {
-            "kind": "VizConfig",
-            "group": "table",
-            "version": "",
-            "spec": {
-              "options": {},
-              "fieldConfig": {
-                "defaults": {},
-                "overrides": []
-              }
-            }
-          }
-        }
-      },
       "panel-23": {
         "kind": "Panel",
         "spec": {
@@ -2208,7 +2223,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH usage_f AS (\n  SELECT *\n  FROM agent_usage\n  WHERE has([${user_id:singlequote}], user_id) AND has([${model:singlequote}], model)\n    AND has([${session_id:singlequote}], session_id)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${command_name:singlequote}], command_name)\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n),\nevents_f AS (\n  SELECT * FROM agent_events\n  WHERE has([${user_id:singlequote}], user_id)\n    AND has([${session_id:singlequote}], session_id)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${command_name:singlequote}], command_name)\n    AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\n),\nversion_starts AS (\n  SELECT agent_name, agent_version, min(timestamp) AS started_at\n  FROM usage_f\n  WHERE agent_name != ''\n  GROUP BY agent_name, agent_version\n),\nordered AS (\n  SELECT *,\n    lagInFrame(agent_version) OVER (PARTITION BY agent_name ORDER BY started_at) AS prev_version,\n    lagInFrame(started_at) OVER (PARTITION BY agent_name ORDER BY started_at) AS prev_started_at,\n    row_number() OVER (PARTITION BY agent_name ORDER BY started_at DESC) AS rn\n  FROM version_starts\n),\ntransitions AS (\n  SELECT agent_name, agent_version AS current_version, started_at, prev_version, prev_started_at\n  FROM ordered\n  WHERE rn = 1 AND prev_version != ''\n),\nusage_after AS (\n  SELECT t.agent_name, t.current_version, t.prev_version, t.started_at,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp >= t.started_at) AS avg_tokens_after,\n    avgIf(uf.cost, uf.timestamp >= t.started_at) AS avg_cost_after\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.agent_name = t.agent_name AND uf.agent_version = t.current_version\n  GROUP BY t.agent_name, t.current_version, t.prev_version, t.started_at\n),\nusage_before AS (\n  SELECT t.agent_name, t.current_version,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_tokens_before,\n    avgIf(uf.cost, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_cost_before\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.agent_name = t.agent_name AND uf.agent_version = t.prev_version\n  GROUP BY t.agent_name, t.current_version\n),\nevents_after AS (\n  SELECT t.agent_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp >= t.started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp >= t.started_at), 0) AS error_rate_after\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.agent_name = t.agent_name AND ev.agent_version = t.current_version\n  GROUP BY t.agent_name, t.current_version\n),\nevents_before AS (\n  SELECT t.agent_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at), 0) AS error_rate_before\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.agent_name = t.agent_name AND ev.agent_version = t.prev_version\n  GROUP BY t.agent_name, t.current_version\n)\nSELECT\n  ua.agent_name, ua.prev_version, ua.current_version, ua.started_at,\n  ub.avg_tokens_before, ua.avg_tokens_after,\n  ub.avg_cost_before, ua.avg_cost_after,\n  eb.error_rate_before, ea.error_rate_after\nFROM usage_after ua\nLEFT JOIN usage_before ub ON ub.agent_name = ua.agent_name AND ub.current_version = ua.current_version\nLEFT JOIN events_after ea ON ea.agent_name = ua.agent_name AND ea.current_version = ua.current_version\nLEFT JOIN events_before eb ON eb.agent_name = ua.agent_name AND eb.current_version = ua.current_version\nORDER BY ua.agent_name"
+                        "rawSql": "WITH usage_f AS (\n  SELECT *\n  FROM agent_usage\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE has([${user_id:singlequote}], user_id) AND has([${model:singlequote}], model)\n    AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${command_name:singlequote}], command_name)\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n),\nevents_f AS (\n  SELECT * FROM agent_events\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE has([${user_id:singlequote}], user_id)\n    AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${command_name:singlequote}], command_name)\n    AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\n),\nversion_starts AS (\n  SELECT agent_name, agent_version, min(timestamp) AS started_at\n  FROM usage_f\n  WHERE agent_name != ''\n  GROUP BY agent_name, agent_version\n),\nordered AS (\n  SELECT *,\n    lagInFrame(agent_version) OVER (PARTITION BY agent_name ORDER BY started_at) AS prev_version,\n    lagInFrame(started_at) OVER (PARTITION BY agent_name ORDER BY started_at) AS prev_started_at,\n    row_number() OVER (PARTITION BY agent_name ORDER BY started_at DESC) AS rn\n  FROM version_starts\n),\ntransitions AS (\n  SELECT agent_name, agent_version AS current_version, started_at, prev_version, prev_started_at\n  FROM ordered\n  WHERE rn = 1 AND prev_version != ''\n),\nusage_after AS (\n  SELECT t.agent_name, t.current_version, t.prev_version, t.started_at,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp >= t.started_at) AS avg_tokens_after,\n    avgIf(uf.cost, uf.timestamp >= t.started_at) AS avg_cost_after\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.agent_name = t.agent_name AND uf.agent_version = t.current_version\n  GROUP BY t.agent_name, t.current_version, t.prev_version, t.started_at\n),\nusage_before AS (\n  SELECT t.agent_name, t.current_version,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_tokens_before,\n    avgIf(uf.cost, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_cost_before\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.agent_name = t.agent_name AND uf.agent_version = t.prev_version\n  GROUP BY t.agent_name, t.current_version\n),\nevents_after AS (\n  SELECT t.agent_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp >= t.started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp >= t.started_at), 0) AS error_rate_after\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.agent_name = t.agent_name AND ev.agent_version = t.current_version\n  GROUP BY t.agent_name, t.current_version\n),\nevents_before AS (\n  SELECT t.agent_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at), 0) AS error_rate_before\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.agent_name = t.agent_name AND ev.agent_version = t.prev_version\n  GROUP BY t.agent_name, t.current_version\n)\nSELECT\n  ua.agent_name, ua.prev_version, ua.current_version, ua.started_at,\n  ub.avg_tokens_before, ua.avg_tokens_after,\n  ub.avg_cost_before, ua.avg_cost_after,\n  eb.error_rate_before, ea.error_rate_after\nFROM usage_after ua\nLEFT JOIN usage_before ub ON ub.agent_name = ua.agent_name AND ub.current_version = ua.current_version\nLEFT JOIN events_after ea ON ea.agent_name = ua.agent_name AND ea.current_version = ua.current_version\nLEFT JOIN events_before eb ON eb.agent_name = ua.agent_name AND eb.current_version = ua.current_version\nORDER BY ua.agent_name"
                       }
                     },
                     "refId": "A",
@@ -2307,7 +2322,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH usage_f AS (\n  SELECT *\n  FROM agent_usage\n  WHERE has([${user_id:singlequote}], user_id) AND has([${model:singlequote}], model)\n    AND has([${session_id:singlequote}], session_id)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${command_name:singlequote}], command_name)\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n),\nevents_f AS (\n  SELECT * FROM agent_events\n  WHERE has([${user_id:singlequote}], user_id)\n    AND has([${session_id:singlequote}], session_id)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${command_name:singlequote}], command_name)\n    AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\n),\nversion_starts AS (\n  SELECT skill_name, skill_version, min(timestamp) AS started_at\n  FROM usage_f\n  WHERE skill_name != ''\n  GROUP BY skill_name, skill_version\n),\nordered AS (\n  SELECT *,\n    lagInFrame(skill_version) OVER (PARTITION BY skill_name ORDER BY started_at) AS prev_version,\n    lagInFrame(started_at) OVER (PARTITION BY skill_name ORDER BY started_at) AS prev_started_at,\n    row_number() OVER (PARTITION BY skill_name ORDER BY started_at DESC) AS rn\n  FROM version_starts\n),\ntransitions AS (\n  SELECT skill_name, skill_version AS current_version, started_at, prev_version, prev_started_at\n  FROM ordered\n  WHERE rn = 1 AND prev_version != ''\n),\nusage_after AS (\n  SELECT t.skill_name, t.current_version, t.prev_version, t.started_at,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp >= t.started_at) AS avg_tokens_after,\n    avgIf(uf.cost, uf.timestamp >= t.started_at) AS avg_cost_after\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.skill_name = t.skill_name AND uf.skill_version = t.current_version\n  GROUP BY t.skill_name, t.current_version, t.prev_version, t.started_at\n),\nusage_before AS (\n  SELECT t.skill_name, t.current_version,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_tokens_before,\n    avgIf(uf.cost, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_cost_before\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.skill_name = t.skill_name AND uf.skill_version = t.prev_version\n  GROUP BY t.skill_name, t.current_version\n),\nevents_after AS (\n  SELECT t.skill_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp >= t.started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp >= t.started_at), 0) AS error_rate_after\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.skill_name = t.skill_name AND ev.skill_version = t.current_version\n  GROUP BY t.skill_name, t.current_version\n),\nevents_before AS (\n  SELECT t.skill_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at), 0) AS error_rate_before\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.skill_name = t.skill_name AND ev.skill_version = t.prev_version\n  GROUP BY t.skill_name, t.current_version\n)\nSELECT\n  ua.skill_name, ua.prev_version, ua.current_version, ua.started_at,\n  ub.avg_tokens_before, ua.avg_tokens_after,\n  ub.avg_cost_before, ua.avg_cost_after,\n  eb.error_rate_before, ea.error_rate_after\nFROM usage_after ua\nLEFT JOIN usage_before ub ON ub.skill_name = ua.skill_name AND ub.current_version = ua.current_version\nLEFT JOIN events_after ea ON ea.skill_name = ua.skill_name AND ea.current_version = ua.current_version\nLEFT JOIN events_before eb ON eb.skill_name = ua.skill_name AND eb.current_version = ua.current_version\nORDER BY ua.skill_name"
+                        "rawSql": "WITH usage_f AS (\n  SELECT *\n  FROM agent_usage\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE has([${user_id:singlequote}], user_id) AND has([${model:singlequote}], model)\n    AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${command_name:singlequote}], command_name)\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n),\nevents_f AS (\n  SELECT * FROM agent_events\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE has([${user_id:singlequote}], user_id)\n    AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${command_name:singlequote}], command_name)\n    AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\n),\nversion_starts AS (\n  SELECT skill_name, skill_version, min(timestamp) AS started_at\n  FROM usage_f\n  WHERE skill_name != ''\n  GROUP BY skill_name, skill_version\n),\nordered AS (\n  SELECT *,\n    lagInFrame(skill_version) OVER (PARTITION BY skill_name ORDER BY started_at) AS prev_version,\n    lagInFrame(started_at) OVER (PARTITION BY skill_name ORDER BY started_at) AS prev_started_at,\n    row_number() OVER (PARTITION BY skill_name ORDER BY started_at DESC) AS rn\n  FROM version_starts\n),\ntransitions AS (\n  SELECT skill_name, skill_version AS current_version, started_at, prev_version, prev_started_at\n  FROM ordered\n  WHERE rn = 1 AND prev_version != ''\n),\nusage_after AS (\n  SELECT t.skill_name, t.current_version, t.prev_version, t.started_at,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp >= t.started_at) AS avg_tokens_after,\n    avgIf(uf.cost, uf.timestamp >= t.started_at) AS avg_cost_after\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.skill_name = t.skill_name AND uf.skill_version = t.current_version\n  GROUP BY t.skill_name, t.current_version, t.prev_version, t.started_at\n),\nusage_before AS (\n  SELECT t.skill_name, t.current_version,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_tokens_before,\n    avgIf(uf.cost, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_cost_before\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.skill_name = t.skill_name AND uf.skill_version = t.prev_version\n  GROUP BY t.skill_name, t.current_version\n),\nevents_after AS (\n  SELECT t.skill_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp >= t.started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp >= t.started_at), 0) AS error_rate_after\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.skill_name = t.skill_name AND ev.skill_version = t.current_version\n  GROUP BY t.skill_name, t.current_version\n),\nevents_before AS (\n  SELECT t.skill_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at), 0) AS error_rate_before\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.skill_name = t.skill_name AND ev.skill_version = t.prev_version\n  GROUP BY t.skill_name, t.current_version\n)\nSELECT\n  ua.skill_name, ua.prev_version, ua.current_version, ua.started_at,\n  ub.avg_tokens_before, ua.avg_tokens_after,\n  ub.avg_cost_before, ua.avg_cost_after,\n  eb.error_rate_before, ea.error_rate_after\nFROM usage_after ua\nLEFT JOIN usage_before ub ON ub.skill_name = ua.skill_name AND ub.current_version = ua.current_version\nLEFT JOIN events_after ea ON ea.skill_name = ua.skill_name AND ea.current_version = ua.current_version\nLEFT JOIN events_before eb ON eb.skill_name = ua.skill_name AND eb.current_version = ua.current_version\nORDER BY ua.skill_name"
                       }
                     },
                     "refId": "A",
@@ -2387,7 +2402,7 @@
         "spec": {
           "id": 36,
           "title": "Tokens by user per day",
-          "description": "",
+          "description": "Daily token totals per user (calendar-day buckets) - a coarser-grained version of 'Tokens by user over time' for spotting day-over-day trends without within-day noise.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2406,7 +2421,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH filtered AS (\n  SELECT toStartOfDay(u.timestamp) AS time, u.user_id AS metric,\n    sum(u.input_tokens) AS in_val, sum(u.output_tokens) AS out_val\n  FROM agent_usage u\n  WHERE $__timeFilter(u.timestamp)\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${session_id:singlequote}], u.session_id)\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT toStartOfDay(u.timestamp) AS time, u.user_id AS metric,\n    sum(u.input_tokens) AS in_val, sum(u.output_tokens) AS out_val\n  FROM agent_usage u\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' ↓') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' ↑') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -2428,10 +2443,14 @@
               "options": {
                 "legend": {
                   "showLegend": false
+                },
+                "tooltip": {
+                  "mode": "single"
                 }
               },
               "fieldConfig": {
                 "defaults": {
+                  "unit": "locale",
                   "color": {
                     "mode": "fixed",
                     "fixedColor": "blue"
@@ -2459,7 +2478,7 @@
         "spec": {
           "id": 37,
           "title": "Cost by user per day",
-          "description": "",
+          "description": "Daily cost totals per user - the cost counterpart to 'Tokens by user per day'.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2478,7 +2497,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  toStartOfDay(u.timestamp) AS time,\n  u.user_id AS metric,\n  sum(u.cost) AS value\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
+                        "rawSql": "SELECT\n  toStartOfDay(u.timestamp) AS time,\n  u.user_id AS metric,\n  sum(u.cost) AS value\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -2500,6 +2519,9 @@
               "options": {
                 "legend": {
                   "showLegend": false
+                },
+                "tooltip": {
+                  "mode": "single"
                 }
               },
               "fieldConfig": {
@@ -2532,7 +2554,7 @@
         "spec": {
           "id": 32,
           "title": "Tokens by user per week",
-          "description": "",
+          "description": "Weekly token totals per user - same idea as the daily panel, zoomed out further for longer-range trend-watching.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2551,7 +2573,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  toStartOfWeek(u.timestamp) AS time,\n  u.user_id AS metric,\n  sum(u.input_tokens + u.output_tokens) AS value\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
+                        "rawSql": "SELECT\n  toStartOfWeek(u.timestamp) AS time,\n  u.user_id AS metric,\n  sum(u.input_tokens + u.output_tokens) AS value\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -2594,7 +2616,7 @@
         "spec": {
           "id": 33,
           "title": "Cost by user per week",
-          "description": "",
+          "description": "Weekly cost totals per user - the cost counterpart to 'Tokens by user per week'.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2613,7 +2635,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  toStartOfWeek(u.timestamp) AS time,\n  u.user_id AS metric,\n  sum(u.cost) AS value\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
+                        "rawSql": "SELECT\n  toStartOfWeek(u.timestamp) AS time,\n  u.user_id AS metric,\n  sum(u.cost) AS value\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -2656,7 +2678,7 @@
         "spec": {
           "id": 34,
           "title": "Tokens by scope per week",
-          "description": "",
+          "description": "Weekly token totals split by scope (agent/skill/main session) instead of by user - shows whether growth in usage is coming from agents, skills, or plain main-session conversation.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2675,7 +2697,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  toStartOfWeek(u.timestamp) AS time,\n  concat(multiIf(u.agent_name != '', 'subagent', u.skill_name != '', 'skill', 'main agent'), ' - ', u.model) AS metric,\n  sum(u.input_tokens + u.output_tokens) AS value\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
+                        "rawSql": "SELECT\n  toStartOfWeek(u.timestamp) AS time,\n  concat(multiIf(u.agent_name != '', 'subagent', u.skill_name != '', 'skill', 'main agent'), ' - ', u.model) AS metric,\n  sum(u.input_tokens + u.output_tokens) AS value\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -2696,13 +2718,17 @@
             "spec": {
               "options": {
                 "legend": {
-                  "showLegend": true,
-                  "displayMode": "list",
-                  "placement": "right"
+                  "showLegend": false
                 }
               },
               "fieldConfig": {
-                "defaults": {},
+                "defaults": {
+                  "unit": "locale",
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "blue"
+                  }
+                },
                 "overrides": []
               }
             }
@@ -2714,7 +2740,7 @@
         "spec": {
           "id": 35,
           "title": "Cost by scope per week",
-          "description": "",
+          "description": "Weekly cost totals split by scope - the cost counterpart to 'Tokens by scope per week'.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2733,7 +2759,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  toStartOfWeek(u.timestamp) AS time,\n  concat(multiIf(u.agent_name != '', 'subagent', u.skill_name != '', 'skill', 'main agent'), ' - ', u.model) AS metric,\n  sum(u.cost) AS value\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
+                        "rawSql": "SELECT\n  toStartOfWeek(u.timestamp) AS time,\n  concat(multiIf(u.agent_name != '', 'subagent', u.skill_name != '', 'skill', 'main agent'), ' - ', u.model) AS metric,\n  sum(u.cost) AS value\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -2754,14 +2780,16 @@
             "spec": {
               "options": {
                 "legend": {
-                  "showLegend": true,
-                  "displayMode": "list",
-                  "placement": "right"
+                  "showLegend": false
                 }
               },
               "fieldConfig": {
                 "defaults": {
-                  "unit": "currencyUSD"
+                  "unit": "currencyUSD",
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "blue"
+                  }
                 },
                 "overrides": []
               }
@@ -2774,7 +2802,7 @@
         "spec": {
           "id": 38,
           "title": "Tokens by command over time",
-          "description": "",
+          "description": "Input/output tokens over time per slash command (command_name) - shows which commands are the heaviest token consumers and whether that's changing.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2793,7 +2821,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    timestamp AS time,\n    command_name AS metric,\n    input_tokens AS in_val,\n    output_tokens AS out_val\n  FROM agent_usage\n  WHERE $__timeFilter(timestamp)\n    AND command_name != ''\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND has([${command_name:singlequote}], command_name)\n    AND has([${session_id:singlequote}], session_id)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    $__timeInterval(timestamp) AS time,\n    command_name AS metric,\n    sum(input_tokens) AS in_val,\n    sum(output_tokens) AS out_val\n  FROM agent_usage\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n    AND command_name != ''\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND has([${command_name:singlequote}], command_name)\n    AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' ↓') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' ↑') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -2860,7 +2888,7 @@
         "spec": {
           "id": 39,
           "title": "Cost by command over time",
-          "description": "",
+          "description": "Spend (USD) over time per slash command - the cost counterpart to 'Tokens by command over time'.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2879,7 +2907,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    u.command_name AS metric,\n    u.input_cost AS in_val,\n    u.output_cost AS out_val\n  FROM agent_usage u\n  WHERE $__timeFilter(u.timestamp)\n    AND u.command_name != ''\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${session_id:singlequote}], u.session_id)\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    $__timeInterval(u.timestamp) AS time,\n    u.command_name AS metric,\n    sum(u.input_cost) AS in_val,\n    sum(u.output_cost) AS out_val\n  FROM agent_usage u\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n    AND u.command_name != ''\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${command_name:singlequote}], u.command_name)\n    AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n    AND has([${agent_name:singlequote}], u.agent_name)\n    AND has([${skill_name:singlequote}], u.skill_name)\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' ↓') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' ↑') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -2965,7 +2993,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  timestamp,\n  user_id,\n  session_id,\n  failed_tool_name AS tool_name,\n  failed_tool_args AS arguments,\n  failed_tool_error AS error\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND failed_tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${command_name:singlequote}], command_name)\n  AND (NOT startsWith(failed_tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], failed_tool_name))\nORDER BY timestamp DESC\nLIMIT 20"
+                        "rawSql": "SELECT\n  timestamp,\n  user_id,\n  session_id,\n  failed_tool_name AS tool_name,\n  failed_tool_args AS arguments,\n  failed_tool_error AS error\nFROM agent_events\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n  AND failed_tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${command_name:singlequote}], command_name)\n  AND (NOT startsWith(failed_tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], failed_tool_name))\nORDER BY timestamp DESC\nLIMIT 20"
                       }
                     },
                     "refId": "A",
@@ -3001,6 +3029,1295 @@
                             "targetBlank": false
                           }
                         ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-41": {
+        "kind": "Panel",
+        "spec": {
+          "id": 41,
+          "title": "Tokens per call by agent/version (bloat detector)",
+          "description": "Goal: catch a prompt/tool-set regression that makes an agent version 'heavier' per call even if total volume looks flat. How it works: averages input+output tokens per litellm_call, bucketed by day, per agent name+version - a rising line for the same agent means each individual call is getting more expensive, not just more frequent.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT\n  toStartOfDay(u.timestamp) AS time,\n  if(u.agent_name = '', 'main agent', if(u.agent_version = '', u.agent_name, concat(u.agent_name, ' v', u.agent_version))) AS metric,\n  avg(u.input_tokens + u.output_tokens) AS value\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND (u.agent_name != '' OR u.skill_name = '')\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "locale",
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 1,
+                    "spanNulls": true,
+                    "showPoints": "auto",
+                    "pointSize": 4,
+                    "fillOpacity": 0,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-42": {
+        "kind": "Panel",
+        "spec": {
+          "id": 42,
+          "title": "Tokens per call by skill/version (bloat detector)",
+          "description": "Goal: same regression-detector as 'Tokens per call by agent/version', but for skills, since a skill's own instructions/examples can grow independently of the agent that invokes it. How it works: averages input+output tokens per litellm_call, bucketed by day, per skill name+version.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT\n  toStartOfDay(u.timestamp) AS time,\n  if(u.skill_version = '', u.skill_name, concat(u.skill_name, ' v', u.skill_version)) AS metric,\n  avg(u.input_tokens + u.output_tokens) AS value\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND u.skill_name != ''\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "locale",
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 1,
+                    "spanNulls": true,
+                    "showPoints": "auto",
+                    "pointSize": 4,
+                    "fillOpacity": 0,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-43": {
+        "kind": "Panel",
+        "spec": {
+          "id": 43,
+          "title": "Prompt/response length by agent & skill (verbosity trend)",
+          "description": "Goal: an early-warning signal for token bloat - text length grows before it shows up as a token-count regression, and it's readable without knowing model-specific tokenization. How it works: averages character length of agent_messages.prompt_text/response_text per day, grouped by skill (or agent when no skill applies).",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    timestamp AS time,\n    if(skill_name = '', if(agent_name = '', 'main agent', agent_name), skill_name) AS metric,\n    length(prompt_text) AS prompt_len,\n    length(response_text) AS response_len\n  FROM agent_messages\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${command_name:singlequote}], command_name)\n)\nSELECT toStartOfDay(time) AS time, concat(metric, ' prompt chars') AS metric, avg(prompt_len) AS value FROM filtered GROUP BY time, metric\nUNION ALL\nSELECT toStartOfDay(time) AS time, concat(metric, ' response chars') AS metric, avg(response_len) AS value FROM filtered GROUP BY time, metric\nORDER BY time"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 1,
+                    "spanNulls": true,
+                    "showPoints": "auto",
+                    "pointSize": 4,
+                    "fillOpacity": 0,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-44": {
+        "kind": "Panel",
+        "spec": {
+          "id": 44,
+          "title": "Cache efficiency ratio by agent/skill",
+          "description": "Goal: distinguish 'caching happened at all' (existing cache-hit-rate panel) from 'how much of the prompt was actually served from cache', which is what determines the dollar savings. How it works: cache_read_tokens divided by total input+cache_read+cache_creation tokens, per day, per agent (or skill when no agent applies).",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT\n  toStartOfDay(u.timestamp) AS time,\n  if(u.agent_name = '', if(u.skill_name = '', 'main agent', u.skill_name), u.agent_name) AS metric,\n  sum(u.cache_read_tokens) / nullIf(sum(u.input_tokens + u.cache_read_tokens + u.cache_creation_tokens), 0) AS value\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percentunit",
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 1,
+                    "spanNulls": true,
+                    "showPoints": "auto",
+                    "pointSize": 4,
+                    "fillOpacity": 0,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-45": {
+        "kind": "Panel",
+        "spec": {
+          "id": 45,
+          "title": "Cache savings, $ (saved_cache_cost)",
+          "description": "Goal: show prompt-caching payoff in the unit that actually matters - dollars, not tokens - since cache read/write tiers are priced differently and a token ratio alone doesn't say whether caching is worth it. How it works: sums LiteLLM's own saved_cache_cost field (extracted from agent_events.raw_payload, not a stored column) per day, per agent (or skill).",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT\n  toStartOfDay(timestamp) AS time,\n  if(agent_name = '', if(skill_name = '', 'main agent', skill_name), agent_name) AS metric,\n  sum(JSONExtractFloat(raw_payload, 'saved_cache_cost')) AS value\nFROM agent_events\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${command_name:singlequote}], command_name)\nGROUP BY time, metric\nORDER BY time"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "currencyUSD",
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 1,
+                    "spanNulls": true,
+                    "showPoints": "auto",
+                    "pointSize": 4,
+                    "fillOpacity": 0,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-46": {
+        "kind": "Panel",
+        "spec": {
+          "id": 46,
+          "title": "TTFT (time to first token) p50/p95 by model",
+          "description": "Goal: track model responsiveness (how long before the model starts streaming) separately from total call duration, which 'Latency percentiles by tool_name' already covers. How it works: p50/p95 of agent_usage.ttft_ms (completionStartTime - startTime), bucketed by day, per model.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "WITH filtered AS (\n  SELECT u.timestamp AS time, u.model AS metric, u.ttft_ms AS ttft_ms\n  FROM agent_usage u\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp) AND u.ttft_ms > 0\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n)\nSELECT toStartOfDay(time) AS time, concat(metric, ' p50') AS metric, quantile(0.5)(ttft_ms) AS value FROM filtered GROUP BY time, metric\nUNION ALL\nSELECT toStartOfDay(time) AS time, concat(metric, ' p95') AS metric, quantile(0.95)(ttft_ms) AS value FROM filtered GROUP BY time, metric\nORDER BY time"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "ms",
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 1,
+                    "spanNulls": true,
+                    "showPoints": "auto",
+                    "pointSize": 4,
+                    "fillOpacity": 0,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-47": {
+        "kind": "Panel",
+        "spec": {
+          "id": 47,
+          "title": "Stop-reason mix over time",
+          "description": "Goal: catch two failure modes that a plain error-rate panel misses because the call still counts as 'success' - answers getting cut off (max_tokens) or refused (refusal) instead of ending in a clean tool_calls/stop. How it works: stacked count of agent_usage.stop_reason per day.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT\n  toStartOfDay(u.timestamp) AS time,\n  u.stop_reason AS metric,\n  count() AS value\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp) AND u.stop_reason != ''\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "locale",
+                  "custom": {
+                    "drawStyle": "bars",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 1,
+                    "spanNulls": true,
+                    "showPoints": "auto",
+                    "pointSize": 4,
+                    "fillOpacity": 20,
+                    "stacking": {
+                      "mode": "normal",
+                      "group": "A"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-48": {
+        "kind": "Panel",
+        "spec": {
+          "id": 48,
+          "title": "Retry / self-correction rate by agent & skill",
+          "description": "Goal: a direct quality signal for a skill/prompt - how often the model has to react to its own failed tool call, versus succeeding cleanly the first time. How it works: share of agent_events rows where failed_tool_name != '' (this call is responding to a tool_result marked is_error), per day, per agent (or skill).",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT\n  toStartOfDay(timestamp) AS time,\n  if(agent_name = '', if(skill_name = '', 'main agent', skill_name), agent_name) AS metric,\n  countIf(failed_tool_name != '') / nullIf(count(), 0) AS value\nFROM agent_events\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp)\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${command_name:singlequote}], command_name)\nGROUP BY time, metric\nORDER BY time"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percentunit",
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 1,
+                    "spanNulls": true,
+                    "showPoints": "auto",
+                    "pointSize": 4,
+                    "fillOpacity": 0,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-49": {
+        "kind": "Panel",
+        "spec": {
+          "id": 49,
+          "title": "API-level failure reasons over time",
+          "description": "Goal: tell platform-level failures (rate limits, overload, auth) apart from tool-execution failures, which 'Failed tool calls'/'Error rate by tool_name' already cover - those never carry a tool_name since the call failed before any tool ran. How it works: stacked count of agent_events rows with status='failure', grouped by error_str.error.type extracted from raw_payload, per day.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "WITH failures AS (\n  SELECT timestamp, raw_payload\n  FROM agent_events\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp) AND status = 'failure'\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${command_name:singlequote}], command_name)\n)\nSELECT\n  toStartOfDay(timestamp) AS time,\n  if(JSONExtractString(raw_payload, 'error_str', 'error', 'type') = '', 'unknown', JSONExtractString(raw_payload, 'error_str', 'error', 'type')) AS metric,\n  count() AS value\nFROM failures\nGROUP BY time, metric\nORDER BY time"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "locale",
+                  "custom": {
+                    "drawStyle": "bars",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 1,
+                    "spanNulls": true,
+                    "showPoints": "auto",
+                    "pointSize": 4,
+                    "fillOpacity": 20,
+                    "stacking": {
+                      "mode": "normal",
+                      "group": "A"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-50": {
+        "kind": "Panel",
+        "spec": {
+          "id": 50,
+          "title": "Top repeating tool errors",
+          "description": "Goal: 'Failed tool calls' lists individual failures - this instead groups them, so a single misbehaving tool call pattern (bad args, flaky dependency) shows up as one row with a count instead of 20 identical-looking entries. How it works: groups agent_events by failed_tool_name + the first 80 characters of failed_tool_error, ranked by occurrence count.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 1,
+                        "rawSql": "SELECT\n  failed_tool_name AS tool_name,\n  substring(failed_tool_error, 1, 80) AS error_excerpt,\n  count() AS occurrences,\n  max(timestamp) AS last_seen\nFROM agent_events\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp) AND failed_tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${command_name:singlequote}], command_name)\n  AND (NOT startsWith(failed_tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], failed_tool_name))\nGROUP BY tool_name, error_excerpt\nORDER BY occurrences DESC\nLIMIT 20"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "",
+            "spec": {
+              "options": {},
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-51": {
+        "kind": "Panel",
+        "spec": {
+          "id": 51,
+          "title": "Command adoption",
+          "description": "Goal: see which slash commands actually got adopted versus shipped-but-unused, which the existing token/cost-by-command trend panels don't answer directly. How it works: one row per command_name with call count, distinct session count, and first/last-seen timestamps, ranked by call count.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 1,
+                        "rawSql": "SELECT\n  command_name,\n  count() AS calls,\n  count(distinct session_id) AS sessions,\n  min(timestamp) AS first_seen,\n  max(timestamp) AS last_seen\nFROM agent_events\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\nWHERE $__timeFilter(timestamp) AND command_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND has([${session_id:singlequote}], session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${agent_name:singlequote}], agent_name)\n  AND has([${skill_name:singlequote}], skill_name)\n  AND has([${command_name:singlequote}], command_name)\nGROUP BY command_name\nORDER BY calls DESC"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "",
+            "spec": {
+              "options": {},
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-52": {
+        "kind": "Panel",
+        "spec": {
+          "id": 52,
+          "title": "Subagent spawns over time by type",
+          "description": "Goal: catch an orchestrator/prompt change that starts spawning more (or fewer) subagents than before - a fan-out regression that token/cost panels only show indirectly. How it works: counts agent_invocations rows (one per Agent tool_use recovered from the orchestrator's own messages) per day, per subagent_type, joined to agent_events on session_id so the existing user/agent/skill/command filters still apply.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT\n  toStartOfDay(ai.spawned_at) AS time,\n  replaceRegexpOne(ai.subagent_type, '_(v[0-9][0-9.]*)$', ' \\\\1') AS metric,\n  count() AS value\nFROM agent_invocations ai\nINNER JOIN (\n  SELECT DISTINCT session_id, user_id\n  FROM agent_events\n  WHERE has([${user_id:singlequote}], user_id)\n    AND has([${agent_name:singlequote}], agent_name)\n    AND has([${skill_name:singlequote}], skill_name)\n    AND has([${command_name:singlequote}], command_name)\n) ev ON ev.session_id = ai.session_id\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = ai.session_id\nWHERE $__timeFilter(ai.spawned_at)\n  AND has([${session_id:singlequote}], ai.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\nGROUP BY time, metric\nORDER BY time"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "locale",
+                  "custom": {
+                    "drawStyle": "bars",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 1,
+                    "spanNulls": true,
+                    "showPoints": "auto",
+                    "pointSize": 4,
+                    "fillOpacity": 20,
+                    "stacking": {
+                      "mode": "normal",
+                      "group": "A"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-53": {
+        "kind": "Panel",
+        "spec": {
+          "id": 53,
+          "title": "Session cost distribution",
+          "description": "Goal: 'Top 10 most expensive sessions' shows the outlier tail - this shows the overall shape, so it's possible to tell 'most sessions are cheap with a couple of expensive outliers' apart from 'costs are broadly high across the board'. How it works: histogram of total cost per session_id (agent_usage.cost summed per session) over the selected time range.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 1,
+                        "rawSql": "SELECT session_id, sum(cost) AS total_cost\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY session_id"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "histogram",
+            "version": "",
+            "spec": {
+              "options": {},
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "currencyUSD"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-54": {
+        "kind": "Panel",
+        "spec": {
+          "id": 54,
+          "title": "Spend by branch",
+          "description": "Total spend (USD) per git branch over the selected time range - a single ranked bar per branch, mirroring 'Spend by user' but for 'which branch is costing the most.'",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 1,
+                        "rawSql": "SELECT\n  coalesce(nullIf(gb.git_branch, ''), '(none - no branch captured)') AS git_branch,\n  sum(u.cost) AS cost,\n  sum(u.input_tokens + u.output_tokens) AS tokens\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY git_branch\nORDER BY cost DESC"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "barchart",
+            "version": "",
+            "spec": {
+              "options": {
+                "xField": "git_branch",
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short"
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "git_branch"
+                    },
+                    "properties": [
+                      {
+                        "id": "links",
+                        "value": [
+                          {
+                            "title": "Filter to this branch",
+                            "url": "/d/agents-overview/agents-overview?${__url_time_range}&var-git_branch=${__value.text}",
+                            "targetBlank": false
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "cost"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "currencyUSD"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "tokens"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "locale"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-55": {
+        "kind": "Panel",
+        "spec": {
+          "id": 55,
+          "title": "Cost over time by branch",
+          "description": "Spend (USD) over time, one series per git branch - shows when a branch's work happened and whether spend is trending up or tapering off, not just the totals.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT\n  $__timeInterval(u.timestamp) AS time,\n  coalesce(nullIf(gb.git_branch, ''), '(none - no branch captured)') AS metric,\n  sum(u.cost) AS value\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY time, metric\nORDER BY time"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "currencyUSD",
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 1,
+                    "fillOpacity": 15,
+                    "stacking": {
+                      "mode": "normal",
+                      "group": "A"
+                    },
+                    "spanNulls": true,
+                    "showPoints": "auto",
+                    "pointSize": 4
+                  },
+                  "displayName": "${__field.labels.metric}"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-56": {
+        "kind": "Panel",
+        "spec": {
+          "id": 56,
+          "title": "Sessions by branch",
+          "description": "Distinct session count per git branch over the selected time range - which branches are actually being worked in, as opposed to which cost the most.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 1,
+                        "rawSql": "SELECT\n  coalesce(nullIf(gb.git_branch, ''), '(none - no branch captured)') AS git_branch,\n  count(DISTINCT u.session_id) AS sessions\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY git_branch\nORDER BY sessions DESC"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "barchart",
+            "version": "",
+            "spec": {
+              "options": {
+                "xField": "git_branch",
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short"
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "git_branch"
+                    },
+                    "properties": [
+                      {
+                        "id": "links",
+                        "value": [
+                          {
+                            "title": "Filter to this branch",
+                            "url": "/d/agents-overview/agents-overview?${__url_time_range}&var-git_branch=${__value.text}",
+                            "targetBlank": false
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-57": {
+        "kind": "Panel",
+        "spec": {
+          "id": 57,
+          "title": "Tokens by branch",
+          "description": "Total input+output tokens per git branch over the selected time range - a companion to spend: a branch can be token-heavy but cheap on a cache-friendly model, or vice versa.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 1,
+                        "rawSql": "SELECT\n  coalesce(nullIf(gb.git_branch, ''), '(none - no branch captured)') AS git_branch,\n  sum(u.input_tokens + u.output_tokens) AS tokens,\n  sum(u.cost) AS cost\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = u.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND has([${agent_name:singlequote}], u.agent_name)\n  AND has([${skill_name:singlequote}], u.skill_name)\n  AND has([${session_id:singlequote}], u.session_id)\n  AND has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))\n  AND has([${command_name:singlequote}], u.command_name)\n  AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\nGROUP BY git_branch\nORDER BY tokens DESC"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "barchart",
+            "version": "",
+            "spec": {
+              "options": {
+                "xField": "git_branch",
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short"
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "git_branch"
+                    },
+                    "properties": [
+                      {
+                        "id": "links",
+                        "value": [
+                          {
+                            "title": "Filter to this branch",
+                            "url": "/d/agents-overview/agents-overview?${__url_time_range}&var-git_branch=${__value.text}",
+                            "targetBlank": false
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "tokens"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "locale"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "cost"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "currencyUSD"
                       }
                     ]
                   }
@@ -3075,6 +4392,58 @@
                 "kind": "TabsLayout",
                 "spec": {
                   "tabs": [
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "All scopes",
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-16"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-17"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 8,
+                                  "width": 24,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-22"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
                     {
                       "kind": "TabsLayoutTab",
                       "spec": {
@@ -3234,7 +4603,7 @@
                     {
                       "kind": "TabsLayoutTab",
                       "spec": {
-                        "title": "All scopes",
+                        "title": "Efficiency",
                         "layout": {
                           "kind": "GridLayout",
                           "spec": {
@@ -3248,7 +4617,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-16"
+                                    "name": "panel-41"
                                   }
                                 }
                               },
@@ -3261,7 +4630,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-17"
+                                    "name": "panel-42"
                                   }
                                 }
                               },
@@ -3270,11 +4639,37 @@
                                 "spec": {
                                   "x": 0,
                                   "y": 8,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-44"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 8,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-45"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 16,
                                   "width": 24,
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-22"
+                                    "name": "panel-43"
                                   }
                                 }
                               }
@@ -3399,6 +4794,19 @@
                           "name": "panel-29"
                         }
                       }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 56,
+                        "width": 24,
+                        "height": 8,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-51"
+                        }
+                      }
                     }
                   ]
                 }
@@ -3470,7 +4878,7 @@
                       "spec": {
                         "x": 0,
                         "y": 159,
-                        "width": 12,
+                        "width": 24,
                         "height": 8,
                         "element": {
                           "kind": "ElementReference",
@@ -3488,6 +4896,71 @@
                         "element": {
                           "kind": "ElementReference",
                           "name": "panel-40"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 167,
+                        "width": 24,
+                        "height": 8,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-46"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 175,
+                        "width": 24,
+                        "height": 8,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-47"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 183,
+                        "width": 24,
+                        "height": 8,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-48"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 191,
+                        "width": 24,
+                        "height": 8,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-49"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 199,
+                        "width": 24,
+                        "height": 8,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-50"
                         }
                       }
                     }
@@ -3581,6 +5054,19 @@
                           "name": "panel-20"
                         }
                       }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 24,
+                        "width": 24,
+                        "height": 8,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-53"
+                        }
+                      }
                     }
                   ]
                 }
@@ -3595,19 +5081,6 @@
                 "kind": "GridLayout",
                 "spec": {
                   "items": [
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "x": 12,
-                        "y": 65,
-                        "width": 12,
-                        "height": 8,
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-9"
-                        }
-                      }
-                    },
                     {
                       "kind": "GridLayoutItem",
                       "spec": {
@@ -3631,6 +5104,97 @@
                         "element": {
                           "kind": "ElementReference",
                           "name": "panel-24"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "title": "Subagents",
+              "layout": {
+                "kind": "GridLayout",
+                "spec": {
+                  "items": [
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 0,
+                        "width": 24,
+                        "height": 8,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-52"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "title": "Git Branches",
+              "layout": {
+                "kind": "GridLayout",
+                "spec": {
+                  "items": [
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 0,
+                        "width": 24,
+                        "height": 8,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-54"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 8,
+                        "width": 24,
+                        "height": 8,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-55"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 16,
+                        "width": 24,
+                        "height": 8,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-56"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 24,
+                        "width": 24,
+                        "height": 8,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-57"
                         }
                       }
                     }
@@ -3900,6 +5464,39 @@
           "includeAll": true,
           "allowCustomValue": true,
           "description": "Value format: <user_id> - <session_id>"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "name": "git_branch",
+          "label": "Git branch",
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "hide": "dontHide",
+          "refresh": "onTimeRangeChanged",
+          "skipUrlSync": false,
+          "query": {
+            "kind": "DataQuery",
+            "group": "grafana-clickhouse-datasource",
+            "version": "v0",
+            "datasource": {
+              "name": "clickhouse"
+            },
+            "spec": {
+              "editorType": "sql",
+              "format": 1,
+              "rawSql": "SELECT DISTINCT git_branch AS __value, git_branch AS __text FROM session_git_branch WHERE git_branch != ''\nUNION ALL\nSELECT '' AS __value, '(none - no branch captured)' AS __text\nORDER BY __value"
+            }
+          },
+          "regex": "",
+          "sort": "alphabeticalAsc",
+          "options": [],
+          "multi": true,
+          "includeAll": true,
+          "allowCustomValue": true
         }
       }
     ]

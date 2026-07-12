@@ -301,8 +301,8 @@ def _agent_name_and_version_for_invocation(client, agent_invocation_id: str) -> 
 
 _INVOCATION_COLUMNS = ["agent_id", "session_id", "subagent_type", "description", "spawned_at"]
 _EVENT_COLUMNS = [
-    "timestamp", "user_id", "session_id", "trace_id", "parent_session_id",
-    "turn_id", "sequence_id", "event_type", "tool_name", "agent_name",
+    "timestamp", "user_id", "session_id", "trace_id",
+    "turn_id", "event_type", "tool_name", "agent_name",
     "agent_version", "skill_name", "skill_version", "command_name",
     "agent_invocation_id", "status", "latency_ms",
     "failed_tool_name", "failed_tool_args", "failed_tool_error", "raw_payload",
@@ -312,9 +312,8 @@ _USAGE_COLUMNS = [
     "agent_name", "agent_version", "skill_name", "skill_version",
     "command_name", "agent_invocation_id", "mcp_tool_name",
     "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens",
-    "stop_reason", "service_tier", "speed",
+    "stop_reason",
     "cache_creation_1h_tokens", "cache_creation_5m_tokens",
-    "web_search_requests", "web_fetch_requests",
     "cost", "input_cost", "output_cost", "cache_hit", "ttft_ms",
 ]
 _MESSAGE_COLUMNS = [
@@ -322,6 +321,7 @@ _MESSAGE_COLUMNS = [
     "agent_name", "agent_version", "skill_name", "skill_version",
     "command_name", "agent_invocation_id", "prompt_text", "response_text",
 ]
+_GIT_BRANCH_COLUMNS = ["session_id", "git_branch", "captured_at"]
 
 
 def _agent_invocation_rows(session_id: str, messages: Any, now: Optional[datetime] = None) -> list[list]:
@@ -346,6 +346,10 @@ def _insert_usage(client, row: list) -> None:
 
 def _insert_message(client, row: list) -> None:
     client.insert("agent_messages", [row], column_names=_MESSAGE_COLUMNS)
+
+
+def _insert_git_branch(client, row: list) -> None:
+    client.insert("session_git_branch", [row], column_names=_GIT_BRANCH_COLUMNS)
 
 
 def _event_row(
@@ -380,9 +384,7 @@ def _event_row(
         _user_id(payload),
         session_id,
         trace_id,
-        "",  # parent_session_id: unknown from this source
         0,  # turn_id: unknown from this source
-        0,  # sequence_id: unknown from this source
         "litellm_call",
         tool_name,
         agent_name,
@@ -448,12 +450,8 @@ def _usage_row(
         usage.get("cache_creation_input_tokens") or 0,
         usage.get("cache_read_input_tokens") or 0,
         stop_reason,
-        "",  # service_tier: not present in LiteLLM's normalized payload
-        "",  # speed: not present in LiteLLM's normalized payload
         ephemeral.get("ephemeral_1h_input_tokens") or 0,
         ephemeral.get("ephemeral_5m_input_tokens") or 0,
-        0,  # web_search_requests: not present in LiteLLM's normalized payload
-        0,  # web_fetch_requests: not present in LiteLLM's normalized payload
         payload.get("response_cost") or 0,
         cost_breakdown.get("input_cost") or 0,
         cost_breakdown.get("output_cost") or 0,
@@ -537,6 +535,17 @@ def ingest_standard_logging_payload(payload: dict) -> None:
             payload.get("litellm_call_id", ""), trace_id, session_id,
             payload.get("status", ""), payload.get("call_type", ""),
         )
+
+
+def ingest_git_branch(session_id: str, git_branch: str) -> None:
+    """Insert a session's git branch, reported by hooks/report_git_branch.py
+    at SessionStart. Never raises - a tracking-side failure must not surface
+    as an error to the CLI session that reported it."""
+    try:
+        client = get_client()
+        _insert_git_branch(client, [session_id, git_branch, datetime.now(timezone.utc)])
+    except Exception:
+        logger.exception("failed to ingest git branch (session_id=%s)", session_id)
 
 
 def ingest_webhook_body(body: Any) -> None:

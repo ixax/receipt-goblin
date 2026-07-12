@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 
-from .clickhouse_ingest import get_client, ingest_webhook_body
+from .clickhouse_ingest import get_client, ingest_git_branch, ingest_webhook_body
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -45,4 +45,15 @@ async def receive_metrics(request: Request):
 
     ingest_webhook_body(body)
 
+    return {"status": "received"}
+
+
+@app.post("/api/v1/session-git-branch")
+async def receive_git_branch(request: Request):
+    # Reported by hooks/report_git_branch.py at SessionStart - the one
+    # lifecycle hook this stack still has, since neither LiteLLM's
+    # StandardLoggingPayload nor ANTHROPIC_CUSTOM_HEADERS can carry the
+    # client's cwd/git state. See session_git_branch in clickhouse/schema.sql.
+    body = await request.json()
+    ingest_git_branch(body.get("session_id", ""), body.get("git_branch", ""))
     return {"status": "received"}

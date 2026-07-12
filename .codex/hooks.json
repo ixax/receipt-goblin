@@ -1,15 +1,11 @@
 {
-  "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": [
-    "clickhouse"
-  ],
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/report_git_branch.py\"",
+            "command": "python3 hooks/report_git_branch.py",
             "timeout": 5
           }
         ]
