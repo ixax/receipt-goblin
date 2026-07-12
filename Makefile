@@ -3,43 +3,30 @@ ifneq (,$(wildcard ./.env))
 endif
 
 ENV_VARS := $(shell [ -f .env ] && sed 's/=.*//' .env)
-ifneq ($(MAKECMDGOALS),clear_env)
-    unexport $(ENV_VARS)
-endif
+unexport $(ENV_VARS)
 
 PORT := $(if $(strip $(LITELLM_PORT)),$(LITELLM_PORT),4000)
-
-.PHONY: validate_key check_env set_env clear_env
-
-validate_key:
-	@if [ -z "$(strip $(LITELLM_VIRTUAL_KEY))" ]; then \
-		echo "❌ Error: LITELLM_VIRTUAL_KEY is missing or empty in your .env file!" >&2; \
-		exit 1; \
-	fi
-
-check_env: validate_key
-	@echo "Active Shell Environment Values:"
-	@echo "  ANTHROPIC_BASE_URL       = $${ANTHROPIC_BASE_URL:-[Not Set]}"
-	@echo "  ANTHROPIC_MODEL          = $${ANTHROPIC_MODEL:-[Not Set]}"
-	@echo "  LITELLM_VIRTUAL_KEY      = $${LITELLM_VIRTUAL_KEY:-[Not Set]}"
-	@echo "  ANTHROPIC_CUSTOM_HEADERS = $${ANTHROPIC_CUSTOM_HEADERS:-[Not Set]}"
-
-set_env: validate_key
-	@echo 'Copy-paste and execute:'
-	@echo 'export ANTHROPIC_BASE_URL="http://localhost:$(PORT)"'
-	@echo 'export ANTHROPIC_MODEL="claude-sonnet-5"'
-	@echo 'export LITELLM_VIRTUAL_KEY="$(LITELLM_VIRTUAL_KEY)"'
-	@echo 'export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer $(LITELLM_VIRTUAL_KEY)"'
-
-clear_env:
-	@echo 'Copy-paste and execute'
-	@echo 'unset ANTHROPIC_BASE_URL'
-	@echo 'unset ANTHROPIC_MODEL'
-	@echo 'unset LITELLM_VIRTUAL_KEY'
-	@echo 'unset ANTHROPIC_CUSTOM_HEADERS'
+# Full proxy URI, in case LiteLLM isn't on localhost (a shared/remote host) -
+# LITELLM_PORT alone can't express that, so this takes precedence when set.
+URI := $(if $(strip $(LITELLM_URI)),$(LITELLM_URI),http://localhost:$(PORT))
+.PHONY: start stop env
 
 start:
 	docker compose up -d --build
 
+status:
+	docker ps
+
 stop:
 	docker compose down
+
+# Prints export statements to route Claude Code, Codex, and other OpenAI/
+# Anthropic-SDK-based tools through the local LiteLLM proxy. Not stored in
+# .env, so the printed `<virtual key>` is a placeholder - copy the output,
+# replace it with your personal key, and paste the result into
+# ~/.zshrc / ~/.bashrc (see README "Routing Claude Code through it").
+env:
+	@echo 'export ANTHROPIC_BASE_URL="$(URI)"'
+	@echo 'export OPENAI_API_BASE="$(URI)"'
+	@echo 'export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer <virtual key>"'
+	@echo 'export OPENAI_API_KEY="<virtual key>"'

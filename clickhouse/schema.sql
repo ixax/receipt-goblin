@@ -31,11 +31,13 @@ ORDER BY (skill_name, version);
 -- follows it (containing "agentId: <hex>") tells us what a given agent_id
 -- actually is. Populated by webhook/src/clickhouse_ingest.py before it
 -- writes any row whose agent_invocation_id needs resolving - see AGENTS.md.
+-- One row per subagent spawn, so this table stays tiny - agent_id is left
+-- as a plain String (not worth a tighter type for a table this small).
 CREATE TABLE IF NOT EXISTS agent_invocations
 (
     agent_id      String,
     session_id    String,
-    subagent_type String,
+    subagent_type LowCardinality(String),
     description   String,
     spawned_at    DateTime64(3) DEFAULT now64(3)
 )
@@ -52,24 +54,43 @@ ORDER BY (agent_id);
 -- for partition/granule pruning on the common case, with session_id second
 -- for the two session-scoped panels (cheap once already time/partition-
 -- pruned, since one session's rows cluster in a narrow time window anyway).
--- Monthly partitions let ClickHouse skip whole months outside the queried
--- range instead of scanning the entire table. Skip indexes below accelerate
--- the has([...], col)/!= ''/startsWith(...) filters used almost everywhere.
+--
+-- Half-year partitions ("2026-H1"/"2026-H2") are sized for archival, not
+-- query pruning: once a half stops being actively queried, detach and ship
+-- it off (ALTER TABLE agent_events DETACH PARTITION '2026-H1' moves it to
+-- `detached/` untouched by future queries/merges - copy it out for backup,
+-- ATTACH it back if you ever need to query that period again). No TTL/
+-- DELETE - data is kept forever unless you detach it yourself.
+--
+-- session_id/trace_id stay String rather than UUID: they come from three
+-- different sources depending on what's available at ingest time
+-- (x-claude-code-session-id header, trace_id, litellm_call_id, or "" as a
+-- last resort - see _session_and_trace_id in clickhouse_ingest.py), so
+-- guaranteeing well-formed UUIDs on every path isn't free, and these are a
+-- small fraction of a row's bytes next to raw_payload anyway.
+--
+-- agent_name/skill_name/command_name/tool_name/etc. are LowCardinality:
+-- the actual set of distinct values is bounded (the agents/skills/tools
+-- registered in this repo), so dictionary encoding shrinks storage and
+-- speeds up every filter/GROUP BY/JOIN on them - the set(...) skip indexes
+-- below replace the old bloom_filter ones for the same reason (bloom_filter
+-- is for genuinely high-cardinality columns; set is cheaper and exact for a
+-- small bounded set of values).
 CREATE TABLE IF NOT EXISTS agent_events
 (
     timestamp         DateTime64(3),
-    user_id           String,
+    user_id           LowCardinality(String),
     session_id        String,
     trace_id          String,
     parent_session_id String,
     turn_id           UInt32,
     sequence_id        UInt32,
     event_type        LowCardinality(String),
-    tool_name         String,
-    agent_name        String,
-    agent_version     String,
-    skill_name        String,
-    skill_version     String,
+    tool_name         LowCardinality(String),
+    agent_name        LowCardinality(String),
+    agent_version     LowCardinality(String),
+    skill_name        LowCardinality(String),
+    skill_version     LowCardinality(String),
     -- Slash command that kicked off the current chain of calls (e.g.
     -- "whatsup"), recovered from the "<command-name>" tag Claude Code
     -- injects into the triggering user message - see
@@ -77,7 +98,7 @@ CREATE TABLE IF NOT EXISTS agent_events
     -- has no version column: commands are meant to stay a stable,
     -- version-independent entry point even when the skill/logic behind
     -- them is renamed on every version bump.
-    command_name      String DEFAULT '',
+    command_name      LowCardinality(String) DEFAULT '',
     -- x-claude-code-agent-id when this row is a subagent's own call, blank
     -- for the orchestrator's own turns. See agent_invocations above.
     agent_invocation_id String DEFAULT '',
@@ -91,19 +112,19 @@ CREATE TABLE IF NOT EXISTS agent_events
     -- data is gone once ingested. Distinct from this row's own tool_name,
     -- which is whatever tool (if any) THIS call's own response goes on to
     -- invoke next.
-    failed_tool_name  String DEFAULT '',
+    failed_tool_name  LowCardinality(String) DEFAULT '',
     failed_tool_args  String DEFAULT '',
     failed_tool_error String DEFAULT '',
-    raw_payload       String,
-    INDEX idx_tool_name tool_name TYPE bloom_filter GRANULARITY 4,
-    INDEX idx_agent_name agent_name TYPE bloom_filter GRANULARITY 4,
-    INDEX idx_skill_name skill_name TYPE bloom_filter GRANULARITY 4,
-    INDEX idx_command_name command_name TYPE bloom_filter GRANULARITY 4,
-    INDEX idx_user_id user_id TYPE bloom_filter GRANULARITY 4,
-    INDEX idx_failed_tool_name failed_tool_name TYPE bloom_filter GRANULARITY 4
+    raw_payload       String CODEC(ZSTD(3)),
+    INDEX idx_tool_name tool_name TYPE set(1000) GRANULARITY 4,
+    INDEX idx_agent_name agent_name TYPE set(1000) GRANULARITY 4,
+    INDEX idx_skill_name skill_name TYPE set(1000) GRANULARITY 4,
+    INDEX idx_command_name command_name TYPE set(1000) GRANULARITY 4,
+    INDEX idx_user_id user_id TYPE set(1000) GRANULARITY 4,
+    INDEX idx_failed_tool_name failed_tool_name TYPE set(1000) GRANULARITY 4
 )
 ENGINE = MergeTree
-PARTITION BY toYYYYMM(timestamp)
+PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
 ORDER BY (timestamp, session_id);
 
 -- One row per model call (usage report). cost/input_cost/output_cost come
@@ -119,20 +140,20 @@ ORDER BY (timestamp, session_id);
 CREATE TABLE IF NOT EXISTS agent_usage
 (
     timestamp            DateTime64(3),
-    user_id              String,
+    user_id              LowCardinality(String),
     session_id           String,
     trace_id             String,
     turn_id              UInt32,
     model                LowCardinality(String),
-    agent_name           String,
-    agent_version        String,
-    skill_name           String,
-    skill_version        String,
-    command_name         String DEFAULT '',
+    agent_name           LowCardinality(String),
+    agent_version        LowCardinality(String),
+    skill_name           LowCardinality(String),
+    skill_version        LowCardinality(String),
+    command_name         LowCardinality(String) DEFAULT '',
     agent_invocation_id  String DEFAULT '',
-    mcp_tool_name        String,
+    mcp_tool_name        LowCardinality(String),
     input_tokens         UInt32,
-    output_tokens        UInt32,
+    output_tokens         UInt32,
     cache_creation_tokens UInt32,
     cache_read_tokens     UInt32,
     -- Why the turn stopped generating (tool_use/end_turn/max_tokens/
@@ -158,14 +179,14 @@ CREATE TABLE IF NOT EXISTS agent_usage
     -- completionStartTime - startTime, in ms: time to first token, distinct
     -- from the total call latency in agent_events.latency_ms.
     ttft_ms               UInt32 DEFAULT 0,
-    INDEX idx_agent_name agent_name TYPE bloom_filter GRANULARITY 4,
-    INDEX idx_skill_name skill_name TYPE bloom_filter GRANULARITY 4,
-    INDEX idx_command_name command_name TYPE bloom_filter GRANULARITY 4,
-    INDEX idx_mcp_tool_name mcp_tool_name TYPE bloom_filter GRANULARITY 4,
-    INDEX idx_user_id user_id TYPE bloom_filter GRANULARITY 4
+    INDEX idx_agent_name agent_name TYPE set(1000) GRANULARITY 4,
+    INDEX idx_skill_name skill_name TYPE set(1000) GRANULARITY 4,
+    INDEX idx_command_name command_name TYPE set(1000) GRANULARITY 4,
+    INDEX idx_mcp_tool_name mcp_tool_name TYPE set(1000) GRANULARITY 4,
+    INDEX idx_user_id user_id TYPE set(1000) GRANULARITY 4
 )
 ENGINE = MergeTree
-PARTITION BY toYYYYMM(timestamp)
+PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
 ORDER BY (timestamp, session_id);
 
 -- One row per turn (main session turn or subagent turn), holding the
@@ -179,24 +200,25 @@ ORDER BY (timestamp, session_id);
 CREATE TABLE IF NOT EXISTS agent_messages
 (
     timestamp     DateTime64(3),
-    user_id       String,
+    user_id       LowCardinality(String),
     session_id    String,
     trace_id      String,
     turn_id       UInt32,
-    agent_name    String,
-    agent_version String,
-    skill_name    String,
-    skill_version String,
-    command_name  String DEFAULT '',
+    agent_name    LowCardinality(String),
+    agent_version LowCardinality(String),
+    skill_name    LowCardinality(String),
+    skill_version LowCardinality(String),
+    command_name  LowCardinality(String) DEFAULT '',
     agent_invocation_id String DEFAULT '',
-    prompt_text   String,
-    response_text String
+    prompt_text   String CODEC(ZSTD(3)),
+    response_text String CODEC(ZSTD(3))
 )
 ENGINE = MergeTree
 -- Unlike agent_events/agent_usage, this table is always looked up by a
 -- specific session_id (joined from an agent_events row) rather than
--- scanned by time range, so session_id stays the lead sort key. Monthly
--- partitioning is still worth it for data lifecycle (TTL/drop old months)
--- even though it doesn't change how these particular queries are pruned.
-PARTITION BY toYYYYMM(timestamp)
+-- scanned by time range, so session_id stays the lead sort key. Half-year
+-- partitioning is still worth it here for the same detach-to-archive
+-- reason as agent_events above, even though it doesn't change how these
+-- particular queries are pruned.
+PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
 ORDER BY (session_id, turn_id);

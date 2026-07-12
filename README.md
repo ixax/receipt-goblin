@@ -15,20 +15,43 @@ See `AGENTS.md` for architecture and schema details.
 
 ## Getting started
 
+### Environment variables
+
+Copy `.env.example` to `.env` and fill in:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Required? | What it's for |
+|---|---|---|
+| `LITELLM_MASTER_KEY` | **Yes** - `docker-compose.yml` refuses to start without it | Admin credential for LiteLLM's own `/ui` and `/key/generate`. Pick anything reasonably secret - it's never sent to Anthropic/OpenAI, only used to log into the local admin UI. |
+| `LITELLM_URI` | No - defaults to `http://localhost:$LITELLM_PORT` | Only set this if LiteLLM isn't on localhost (a shared/remote host) - read by `make env`, takes precedence over `LITELLM_PORT` there. |
+| `LITELLM_PORT`, `LITELLM_DB_PASSWORD`, `CLICKHOUSE_PASSWORD`, etc. | No - all have working defaults | See "Configuration" under "Reference" below for the full list. |
+
+Everything else in `docker-compose.yml` (ports, ClickHouse credentials) has a sane default - you only need to touch `.env` for the row above.
+Your personal LiteLLM key does **not** go in `.env` at all - see the next step.
+
 ### Start the stack
 
 ```bash
-docker compose up -d --build
+make start
 ```
 
 ### Wait until it's healthy
 
 ```bash
-docker compose ps
+make status
 ```
 
 `webhook`, `mcp-server`, and `grafana` won't start until `clickhouse` shows `healthy` (all three `depends_on: condition: service_healthy`).
 Re-run the command above until all services show up and `clickhouse` is no longer `starting`/`unhealthy`.
+
+### Issue yourself a personal key and route a coding agent through the proxy
+
+1. Open http://localhost:4000/ui and log in with `admin` / your `LITELLM_MASTER_KEY`.
+2. **Keys** → **Create New Key** → restrict `Models` to whichever names the agent(s) you use need → copy the generated `sk-...` key.
+3. Run `make env`, copy its output, replace the `<virtual key>` placeholders with the key from step 2, and paste the result into `~/.zshrc`/`~/.bashrc` so every new shell picks it up - see "Routing Claude Code through it" / "Routing Codex CLI through it" under "LiteLLM" below for what it exports.
 
 ### Open Grafana
 
@@ -63,7 +86,7 @@ Calls the `mcp-server` MCP server (`mcp__clickhouse__whatsup`, see `.mcp.json`) 
 ### Stop the stack
 
 ```bash
-docker compose down
+make stop
 ```
 
 Add `-v` to also delete the ClickHouse data volume (next `up` re-applies `schema.sql` from scratch).
@@ -80,7 +103,6 @@ Add `-v` to also delete the ClickHouse data volume (next `up` re-applies `schema
 | Grafana stops responding after a few clicks/panel loads (no crash in browser) | Check `docker inspect receipt-goblin-grafana --format '{{.State.OOMKilled}} {{.State.ExitCode}}'` - Grafana 13.1.0 is meaningfully heavier than 11.2.0 (alerting scheduler, zanzana authz, bleve search indexing, app registry, background plugin auto-updater) and hit the old `mem_limit: 512m` within a couple of dashboard interactions (`OOMKilled=true`, exit 137). Bumped to `1g` in `docker-compose.yml` alongside the 13.1.0 upgrade; there's a `restart: always` policy, so an OOM-killed container comes back on its own - raise the limit further if it recurs. |
 | No `agent_name`/`skill_name` on events                  | Recovered from the LiteLLM payload itself, not a CLI-side hook - see `AGENTS.md` (`_agent_invocations_from_messages`/`_skill_name_from_last_turn` in `clickhouse_ingest.py`). A subagent's own rows only resolve `agent_name` once the orchestrator's `Agent` tool_use/tool_result pair has itself been ingested and upserted into `agent_invocations` - a subagent call that reaches `webhook` before that happens will have `agent_invocation_id` set but blank `agent_name`. |
 | Grafana panel shows a query error                             | The `grafana-clickhouse-datasource` plugin's query JSON shape has changed across versions; open the panel in edit mode - the SQL in `rawSql` is otherwise plain, portable ClickHouse SQL. |
-| Duplicate agent/skill registry rows                             | Expected - `ReplacingMergeTree` keyed on `(name, version)`. Re-registering the same version replaces it; bumping `version` in frontmatter creates a new row and preserves history. |
 | Claude Code via the LiteLLM proxy fails with `x-api-key header is required` | Missing `ANTHROPIC_CUSTOM_HEADERS`, or `LITELLM_MASTER_KEY` isn't set - see "Routing Claude Code through it" under "LiteLLM" below. |
 
 ## Reference
@@ -152,10 +174,23 @@ Same dev/prod split as `webhook` below: `docker-compose.yml` still `build`s `mcp
 
 ### Frontmatter format
 
+Subagents and Skills are identified differently by Claude Code (frontmatter `name:` vs. directory name - confirmed against actual Claude Code behavior, not assumed), so their version convention differs too:
+
+**Subagents** (`.claude/agents/*.md`) - frontmatter `name:` is the actual invocation identifier (the filename doesn't have to match), so it doubles as the version tag: `<name>_v<version>`, no separate `version:` field.
+
 ```
 ---
-name: test-researcher
-version: 1.0.0
+name: test-researcher_v1.0.0
+description: ...
+---
+```
+
+**Skills** (`.claude/skills/<dirname>/SKILL.md`) - the *directory name* is the invocation identifier (`/<dirname>`); frontmatter `name:` is purely a cosmetic display label and does not affect invocation. Renaming a skill's directory to embed a version would also change its literal slash command, so `name:` stays unversioned (matching the directory) and version tracking uses a plain separate field instead - informational only, since nothing currently reads it (see "Known gaps" below).
+
+```
+---
+name: whatsup
+version: 2.0.0
 description: ...
 ---
 ```
@@ -167,33 +202,33 @@ description: ...
 "Agents Overview", 31 panels across 6 collapsible rows, default time range `now-3h` to `now`.
 Rows exist as plain `type: row` panels (classic v1 dashboard schema) for now - see "Dynamic dashboards / tabs" below for the plan to convert them into real tabs.
 
-| Row | # | Panel | Notes |
-|-----|----|--------------------------------------------------------|----------------------------------------------------|
-| **Overview** | 19 | Overview stat | |
-| | 30 | Tokens by user over time | per-`user_id` line, not aggregated - for spotting a single user's behavior change |
-| | 31 | Cost by user over time | same shape as 30, `agent_usage.cost` |
-| **Cost & Tokens** | 1-2 | Tokens by agent/version, by skill/version over time | `agent_usage`, raw per-row timestamps (not bucketed) so sparse points still connect into a line |
-| | 3-4 | Cost by agent/version, by skill/version over time | `agent_usage.input_cost`/`output_cost` |
-| | 38-39 | Tokens / cost by command over time | `agent_usage.command_name != ''` - the slash command that triggered the call chain, recovered from the `<command-name>` tag Claude Code injects into the triggering message (see `AGENTS.md`); always unversioned by design |
-| | 13-14 | Tokens / cost by MCP tool over time | `agent_usage.mcp_tool_name != ''` |
-| | 16-17 | Tokens / cost by model & scope over time | scope = `subagent`/`skill`/`main agent`, derived per row via `multiIf` |
-| | 22 | Cache hit rate by agent/skill/model over time | `cache_read_tokens / (cache_read_tokens + input_tokens)` |
-| **Users & Adoption** | 10 | Spend by user | barchart, `agent_usage.cost` |
-| | 20 | User leaderboard | tokens/cost/session duration per user |
-| | 25-26 | Week-over-week cost/tokens change, by user / by agent-skill-model | fixed trailing 7d vs prior 7d, independent of the dashboard time picker |
-| | 29 | Active users & sessions per day | `uniqExact(user_id)`/`uniqExact(session_id)` |
-| **Reliability & Performance** | 5 | Error rate by tool_name | `status = 'failure'` vs `'success'`, current snapshot |
-| | 6 | Latency percentiles (p50/p95) by tool_name | `agent_events.latency_ms`, `status = 'success'` |
-| | 11 | MCP tool calls (+ p50/p95 latency) | `tool_name` starting with `mcp__` |
-| | 12 | Permission prompt wait time (p50/p95) by tool_name | always empty - permission prompts are a CLI-local interaction that never reaches LiteLLM, so there's no event to log; needs a future client-side hook |
-| | 15 | Top 10 slowest tool calls | ranked by `latency_ms`, not `$` - no per-call cost exists at that granularity |
-| | 27-28 | Error rate / permission-denied rate over time | trend version of panel 5, bucketed `toStartOfHour`; 28 shares panel 12's gap (always empty) |
-| **Sessions & Debugging** | 7 | Full trace of selected session(s) | see "Message and tool-level text" above |
-| | 18 | Call stack for selected session(s) | one row per LiteLLM call (no turn_id/sequence_id granularity from this source), ordered by timestamp, annotated with tool/agent/skill/command context and per-call tokens/cost |
-| | 8 | Top 10 most expensive sessions (+ duration) | `agent_usage.cost`, `LIMIT 10` |
-| | 21 | Top 10 most expensive prompts by tokens | `agent_usage` joined to `agent_messages` on `(session_id, turn_id, agent_name)`, `prompt_text`/`response_text` inspectable |
-| **Versions** | 9 | Current agent/skill versions | unfiltered - it's the reference list the version variables come from; always empty until `agent_registry`/`skill_registry` get a writer again (see "Known gaps") |
-| | 23-24 | Agent / skill version-change impact | before-vs-after adopting the current version, transition point auto-detected from first-seen `agent_usage`/`agent_events` timestamp per version (not `registered_at` - see agent frontmatter comment in `clickhouse-analyst.md`); empty until an agent/skill has 2+ distinct versions observed |
+| Row                           | #     | Panel                                                             | Notes                                                                                                                                                                                                                                                                                          |
+|-------------------------------|-------|-------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Overview**                  | 19    | Overview stat                                                     |                                                                                                                                                                                                                                                                                                |
+|                               | 30    | Tokens by user over time                                          | per-`user_id` line, not aggregated - for spotting a single user's behavior change                                                                                                                                                                                                              |
+|                               | 31    | Cost by user over time                                            | same shape as 30, `agent_usage.cost`                                                                                                                                                                                                                                                           |
+| **Cost & Tokens**             | 1-2   | Tokens by agent/version, by skill/version over time               | `agent_usage`, raw per-row timestamps (not bucketed) so sparse points still connect into a line                                                                                                                                                                                                |
+|                               | 3-4   | Cost by agent/version, by skill/version over time                 | `agent_usage.input_cost`/`output_cost`                                                                                                                                                                                                                                                         |
+|                               | 38-39 | Tokens / cost by command over time                                | `agent_usage.command_name != ''` - the slash command that triggered the call chain, recovered from the `<command-name>` tag Claude Code injects into the triggering message (see `AGENTS.md`); always unversioned by design                                                                    |
+|                               | 13-14 | Tokens / cost by MCP tool over time                               | `agent_usage.mcp_tool_name != ''`                                                                                                                                                                                                                                                              |
+|                               | 16-17 | Tokens / cost by model & scope over time                          | scope = `subagent`/`skill`/`main agent`, derived per row via `multiIf`                                                                                                                                                                                                                         |
+|                               | 22    | Cache hit rate by agent/skill/model over time                     | `cache_read_tokens / (cache_read_tokens + input_tokens)`                                                                                                                                                                                                                                       |
+| **Users & Adoption**          | 10    | Spend by user                                                     | barchart, `agent_usage.cost`                                                                                                                                                                                                                                                                   |
+|                               | 20    | User leaderboard                                                  | tokens/cost/session duration per user                                                                                                                                                                                                                                                          |
+|                               | 25-26 | Week-over-week cost/tokens change, by user / by agent-skill-model | fixed trailing 7d vs prior 7d, independent of the dashboard time picker                                                                                                                                                                                                                        |
+|                               | 29    | Active users & sessions per day                                   | `uniqExact(user_id)`/`uniqExact(session_id)`                                                                                                                                                                                                                                                   |
+| **Reliability & Performance** | 5     | Error rate by tool_name                                           | `status = 'failure'` vs `'success'`, current snapshot                                                                                                                                                                                                                                          |
+|                               | 6     | Latency percentiles (p50/p95) by tool_name                        | `agent_events.latency_ms`, `status = 'success'`                                                                                                                                                                                                                                                |
+|                               | 11    | MCP tool calls (+ p50/p95 latency)                                | `tool_name` starting with `mcp__`                                                                                                                                                                                                                                                              |
+|                               | 12    | Permission prompt wait time (p50/p95) by tool_name                | always empty - permission prompts are a CLI-local interaction that never reaches LiteLLM, so there's no event to log; needs a future client-side hook                                                                                                                                          |
+|                               | 15    | Top 10 slowest tool calls                                         | ranked by `latency_ms`, not `$` - no per-call cost exists at that granularity                                                                                                                                                                                                                  |
+|                               | 27-28 | Error rate / permission-denied rate over time                     | trend version of panel 5, bucketed `toStartOfHour`; 28 shares panel 12's gap (always empty)                                                                                                                                                                                                    |
+| **Sessions & Debugging**      | 7     | Full trace of selected session(s)                                 | see "Message and tool-level text" above                                                                                                                                                                                                                                                        |
+|                               | 18    | Call stack for selected session(s)                                | one row per LiteLLM call (no turn_id/sequence_id granularity from this source), ordered by timestamp, annotated with tool/agent/skill/command context and per-call tokens/cost                                                                                                                 |
+|                               | 8     | Top 10 most expensive sessions (+ duration)                       | `agent_usage.cost`, `LIMIT 10`                                                                                                                                                                                                                                                                 |
+|                               | 21    | Top 10 most expensive prompts by tokens                           | `agent_usage` joined to `agent_messages` on `(session_id, turn_id, agent_name)`, `prompt_text`/`response_text` inspectable                                                                                                                                                                     |
+| **Versions**                  | 9     | Current agent/skill versions                                      | unfiltered - it's the reference list the version variables come from; always empty until `agent_registry`/`skill_registry` get a writer again (see "Known gaps")                                                                                                                               |
+|                               | 23-24 | Agent / skill version-change impact                               | before-vs-after adopting the current version, transition point auto-detected from first-seen `agent_usage`/`agent_events` timestamp per version (not `registered_at` - see agent frontmatter comment in `clickhouse-analyst.md`); empty until an agent/skill has 2+ distinct versions observed |
 
 ### Dynamic dashboards / tabs
 
@@ -215,7 +250,7 @@ Field extraction from the LiteLLM payload is best-effort and can drift across Li
 A local LiteLLM gateway (`litellm` + `litellm-db` + `webhook` services in `docker-compose.yml`) sits in front of both CLIs so their traffic can be logged, and centrally billed, before it leaves the machine.
 This gateway *is* how the ClickHouse tracking stack described above gets its data now - `webhook` is the only ingestion path (see "How data flows" above).
 
-The model names are meant to be stable regardless of what's actually billing them: `claude-sonnet-5`/`claude-haiku-4-5`/`claude-opus-4-8`/`claude-fable-5`/`gpt-5-codex`/`gpt-5` are what you put in `ANTHROPIC_MODEL`, agent/skill frontmatter `model:` fields, Codex CLI's model setting - everywhere - and that stays true whether a name is currently backed by OAuth passthrough (no Anthropic key on hand yet) or a real, centrally-held provider key added later through the admin UI.
+The model names are meant to be stable regardless of what's actually billing them: `claude-sonnet-5`/`claude-haiku-4-5`/`claude-opus-4-8`/`claude-fable-5`/`gpt-5-codex`/`gpt-5` are what you pick in Claude Code's own model selector, put in agent/skill frontmatter `model:` fields, and set as Codex CLI's model - everywhere - and that stays true whether a name is currently backed by OAuth passthrough (no Anthropic key on hand yet) or a real, centrally-held provider key added later through the admin UI.
 People get a personal LiteLLM *virtual key* either way, and per-key budgets/rate-limits/model access are enforced entirely by LiteLLM - see "Admin UI: issuing a personal key" below.
 `litellm-db` (Postgres) is what makes virtual keys persistent - without a database, LiteLLM either refuses to generate them or keeps them in memory only, gone on the next restart.
 
@@ -264,12 +299,11 @@ First boot takes a bit longer than usual - LiteLLM runs its Postgres schema migr
 ### Routing Claude Code through it
 
 ```bash
-export ANTHROPIC_BASE_URL="http://localhost:4000"
-export ANTHROPIC_MODEL="claude-sonnet-5"                    # or claude-haiku-4-5/claude-opus-4-8/claude-fable-5 - same names everywhere, including agent/skill frontmatter `model:`
-export LITELLM_MASTER_KEY="sk-anything-you-like"
-export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer $LITELLM_MASTER_KEY"  # the personal LiteLLM virtual key from the step above
+make env
 ```
 
+Prints `export` statements with a `<virtual key>` placeholder for `ANTHROPIC_BASE_URL`/`ANTHROPIC_CUSTOM_HEADERS`/etc. (`LITELLM_URI`/`LITELLM_PORT` in `.env` control the URL if you changed it from the default). Model choice isn't part of this - Claude Code picks its own model through its normal interface, same as always.
+Copy the output, replace `<virtual key>` with your personal virtual key from the step above, and paste the result into `~/.zshrc`/`~/.bashrc` so every new shell picks it up - see "Getting started" above.
 Then `claude login` (subscription OAuth, Pro/Max/Team) as usual.
 
 `ANTHROPIC_CUSTOM_HEADERS` is required even though nothing else guards these routes: without a distinct header proving something *else* authenticated to LiteLLM, it can't tell the incoming `Authorization` (the subscription token) apart from its own auth and strips it before forwarding - Anthropic then replies `x-api-key header is required` (see [BerriAI/litellm#19618](https://github.com/BerriAI/litellm/issues/19618)).
@@ -286,7 +320,7 @@ Do these in order - skipping the `config.yaml` cleanup step is what leads to the
 - [ ] `docker compose restart litellm` (or `up -d` again - no image/volume changes needed).
 - [ ] Update the "Model name mapping" table above: Claude rows go from "OAuth passthrough, `litellm/config.yaml`" to "Central org key, admin UI".
 - [ ] Drop `claude login` from "Routing Claude Code through it" above.
-- [ ] `ANTHROPIC_MODEL`/frontmatter `model:` values, and everyone's personal virtual keys, need **no changes at all** - that's the entire point of the stable naming.
+- [ ] Frontmatter `model:` values and everyone's personal virtual keys need **no changes at all** - that's the entire point of the stable naming.
 
 **When an OpenAI key arrives:**
 
@@ -300,8 +334,8 @@ Don't leave a `model_list` entry and a UI/DB-managed model sharing one `model_na
 
 ### Routing Codex CLI through it
 
-Once `gpt-5-codex`/`gpt-5` exist (see "Later" above - Codex has no subscription-passthrough option, so this can't happen before a real `OPENAI_API_KEY` is added), issue a personal virtual key the same way (**Keys** → **Create New Key**, `Models` restricted to `gpt-5-codex`/`gpt-5`), and give it to whoever needs Codex access - never the real OpenAI key.
-Point Codex CLI's own base-URL setting at `http://localhost:4000`, its API key setting at that virtual key, and its model at `gpt-5-codex` or `gpt-5`; consult Codex CLI's own docs for the exact config keys, since this project doesn't wrap Codex the way it does Claude Code.
+Once `gpt-5-codex`/`gpt-5` exist (see "Later" above - Codex has no subscription-passthrough option, so this can't happen before a real `OPENAI_API_KEY` is added), issue a personal virtual key the same way (**Keys** → **Create New Key**, `Models` restricted to `gpt-5-codex`/`gpt-5`).
+The same `make env` (see above) also prints `OPENAI_API_BASE`/`OPENAI_API_KEY` lines from that key - Codex (and other OpenAI-SDK-based tools) read it directly, no custom header needed on that side. Set Codex's own model setting to `gpt-5-codex` or `gpt-5`.
 
 ### Inspecting captured traffic
 
@@ -317,7 +351,7 @@ Built and run standalone (no compose, no `--reload`, no bind mounts) - `docker b
 ### Known gaps
 
 `agent_registry`/`skill_registry` are no longer populated automatically - the hook that read `.claude/agents/*.md`/`.claude/skills/*/SKILL.md` frontmatter and registered them (`register_agents.py`) was retired along with the rest of the transcript-hook pipeline, and nothing in the `webhook` pipeline replaces it yet (agent/skill *names* are recovered from the LiteLLM payload - see `AGENTS.md` - but not their `version`/`description`/`source_file`).
-`agent_version` is populated for agents (Subagent frontmatter `name:` doubles as the invocation identifier, so it's named `<name>_v<version>` and split back apart on ingest - see `AGENTS.md`). `skill_version` stays always blank though - Skills are identified by their *directory name*, not their frontmatter `name:` (unlike Subagents), so the same trick doesn't carry over; renaming a skill's directory to embed a version would also change its literal `/<name>` slash command, which isn't worth it. `command_name` (the stable, deliberately unversioned slash-command entry point) exists precisely to route around this - see the Commands panels above.
+`agent_version` is populated for agents (Subagent frontmatter `name:` doubles as the invocation identifier, so it's named `<name>_v<version>` and split back apart on ingest - see "Frontmatter format" above). `skill_version` stays always blank though - Skills are identified by their *directory name*, not their frontmatter `name:` (unlike Subagents), so the same trick doesn't carry over; renaming a skill's directory to embed a version would also change its literal `/<name>` slash command, which isn't worth it for skills invoked directly by name (only `whatsup` and `min` have a stable `.claude/commands/` wrapper - see the Commands panels above - the rest are invoked by natural-language description matching, where the exact directory name doesn't matter). `command_name` (the stable, deliberately unversioned slash-command entry point) exists precisely to route around this for those two.
 `litellm`'s image is pinned to `ghcr.io/berriai/litellm:main-latest`, which moves under you - pin it to a specific tag before this leaves local prototyping.
 `litellm-db`'s Postgres has no backup story - it's a local Docker volume (`litellm-db-data`), fine for prototyping, not for a real deployment's virtual keys/budgets.
 The `claude-sonnet-oauth`/`claude-haiku-oauth` routes depend on LiteLLM's own OAuth-forwarding code, which has had real bugs in this exact area - besides #19618 (already worked around via `litellm_key_header_name`), there's an open report ([BerriAI/litellm#29190](https://github.com/BerriAI/litellm/issues/29190)) of a 401 when a request carries both a subscription `Authorization` token and a virtual key at once, since LiteLLM may try to look the OAuth token up in its own key table. If these two routes start 401ing unexpectedly, that issue - and the image's exact version - is the first thing to check.

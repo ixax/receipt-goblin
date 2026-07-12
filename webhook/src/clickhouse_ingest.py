@@ -316,8 +316,16 @@ def _event_row(
     agent_name: str, agent_version: str, skill_name: str, skill_version: str,
     command_name: str, agent_invocation_id: str,
 ) -> list:
-    response_time = payload.get("response_time")
-    latency_ms = int(response_time * 1000) if isinstance(response_time, (int, float)) else None
+    start_time = payload.get("startTime")
+    end_time = payload.get("endTime")
+    # NOT payload["response_time"] - for streamed calls that's LiteLLM's
+    # time-to-first-token, not the call's total duration (was ~1-3ms while
+    # endTime-startTime showed multi-second real latency).
+    latency_ms = (
+        int((end_time - start_time) * 1000)
+        if isinstance(start_time, (int, float)) and isinstance(end_time, (int, float))
+        else None
+    )
     # "messages" is the full, ever-growing conversation history resent on
     # every call (hundreds of entries once a session runs a while) - already
     # on disk verbatim in webhook/captures/*.json, so drop it here to keep
