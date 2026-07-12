@@ -7,12 +7,12 @@ version: 2.0.0
 # whatsup
 
 Report the last 24 hours of spend from the local agent-tracking stack.
-Reads go through the `mcp-clickhouse` MCP server, not `docker exec` -
-`ingest-api` is still write-only, but `mcp-clickhouse` is the dedicated
-read path (see `README.md` → "MCP server (`mcp-clickhouse`)").
+Reads go through the `mcp-server` MCP server, not `docker exec` -
+`ingest-api` is still write-only, but `mcp-server` is the dedicated
+read path (see `README.md` → "MCP server (`mcp-server`)").
 
 Call the `mcp__clickhouse__whatsup` tool with `hours: 24`. If the call
-fails (connection refused, timeout), say the `mcp-clickhouse` service
+fails (connection refused, timeout), say the `mcp-server` service
 isn't reachable - point at `docker compose ps` - instead of letting the
 error pass silently.
 

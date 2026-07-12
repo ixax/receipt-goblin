@@ -1,7 +1,7 @@
 # Agent Tracking Stack
 
 Local stack for tracking cost/efficiency of AI coding agents (Claude Code and Codex CLI) with full call-chain tracing.
-Hooks on the host POST to `ingest-api`, which writes to ClickHouse; Grafana reads from ClickHouse; a CLI session reads back out via the `mcp-clickhouse` MCP server.
+Hooks on the host POST to `ingest-api`, which writes to ClickHouse; Grafana reads from ClickHouse; a CLI session reads back out via the `mcp-server` MCP server.
 
 ## Repository layout
 
@@ -12,9 +12,9 @@ Hooks on the host POST to `ingest-api`, which writes to ClickHouse; Grafana read
 | `grafana/dashboards/agents_overview.json` | "Agents Overview" dashboard, `dashboard.grafana.app/v2beta1` schema, 31 panels across 6 tabs, uid `agents-overview` (stable URL).                                                   |
 | `grafana/docker-entrypoint.sh`            | Renders the ClickHouse datasource template via `sed`, then execs Grafana.                                                                                                           |
 | `ingest-api/main.py`                      | Write-only FastAPI app: `/ingest/{event,usage,message}`, `/registry/{agent,skill}`, `/health`.                                                                                      |
-| `mcp-clickhouse/server.py`                | Read-only-by-validation FastMCP server: `whatsup(hours)` (3 fixed queries) and `query(sql, max_rows)` (arbitrary SELECT/WITH; validation rules — see "Rules to not violate" below). |
-| `.mcp.json`                               | Registers `mcp-clickhouse` at `${AGENT_CLI_TRACKING_MCP_URL:-http://localhost:8001/mcp}` (Claude Code env-var expansion).                                                           |
-| `docker-compose.yml`                      | Four services, network, volumes, `mem_limit`s. Single source of truth for `CLICKHOUSE_*` defaults.                                                                                  |
+| `mcp-server/src/server.py`                | Read-only-by-validation FastMCP server: `whatsup(hours)` (3 fixed queries) and `query(sql, max_rows)` (arbitrary SELECT/WITH; validation rules — see "Rules to not violate" below). |
+| `.mcp.json`                               | Registers `mcp-server` at `${AGENT_CLI_TRACKING_MCP_URL:-http://localhost:8001/mcp}` (Claude Code env-var expansion).                                                           |
+| `docker-compose.yml`                      | Every service, network, volumes, `mem_limit`s. Single source of truth for `CLICKHOUSE_*` defaults.                                                                                  |
 
 `.claude/` and `.codex/` hold the hooks, agents, and skills that feed this stack - browse `.claude/hooks/`, `.claude/agents/`, `.claude/skills/`, `.codex/hooks/` directly rather than looking for a file-by-file index here.
 Each file/frontmatter is self-explanatory once opened.
@@ -38,7 +38,7 @@ Future loop-dev artifacts (e.g. `NOTES.md`, `TASKS.md`) should follow `MIN_DUMP.
 - **Never `UPDATE`/`ALTER` `model_pricing` rows.** Insert a new row with a new `effective_from` instead - cost is computed at query time via `ASOF JOIN`, so this keeps historical cost accurate.
 - **`schema.sql` changes need a manual re-apply** on an already-initialized volume: `docker exec -i agent-tracking-clickhouse clickhouse-client --multiquery < clickhouse/schema.sql`, or drop the `clickhouse-data` volume (destroys data).
 - **Bump `version` in frontmatter whenever you edit an agent's or skill's behavior.** The registry is `ReplacingMergeTree ORDER BY (name, version)`, so old rows keep pointing at the version active when they ran.
-- **ingest-api stays write-only.** All reads go through `mcp-clickhouse`, never `docker exec`-ing into ClickHouse.
-- **`clickhouse-analyst`'s tools stay limited to `mcp__clickhouse__query`/`whatsup`.** Never add it Bash or any other direct ClickHouse access - all reads must go through `mcp-clickhouse`, per the rule above.
+- **ingest-api stays write-only.** All reads go through `mcp-server`, never `docker exec`-ing into ClickHouse.
+- **`clickhouse-analyst`'s tools stay limited to `mcp__clickhouse__query`/`whatsup`.** Never add it Bash or any other direct ClickHouse access - all reads must go through `mcp-server`, per the rule above.
 - **`file-ops`/`script-ops` never get `git` (and `file-ops` never gets `Bash`).** Blast-radius judgment calls (`git`, `docker`) stay with the caller, not a delegate.
-- **Don't loosen `_validate_readonly_sql` in `mcp-clickhouse/server.py`.** There's no separate read-only ClickHouse user backing `query` - that function (single statement, SELECT/WITH only, no DDL/DML keywords, no system tables, no remote/file/URL table functions) is the only thing standing between it and a write/DDL statement.
+- **Don't loosen `_validate_readonly_sql` in `mcp-server/src/server.py`.** There's no separate read-only ClickHouse user backing `query` - that function (single statement, SELECT/WITH only, no DDL/DML keywords, no system tables, no remote/file/URL table functions) is the only thing standing between it and a write/DDL statement.

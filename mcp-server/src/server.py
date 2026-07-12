@@ -10,7 +10,7 @@ Two tools: `whatsup`, which only ever runs its three fixed queries, and
 `_validate_readonly_sql` below (SELECT/WITH only, single statement, no
 DDL/DML keywords, no system tables, no remote/file/URL table functions).
 There is no separate read-only ClickHouse user (docker-compose.yml uses one
-shared user for ingest-api/mcp-clickhouse/grafana - see its comments), so
+shared user for ingest-api/mcp-server/grafana - see its comments), so
 this code-level validation is the only thing standing between `query` and
 a write/DDL statement - keep it strict rather than convenient.
 """
@@ -28,7 +28,15 @@ CLICKHOUSE_USER = os.environ["CLICKHOUSE_USER"]
 CLICKHOUSE_PASSWORD = os.environ["CLICKHOUSE_PASSWORD"]
 CLICKHOUSE_DATABASE = os.environ["CLICKHOUSE_DATABASE"]
 
-mcp = FastMCP("clickhouse", host="0.0.0.0", port=8001)
+mcp = FastMCP("clickhouse")
+
+# Standalone ASGI app, run via uvicorn (see Dockerfile / docker-compose.yml) -
+# NOT mounted under a separate FastAPI app: the official mcp SDK's
+# streamable_http_app() has a known bug when mounted as a sub-app (session
+# manager never initializes, requests 404/507 -
+# https://github.com/modelcontextprotocol/python-sdk/issues/1367). Serving it
+# directly as uvicorn's top-level `app` sidesteps that entirely.
+app = mcp.streamable_http_app()
 
 _client = None
 
@@ -179,7 +187,3 @@ def query(sql: str, max_rows: int = 200) -> dict:
         "row_count": len(rows),
         "truncated": truncated,
     }
-
-
-if __name__ == "__main__":
-    mcp.run(transport="streamable-http")
