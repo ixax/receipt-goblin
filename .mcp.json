@@ -2,7 +2,7 @@
   "mcpServers": {
     "clickhouse": {
       "type": "http",
-      "url": "${AGENT_CLI_TRACKING_MCP_URL:-http://localhost:8001/mcp}"
+      "url": "http://localhost:8001/mcp"
     }
   }
 }

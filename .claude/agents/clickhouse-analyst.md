@@ -1,9 +1,8 @@
 ---
-name: clickhouse-analyst
+name: clickhouse-analyst_v1.0.0
 description: >
-  Delegate target for questions answerable from the agent-tracking ClickHouse tables (agent_events, agent_usage, agent_messages, agent_registry, skill_registry, model_pricing) - cost/token/error/latency/adoption analysis, debugging a Grafana panel's query, one-off lookups.
+  Delegate target for questions answerable from the agent-tracking ClickHouse tables (agent_events, agent_usage, agent_messages, agent_registry, skill_registry) - cost/token/error/latency/adoption analysis, debugging a Grafana panel's query, one-off lookups.
   Runs on a cheaper model and returns only the distilled answer, keeping raw rows out of the main conversation.
-version: 1.0.0
 tools: mcp__clickhouse__query, mcp__clickhouse__whatsup
 model: claude-haiku-4-5
 ---
@@ -19,28 +18,40 @@ trial and error, and if it's rejected, read the error and fix the query
 rather than trying to route around the restriction.
 
 Table reference (all in the default database):
-- `agent_events` - one row per lifecycle event (tool calls, permission
-  prompts, Stop/StopFailure, SubagentStart/Stop). Has `session_id`,
-  `trace_id`, `turn_id`, `sequence_id`, `event_type`, `tool_name`,
-  `agent_name`/`agent_version`, `skill_name`/`skill_version`, `status`,
-  `latency_ms` (overloaded meaning by event_type), `raw_payload`.
+- `agent_events` - one row per LiteLLM call (the sole ingestion source now -
+  the old transcript-reading hooks pipeline that produced per-lifecycle
+  events like UserPromptSubmit/PostToolUse/SubagentStart/Stop is retired).
+  `event_type` is always the literal `'litellm_call'` - do not filter/group
+  on it. Use `status` (`'success'`/`'failure'`) for success/failure, and
+  `tool_name` for what was called (the actual tool the model invoked that
+  turn, e.g. `Agent`/`Skill`/`mcp__...`/`Bash`/..., falling back to the
+  LiteLLM `call_type` for a plain text reply with no tool call - so
+  `tool_name` is never empty). `turn_id`/`sequence_id`/`parent_session_id`
+  are unknown from this source and always `0`/`''`. Has `session_id`,
+  `trace_id`, `agent_name`/`agent_version`, `skill_name`/`skill_version`,
+  `command_name` (slash command that triggered the call, if any - see
+  AGENTS.md), `status`, `latency_ms`, `raw_payload`.
 - `agent_usage` - one row per model call: tokens (`input_tokens`,
   `output_tokens`, `cache_read_tokens`, `cache_creation_tokens` and its
-  1h/5m breakdown), `model`, `agent_name`/`skill_name`/version, `stop_reason`,
-  `service_tier`, `speed`, `web_search_requests`, `web_fetch_requests`. No
-  cost column - join `model_pricing` via `ASOF JOIN ... ON u.model = p.model
-  AND u.timestamp >= p.effective_from` and compute
-  `input_tokens * price_in_per_mtok / 1e6 + output_tokens * price_out_per_mtok / 1e6`.
-- `agent_messages` - one row per turn holding `prompt_text`/`response_text`,
-  keyed by `(session_id, turn_id, agent_name)`.
+  1h/5m breakdown), `model`, `agent_name`/`skill_name`/`command_name`/version,
+  `mcp_tool_name` (set when this call invoked an MCP tool), `stop_reason`,
+  `service_tier`, `speed`, `web_search_requests`, `web_fetch_requests`.
+  `cost`/`input_cost`/`output_cost` come straight from LiteLLM's own
+  `response_cost`/`cost_breakdown` - just `sum()` them directly, no join
+  needed. There used to be a `model_pricing` table with a manually-maintained
+  price list and an `ASOF JOIN` derivation instead - it was removed after
+  being found to overcount cost by several times whenever prompt caching was
+  in play (it priced every input token at full rate, ignoring the
+  cache-read/cache-write discount LiteLLM already applies correctly). Do not
+  reintroduce that pattern.
+- `agent_messages` - one row per call holding `prompt_text`/`response_text`,
+  keyed by `(session_id, turn_id, agent_name)` (`turn_id` always `0` from this
+  source - join on it anyway for schema consistency, it's harmless).
 - `agent_registry` / `skill_registry` - name/version/description/source_file,
   `registered_at`. Note: `registered_at` reflects the last time that exact
   version was seen by a scan, not when it was first adopted - to find when a
   version actually started being used, look at `min(timestamp)` for that
   version in `agent_usage`/`agent_events` instead.
-- `model_pricing` - `model`, `effective_from`, `price_in_per_mtok`,
-  `price_out_per_mtok`. Multiple rows per model (price history) - always
-  join with the `ASOF` condition above, never just `ON model = model`.
 
 Keep queries scoped (add a time filter, a LIMIT, a GROUP BY) rather than
 pulling wide raw dumps - the point of delegating to you is to keep large

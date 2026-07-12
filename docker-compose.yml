@@ -6,7 +6,6 @@ x-clickhouse-port: &clickhouse-port ${CLICKHOUSE_PORT:-8123}
 x-clickhouse-http-port: &clickhouse-http-port ${CLICKHOUSE_HTTP_PORT:-8123}
 x-clickhouse-native-port: &clickhouse-native-port ${CLICKHOUSE_NATIVE_PORT:-9000}
 
-x-ingest-api-port: &ingest-api-port ${INGEST_API_PORT:-8000}
 x-mcp-server-port: &mcp-server-port ${MCP_SERVER_PORT:-8001}
 x-grafana-port: &grafana-port ${GRAFANA_PORT:-3000}
 
@@ -26,6 +25,8 @@ services:
       CLICKHOUSE_USER: *clickhouse-user
       CLICKHOUSE_PASSWORD: *clickhouse-password
       CLICKHOUSE_DB: *clickhouse-database
+    # 3.6x real observed peak (419MiB) - heaviest CPU user of the stack, the
+    # analytical CTE/window-function panels can spike higher than idle usage.
     mem_limit: 2g
     ports:
       - target: 8123
@@ -48,26 +49,6 @@ services:
     networks:
       - receipt-goblin
 
-  ingest-api:
-    build: ./ingest-api
-    container_name: receipt-goblin-ingest-api
-    ports:
-      - target: 8000
-        published: *ingest-api-port
-    environment:
-      CLICKHOUSE_HOST: *clickhouse-host
-      CLICKHOUSE_PORT: *clickhouse-port
-      CLICKHOUSE_USER: *clickhouse-user
-      CLICKHOUSE_PASSWORD: *clickhouse-password
-      CLICKHOUSE_DATABASE: *clickhouse-database
-    mem_limit: 256m
-    restart: always
-    depends_on:
-      clickhouse:
-        condition: service_healthy
-    networks:
-      - receipt-goblin
-
   grafana:
     image: grafana/grafana:13.1.0
     container_name: receipt-goblin-grafana
@@ -84,7 +65,7 @@ services:
       CLICKHOUSE_PASSWORD: *clickhouse-password
       CLICKHOUSE_DATABASE: *clickhouse-database
     entrypoint: ["/bin/sh", "/docker-entrypoint-custom.sh"]
-    mem_limit: 1g
+    mem_limit: 512m
     restart: always
     volumes:
       - grafana-data:/var/lib/grafana
@@ -92,6 +73,11 @@ services:
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning-templates/datasources:ro
       - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
       - ./grafana/dashboards:/var/lib/grafana/dashboards
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -121,6 +107,11 @@ services:
       CLICKHOUSE_DATABASE: *clickhouse-database
     mem_limit: 256m
     restart: always
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -146,8 +137,49 @@ services:
     ports:
       - target: 8000
         published: *webhook-port
+    environment:
+      CLICKHOUSE_HOST: *clickhouse-host
+      CLICKHOUSE_PORT: *clickhouse-port
+      CLICKHOUSE_USER: *clickhouse-user
+      CLICKHOUSE_PASSWORD: *clickhouse-password
+      CLICKHOUSE_DATABASE: *clickhouse-database
     mem_limit: 128m
     restart: always
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - receipt-goblin
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: receipt-goblin-litellm
+    ports:
+      - target: 4000
+        published: *litellm-port
+    environment:
+      WEBHOOK_URL: *webhook-url
+      LITELLM_MASTER_KEY: *litellm-master-key
+      DATABASE_URL: *litellm-db-url
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      webhook:
+        condition: service_healthy
+      litellm-db:
+        condition: service_healthy
     networks:
       - receipt-goblin
 
@@ -167,27 +199,6 @@ services:
       retries: 20
     mem_limit: 256m
     restart: always
-    networks:
-      - receipt-goblin
-
-  litellm:
-    image: ghcr.io/berriai/litellm:main-latest
-    container_name: receipt-goblin-litellm
-    ports:
-      - target: 4000
-        published: *litellm-port
-    environment:
-      WEBHOOK_URL: *webhook-url
-      LITELLM_MASTER_KEY: *litellm-master-key
-      DATABASE_URL: *litellm-db-url
-    volumes:
-      - ./litellm/config.yaml:/app/config.yaml:ro
-    command: ["--config", "/app/config.yaml", "--port", "4000"]
-    depends_on:
-      webhook:
-        condition: service_started
-      litellm-db:
-        condition: service_healthy
     networks:
       - receipt-goblin
 

@@ -26,9 +26,35 @@ CREATE TABLE IF NOT EXISTS skill_registry
 ENGINE = ReplacingMergeTree(registered_at)
 ORDER BY (skill_name, version);
 
+-- agent_id -> subagent_type lookup, recovered from the orchestrator's own
+-- LiteLLM call: an Agent tool_use block paired with the tool_result that
+-- follows it (containing "agentId: <hex>") tells us what a given agent_id
+-- actually is. Populated by webhook/src/clickhouse_ingest.py before it
+-- writes any row whose agent_invocation_id needs resolving - see AGENTS.md.
+CREATE TABLE IF NOT EXISTS agent_invocations
+(
+    agent_id      String,
+    session_id    String,
+    subagent_type String,
+    description   String,
+    spawned_at    DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(spawned_at)
+ORDER BY (agent_id);
+
 -- One row per lifecycle event (hook invocation). raw_payload keeps the full
 -- untouched JSON Claude Code sent, so any field missed by the extracted
 -- columns can still be recovered later.
+--
+-- PARTITION BY/ORDER BY: nearly every dashboard query filters by a time
+-- range first (across many sessions), and only two panels (Full trace, Call
+-- stack) filter by a specific session_id - so timestamp leads the sort key
+-- for partition/granule pruning on the common case, with session_id second
+-- for the two session-scoped panels (cheap once already time/partition-
+-- pruned, since one session's rows cluster in a narrow time window anyway).
+-- Monthly partitions let ClickHouse skip whole months outside the queried
+-- range instead of scanning the entire table. Skip indexes below accelerate
+-- the has([...], col)/!= ''/startsWith(...) filters used almost everywhere.
 CREATE TABLE IF NOT EXISTS agent_events
 (
     timestamp         DateTime64(3),
@@ -44,16 +70,52 @@ CREATE TABLE IF NOT EXISTS agent_events
     agent_version     String,
     skill_name        String,
     skill_version     String,
+    -- Slash command that kicked off the current chain of calls (e.g.
+    -- "whatsup"), recovered from the "<command-name>" tag Claude Code
+    -- injects into the triggering user message - see
+    -- webhook/src/clickhouse_ingest.py:_active_command_name. Deliberately
+    -- has no version column: commands are meant to stay a stable,
+    -- version-independent entry point even when the skill/logic behind
+    -- them is renamed on every version bump.
+    command_name      String DEFAULT '',
+    -- x-claude-code-agent-id when this row is a subagent's own call, blank
+    -- for the orchestrator's own turns. See agent_invocations above.
+    agent_invocation_id String DEFAULT '',
     status            LowCardinality(String),
     latency_ms        Nullable(UInt32),
-    raw_payload       String
+    -- Set when this call's incoming "messages" ends with a tool_result
+    -- marked is_error - i.e. this call is reacting to a tool that just
+    -- failed. Recovered at ingest time only (from "messages", which is
+    -- dropped from raw_payload to keep rows small) - not backfillable from
+    -- already-ingested rows the way tool_name/cost were, since the source
+    -- data is gone once ingested. Distinct from this row's own tool_name,
+    -- which is whatever tool (if any) THIS call's own response goes on to
+    -- invoke next.
+    failed_tool_name  String DEFAULT '',
+    failed_tool_args  String DEFAULT '',
+    failed_tool_error String DEFAULT '',
+    raw_payload       String,
+    INDEX idx_tool_name tool_name TYPE bloom_filter GRANULARITY 4,
+    INDEX idx_agent_name agent_name TYPE bloom_filter GRANULARITY 4,
+    INDEX idx_skill_name skill_name TYPE bloom_filter GRANULARITY 4,
+    INDEX idx_command_name command_name TYPE bloom_filter GRANULARITY 4,
+    INDEX idx_user_id user_id TYPE bloom_filter GRANULARITY 4,
+    INDEX idx_failed_tool_name failed_tool_name TYPE bloom_filter GRANULARITY 4
 )
 ENGINE = MergeTree
-ORDER BY (session_id, timestamp);
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (timestamp, session_id);
 
--- One row per model call (usage report). Cost is intentionally not stored
--- here - it is derived at query time via ASOF JOIN against model_pricing,
--- so historical price changes never distort past cost figures.
+-- One row per model call (usage report). cost/input_cost/output_cost come
+-- straight from LiteLLM's own response_cost/cost_breakdown - no local price
+-- table needed or wanted: a manually-maintained model_pricing table used to
+-- exist for this and was removed after it was found to overcount cost by
+-- several times whenever prompt caching was in play, since it priced every
+-- input token at full rate with no cache-read/cache-write discount. LiteLLM
+-- already prices those tiers correctly internally.
+--
+-- Same PARTITION BY/ORDER BY reasoning as agent_events above - every
+-- token/cost panel filters by time range first, never by session_id alone.
 CREATE TABLE IF NOT EXISTS agent_usage
 (
     timestamp            DateTime64(3),
@@ -66,6 +128,8 @@ CREATE TABLE IF NOT EXISTS agent_usage
     agent_version        String,
     skill_name           String,
     skill_version        String,
+    command_name         String DEFAULT '',
+    agent_invocation_id  String DEFAULT '',
     mcp_tool_name        String,
     input_tokens         UInt32,
     output_tokens        UInt32,
@@ -83,10 +147,26 @@ CREATE TABLE IF NOT EXISTS agent_usage
     cache_creation_1h_tokens UInt32 DEFAULT 0,
     cache_creation_5m_tokens UInt32 DEFAULT 0,
     web_search_requests   UInt32 DEFAULT 0,
-    web_fetch_requests    UInt32 DEFAULT 0
+    web_fetch_requests    UInt32 DEFAULT 0,
+    -- From LiteLLM's own response_cost/cost_breakdown (total/input/output
+    -- split) - see the table comment above for why these replaced a local
+    -- price table instead of being derived from one.
+    cost                  Float64 DEFAULT 0,
+    input_cost            Float64 DEFAULT 0,
+    output_cost           Float64 DEFAULT 0,
+    cache_hit             UInt8 DEFAULT 0,
+    -- completionStartTime - startTime, in ms: time to first token, distinct
+    -- from the total call latency in agent_events.latency_ms.
+    ttft_ms               UInt32 DEFAULT 0,
+    INDEX idx_agent_name agent_name TYPE bloom_filter GRANULARITY 4,
+    INDEX idx_skill_name skill_name TYPE bloom_filter GRANULARITY 4,
+    INDEX idx_command_name command_name TYPE bloom_filter GRANULARITY 4,
+    INDEX idx_mcp_tool_name mcp_tool_name TYPE bloom_filter GRANULARITY 4,
+    INDEX idx_user_id user_id TYPE bloom_filter GRANULARITY 4
 )
 ENGINE = MergeTree
-ORDER BY (session_id, timestamp);
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (timestamp, session_id);
 
 -- One row per turn (main session turn or subagent turn), holding the
 -- actual prompt sent to the model and the text it replied with. Kept
@@ -107,42 +187,16 @@ CREATE TABLE IF NOT EXISTS agent_messages
     agent_version String,
     skill_name    String,
     skill_version String,
+    command_name  String DEFAULT '',
+    agent_invocation_id String DEFAULT '',
     prompt_text   String,
     response_text String
 )
 ENGINE = MergeTree
+-- Unlike agent_events/agent_usage, this table is always looked up by a
+-- specific session_id (joined from an agent_events row) rather than
+-- scanned by time range, so session_id stays the lead sort key. Monthly
+-- partitioning is still worth it for data lifecycle (TTL/drop old months)
+-- even though it doesn't change how these particular queries are pruned.
+PARTITION BY toYYYYMM(timestamp)
 ORDER BY (session_id, turn_id);
-
--- Filled manually, never hardcoded in application code. A new price change
--- is a new row with a new effective_from - old rows are kept so historical
--- usage still costs out correctly via ASOF JOIN.
-CREATE TABLE IF NOT EXISTS model_pricing
-(
-    model               LowCardinality(String),
-    effective_from      DateTime,
-    price_in_per_mtok   Float64,
-    price_out_per_mtok  Float64
-)
-ENGINE = MergeTree
-ORDER BY (model, effective_from);
-
--- Default pricing snapshot (per Claude API list pricing, cached 2026-06-24).
--- Adding a price change later means INSERTing a new row with a new
--- effective_from, never editing these - see README section "Updating model
--- pricing without losing history".
---
--- One INSERT per row: ClickHouse's Values-format parser (used for fast
--- bulk INSERT) does not support comments between tuples inside a single
--- VALUES list, only between statements.
-INSERT INTO model_pricing (model, effective_from, price_in_per_mtok, price_out_per_mtok) VALUES
-    ('claude-fable-5', '2026-01-01 00:00:00', 10.00, 50.00);
-INSERT INTO model_pricing (model, effective_from, price_in_per_mtok, price_out_per_mtok) VALUES
-    ('claude-opus-4-8', '2026-01-01 00:00:00', 5.00, 25.00);
-INSERT INTO model_pricing (model, effective_from, price_in_per_mtok, price_out_per_mtok) VALUES
-    ('claude-haiku-4-5', '2026-01-01 00:00:00', 1.00, 5.00);
--- Sonnet 5 introductory pricing, in effect through 2026-08-31.
-INSERT INTO model_pricing (model, effective_from, price_in_per_mtok, price_out_per_mtok) VALUES
-    ('claude-sonnet-5', '2026-01-01 00:00:00', 2.00, 10.00);
--- Sonnet 5 standard pricing, effective 2026-09-01 once the intro period ends.
-INSERT INTO model_pricing (model, effective_from, price_in_per_mtok, price_out_per_mtok) VALUES
-    ('claude-sonnet-5', '2026-09-01 00:00:00', 3.00, 15.00);

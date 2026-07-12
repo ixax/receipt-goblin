@@ -34,7 +34,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  (SELECT sum(input_tokens + output_tokens) FROM agent_usage) AS \"Tokens (all time)\",\n  (SELECT sum(input_tokens + output_tokens) FROM agent_usage WHERE $__timeFilter(timestamp)) AS \"Tokens (period)\",\n  (SELECT sum(input_tokens * p.price_in_per_mtok / 1e6 + output_tokens * p.price_out_per_mtok / 1e6)\n     FROM agent_usage u ASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from) AS \"Cost (all time)\",\n  (SELECT sum(input_tokens * p.price_in_per_mtok / 1e6 + output_tokens * p.price_out_per_mtok / 1e6)\n     FROM agent_usage u ASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\n     WHERE $__timeFilter(u.timestamp)) AS \"Cost (period)\",\n  (SELECT count(DISTINCT user_id) FROM agent_events) AS \"Users\""
+                        "rawSql": "SELECT\n  (SELECT sum(input_tokens + output_tokens) FROM agent_usage) AS \"Tokens (all time)\",\n  (SELECT sum(input_tokens + output_tokens) FROM agent_usage WHERE $__timeFilter(timestamp)) AS \"Tokens (period)\",\n  (SELECT sum(cost) FROM agent_usage) AS \"Cost (all time)\",\n  (SELECT sum(cost) FROM agent_usage WHERE $__timeFilter(timestamp)) AS \"Cost (period)\",\n  (SELECT count(DISTINCT user_id) FROM agent_events) AS \"Users\""
                       }
                     },
                     "refId": "A",
@@ -231,7 +231,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  u.timestamp AS time,\n  u.user_id AS metric,\n  u.input_tokens * p.price_in_per_mtok / 1e6 + u.output_tokens * p.price_out_per_mtok / 1e6 AS value\nFROM agent_usage u\nASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\nORDER BY time"
+                        "rawSql": "SELECT\n  u.timestamp AS time,\n  u.user_id AS metric,\n  u.cost AS value\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -302,7 +302,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    if(u.agent_name = '', 'main agent', concat(u.agent_name, ' v', u.agent_version)) AS metric,\n    u.input_tokens AS in_val,\n    u.output_tokens AS out_val\n  FROM agent_usage u\n  WHERE $__timeFilter(u.timestamp)\n    AND (u.agent_name != '' OR u.skill_name = '')\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND (u.agent_name = '' OR has([${agent_version:singlequote}], concat(u.agent_name, ' v', u.agent_version)))\n    AND (u.skill_name = '' OR has([${skill_version:singlequote}], concat(u.skill_name, ' v', u.skill_version)))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    if(u.agent_name = '', 'main agent', if(u.agent_version = '', u.agent_name, concat(u.agent_name, ' v', u.agent_version))) AS metric,\n    u.input_tokens AS in_val,\n    u.output_tokens AS out_val\n  FROM agent_usage u\n  WHERE $__timeFilter(u.timestamp)\n    AND (u.agent_name != '' OR u.skill_name = '')\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND (u.agent_name = '' OR has([${agent_name:singlequote}], u.agent_name))\n    AND (u.skill_name = '' OR has([${skill_name:singlequote}], u.skill_name))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -388,7 +388,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    timestamp AS time,\n    concat(skill_name, ' v', skill_version) AS metric,\n    input_tokens AS in_val,\n    output_tokens AS out_val\n  FROM agent_usage\n  WHERE $__timeFilter(timestamp)\n    AND skill_name != ''\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND (agent_name = '' OR has([${agent_version:singlequote}], concat(agent_name, ' v', agent_version)))\n    AND (skill_name = '' OR has([${skill_version:singlequote}], concat(skill_name, ' v', skill_version)))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    timestamp AS time,\n    if(skill_version = '', skill_name, concat(skill_name, ' v', skill_version)) AS metric,\n    input_tokens AS in_val,\n    output_tokens AS out_val\n  FROM agent_usage\n  WHERE $__timeFilter(timestamp)\n    AND skill_name != ''\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND (agent_name = '' OR has([${agent_name:singlequote}], agent_name))\n    AND (skill_name = '' OR has([${skill_name:singlequote}], skill_name))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -474,7 +474,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    if(u.agent_name = '', 'main agent', concat(u.agent_name, ' v', u.agent_version)) AS metric,\n    u.input_tokens * p.price_in_per_mtok / 1e6 AS in_val,\n    u.output_tokens * p.price_out_per_mtok / 1e6 AS out_val\n  FROM agent_usage u\n  ASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\n  WHERE $__timeFilter(u.timestamp)\n    AND (u.agent_name != '' OR u.skill_name = '')\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND (u.agent_name = '' OR has([${agent_version:singlequote}], concat(u.agent_name, ' v', u.agent_version)))\n    AND (u.skill_name = '' OR has([${skill_version:singlequote}], concat(u.skill_name, ' v', u.skill_version)))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    if(u.agent_name = '', 'main agent', if(u.agent_version = '', u.agent_name, concat(u.agent_name, ' v', u.agent_version))) AS metric,\n    u.input_cost AS in_val,\n    u.output_cost AS out_val\n  FROM agent_usage u\n  WHERE $__timeFilter(u.timestamp)\n    AND (u.agent_name != '' OR u.skill_name = '')\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND (u.agent_name = '' OR has([${agent_name:singlequote}], u.agent_name))\n    AND (u.skill_name = '' OR has([${skill_name:singlequote}], u.skill_name))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -560,7 +560,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    concat(u.skill_name, ' v', u.skill_version) AS metric,\n    u.input_tokens * p.price_in_per_mtok / 1e6 AS in_val,\n    u.output_tokens * p.price_out_per_mtok / 1e6 AS out_val\n  FROM agent_usage u\n  ASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\n  WHERE $__timeFilter(u.timestamp)\n    AND u.skill_name != ''\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND (u.agent_name = '' OR has([${agent_version:singlequote}], concat(u.agent_name, ' v', u.agent_version)))\n    AND (u.skill_name = '' OR has([${skill_version:singlequote}], concat(u.skill_name, ' v', u.skill_version)))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    if(u.skill_version = '', u.skill_name, concat(u.skill_name, ' v', u.skill_version)) AS metric,\n    u.input_cost AS in_val,\n    u.output_cost AS out_val\n  FROM agent_usage u\n  WHERE $__timeFilter(u.timestamp)\n    AND u.skill_name != ''\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND (u.agent_name = '' OR has([${agent_name:singlequote}], u.agent_name))\n    AND (u.skill_name = '' OR has([${skill_name:singlequote}], u.skill_name))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -646,7 +646,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    timestamp AS time,\n    replaceOne(mcp_tool_name, 'mcp__', '') AS metric,\n    input_tokens AS in_val,\n    output_tokens AS out_val\n  FROM agent_usage\n  WHERE $__timeFilter(timestamp)\n    AND mcp_tool_name != ''\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND (agent_name = '' OR has([${agent_version:singlequote}], concat(agent_name, ' v', agent_version)))\n    AND (skill_name = '' OR has([${skill_version:singlequote}], concat(skill_name, ' v', skill_version)))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    timestamp AS time,\n    replaceOne(mcp_tool_name, 'mcp__', '') AS metric,\n    input_tokens AS in_val,\n    output_tokens AS out_val\n  FROM agent_usage\n  WHERE $__timeFilter(timestamp)\n    AND mcp_tool_name != ''\n    AND has([${mcp_tool:singlequote}], mcp_tool_name)\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND (agent_name = '' OR has([${agent_name:singlequote}], agent_name))\n    AND (skill_name = '' OR has([${skill_name:singlequote}], skill_name))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -732,7 +732,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    replaceOne(u.mcp_tool_name, 'mcp__', '') AS metric,\n    u.input_tokens * p.price_in_per_mtok / 1e6 AS in_val,\n    u.output_tokens * p.price_out_per_mtok / 1e6 AS out_val\n  FROM agent_usage u\n  ASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\n  WHERE $__timeFilter(u.timestamp)\n    AND u.mcp_tool_name != ''\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND (u.agent_name = '' OR has([${agent_version:singlequote}], concat(u.agent_name, ' v', u.agent_version)))\n    AND (u.skill_name = '' OR has([${skill_version:singlequote}], concat(u.skill_name, ' v', u.skill_version)))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    replaceOne(u.mcp_tool_name, 'mcp__', '') AS metric,\n    u.input_cost AS in_val,\n    u.output_cost AS out_val\n  FROM agent_usage u\n  WHERE $__timeFilter(u.timestamp)\n    AND u.mcp_tool_name != ''\n    AND has([${mcp_tool:singlequote}], u.mcp_tool_name)\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND (u.agent_name = '' OR has([${agent_name:singlequote}], u.agent_name))\n    AND (u.skill_name = '' OR has([${skill_name:singlequote}], u.skill_name))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -818,7 +818,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    timestamp AS time,\n    concat(multiIf(agent_name != '', 'subagent', skill_name != '', 'skill', 'main agent'), ' - ', model) AS metric,\n    input_tokens AS in_val,\n    output_tokens AS out_val\n  FROM agent_usage\n  WHERE $__timeFilter(timestamp)\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND (agent_name = '' OR has([${agent_version:singlequote}], concat(agent_name, ' v', agent_version)))\n    AND (skill_name = '' OR has([${skill_version:singlequote}], concat(skill_name, ' v', skill_version)))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    timestamp AS time,\n    concat(multiIf(agent_name != '', 'subagent', skill_name != '', 'skill', 'main agent'), ' - ', model) AS metric,\n    input_tokens AS in_val,\n    output_tokens AS out_val\n  FROM agent_usage\n  WHERE $__timeFilter(timestamp)\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND (agent_name = '' OR has([${agent_name:singlequote}], agent_name))\n    AND (skill_name = '' OR has([${skill_name:singlequote}], skill_name))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -904,7 +904,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    concat(multiIf(u.agent_name != '', 'subagent', u.skill_name != '', 'skill', 'main agent'), ' - ', u.model) AS metric,\n    u.input_tokens * p.price_in_per_mtok / 1e6 AS in_val,\n    u.output_tokens * p.price_out_per_mtok / 1e6 AS out_val\n  FROM agent_usage u\n  ASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\n  WHERE $__timeFilter(u.timestamp)\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND (u.agent_name = '' OR has([${agent_version:singlequote}], concat(u.agent_name, ' v', u.agent_version)))\n    AND (u.skill_name = '' OR has([${skill_version:singlequote}], concat(u.skill_name, ' v', u.skill_version)))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    concat(multiIf(u.agent_name != '', 'subagent', u.skill_name != '', 'skill', 'main agent'), ' - ', u.model) AS metric,\n    u.input_cost AS in_val,\n    u.output_cost AS out_val\n  FROM agent_usage u\n  WHERE $__timeFilter(u.timestamp)\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND (u.agent_name = '' OR has([${agent_name:singlequote}], u.agent_name))\n    AND (u.skill_name = '' OR has([${skill_name:singlequote}], u.skill_name))\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -990,7 +990,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    timestamp AS time,\n    concat(multiIf(agent_name != '', 'subagent', skill_name != '', 'skill', 'main agent'), ' - ', model) AS metric,\n    cache_read_tokens AS cache_read,\n    input_tokens AS input_tok\n  FROM agent_usage\n  WHERE $__timeFilter(timestamp)\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND (agent_name = '' OR has([${agent_version:singlequote}], concat(agent_name, ' v', agent_version)))\n    AND (skill_name = '' OR has([${skill_version:singlequote}], concat(skill_name, ' v', skill_version)))\n)\nSELECT time, metric, cache_read / nullIf(cache_read + input_tok, 0) AS value\nFROM filtered\nORDER BY time"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    timestamp AS time,\n    concat(multiIf(agent_name != '', 'subagent', skill_name != '', 'skill', 'main agent'), ' - ', model) AS metric,\n    cache_read_tokens AS cache_read,\n    input_tokens AS input_tok\n  FROM agent_usage\n  WHERE $__timeFilter(timestamp)\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND (agent_name = '' OR has([${agent_name:singlequote}], agent_name))\n    AND (skill_name = '' OR has([${skill_name:singlequote}], skill_name))\n)\nSELECT time, metric, cache_read / nullIf(cache_read + input_tok, 0) AS value\nFROM filtered\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -1061,7 +1061,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  u.user_id,\n  sum(u.input_tokens * p.price_in_per_mtok / 1e6 + u.output_tokens * p.price_out_per_mtok / 1e6) AS cost,\n  sum(u.input_tokens + u.output_tokens) AS tokens\nFROM agent_usage u\nASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND (u.agent_name = '' OR has([${agent_version:singlequote}], concat(u.agent_name, ' v', u.agent_version)))\n  AND (u.skill_name = '' OR has([${skill_version:singlequote}], concat(u.skill_name, ' v', u.skill_version)))\nGROUP BY u.user_id\nORDER BY cost DESC"
+                        "rawSql": "SELECT\n  u.user_id,\n  sum(u.cost) AS cost,\n  sum(u.input_tokens + u.output_tokens) AS tokens\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND (u.agent_name = '' OR has([${agent_name:singlequote}], u.agent_name))\n  AND (u.skill_name = '' OR has([${skill_name:singlequote}], u.skill_name))\nGROUP BY u.user_id\nORDER BY cost DESC"
                       }
                     },
                     "refId": "A",
@@ -1102,6 +1102,24 @@
                         "value": "locale"
                       }
                     ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "user_id"
+                    },
+                    "properties": [
+                      {
+                        "id": "links",
+                        "value": [
+                          {
+                            "title": "Filter to this user",
+                            "url": "/d/agents-overview/agents-overview?${__url_time_range}&var-user_id=${__value.text}",
+                            "targetBlank": false
+                          }
+                        ]
+                      }
+                    ]
                   }
                 ]
               }
@@ -1133,7 +1151,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH session_durations_period AS (\n  SELECT session_id, user_id, dateDiff('second', min(timestamp), max(timestamp)) AS duration_s\n  FROM agent_events\n  WHERE $__timeFilter(timestamp)\n  GROUP BY session_id, user_id\n),\nsession_durations_all AS (\n  SELECT session_id, user_id, dateDiff('second', min(timestamp), max(timestamp)) AS duration_s\n  FROM agent_events\n  GROUP BY session_id, user_id\n),\nuser_duration_period AS (\n  SELECT user_id, sum(duration_s) AS duration_s FROM session_durations_period GROUP BY user_id\n),\nuser_duration_all AS (\n  SELECT user_id, sum(duration_s) AS duration_s FROM session_durations_all GROUP BY user_id\n)\nSELECT\n  u.user_id,\n  sum(u.input_tokens) AS tokens_in,\n  sum(u.output_tokens) AS tokens_out,\n  sum(u.input_tokens * p.price_in_per_mtok / 1e6 + u.output_tokens * p.price_out_per_mtok / 1e6) AS cost,\n  any(udp.duration_s) AS session_duration_period_s,\n  any(uda.duration_s) AS session_duration_all_s\nFROM agent_usage u\nASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\nLEFT JOIN user_duration_period udp ON udp.user_id = u.user_id\nLEFT JOIN user_duration_all uda ON uda.user_id = u.user_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\nGROUP BY u.user_id\nORDER BY (tokens_in + tokens_out) DESC\nLIMIT 10"
+                        "rawSql": "WITH session_durations_period AS (\n  SELECT session_id, user_id, dateDiff('second', min(timestamp), max(timestamp)) AS duration_s\n  FROM agent_events\n  WHERE $__timeFilter(timestamp)\n  GROUP BY session_id, user_id\n),\nsession_durations_all AS (\n  SELECT session_id, user_id, dateDiff('second', min(timestamp), max(timestamp)) AS duration_s\n  FROM agent_events\n  GROUP BY session_id, user_id\n),\nuser_duration_period AS (\n  SELECT user_id, sum(duration_s) AS duration_s FROM session_durations_period GROUP BY user_id\n),\nuser_duration_all AS (\n  SELECT user_id, sum(duration_s) AS duration_s FROM session_durations_all GROUP BY user_id\n)\nSELECT\n  u.user_id,\n  sum(u.input_tokens) AS tokens_in,\n  sum(u.output_tokens) AS tokens_out,\n  sum(u.cost) AS cost,\n  any(udp.duration_s) AS session_duration_period_s,\n  any(uda.duration_s) AS session_duration_all_s\nFROM agent_usage u\nLEFT JOIN user_duration_period udp ON udp.user_id = u.user_id\nLEFT JOIN user_duration_all uda ON uda.user_id = u.user_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\nGROUP BY u.user_id\nORDER BY (tokens_in + tokens_out) DESC\nLIMIT 10"
                       }
                     },
                     "refId": "A",
@@ -1213,6 +1231,16 @@
                       {
                         "id": "displayName",
                         "value": "User"
+                      },
+                      {
+                        "id": "links",
+                        "value": [
+                          {
+                            "title": "Filter to this user",
+                            "url": "/d/agents-overview/agents-overview?${__url_time_range}&var-user_id=${__value.text}",
+                            "targetBlank": false
+                          }
+                        ]
                       }
                     ]
                   },
@@ -1348,7 +1376,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  tool_name,\n  countIf(event_type = 'PostToolUse') AS successes,\n  countIf(event_type = 'PostToolUseFailure') AS failures,\n  countIf(event_type = 'PostToolUseFailure') / (countIf(event_type = 'PostToolUse') + countIf(event_type = 'PostToolUseFailure')) AS error_rate\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND event_type IN ('PostToolUse', 'PostToolUseFailure')\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND (agent_name = '' OR has([${agent_version:singlequote}], concat(agent_name, ' v', agent_version)))\n  AND (skill_name = '' OR has([${skill_version:singlequote}], concat(skill_name, ' v', skill_version)))\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nGROUP BY tool_name\nORDER BY error_rate DESC"
+                        "rawSql": "SELECT\n  tool_name,\n  countIf(status = 'success') AS successes,\n  countIf(status = 'failure') AS failures,\n  countIf(status = 'failure') / nullIf(countIf(status = 'success') + countIf(status = 'failure'), 0) AS error_rate\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND (agent_name = '' OR has([${agent_name:singlequote}], agent_name))\n  AND (skill_name = '' OR has([${skill_name:singlequote}], skill_name))\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nGROUP BY tool_name\nORDER BY error_rate DESC"
                       }
                     },
                     "refId": "A",
@@ -1398,7 +1426,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  tool_name,\n  quantile(0.5)(latency_ms) AS p50_ms,\n  quantile(0.95)(latency_ms) AS p95_ms\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND event_type = 'PostToolUse'\n  AND latency_ms IS NOT NULL\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND (agent_name = '' OR has([${agent_version:singlequote}], concat(agent_name, ' v', agent_version)))\n  AND (skill_name = '' OR has([${skill_version:singlequote}], concat(skill_name, ' v', skill_version)))\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nGROUP BY tool_name\nORDER BY p95_ms DESC"
+                        "rawSql": "SELECT\n  tool_name,\n  quantile(0.5)(latency_ms) AS p50_ms,\n  quantile(0.95)(latency_ms) AS p95_ms\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND status = 'success'\n  AND latency_ms IS NOT NULL\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND (agent_name = '' OR has([${agent_name:singlequote}], agent_name))\n  AND (skill_name = '' OR has([${skill_name:singlequote}], skill_name))\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nGROUP BY tool_name\nORDER BY p95_ms DESC"
                       }
                     },
                     "refId": "A",
@@ -1450,7 +1478,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  tool_name,\n  countIf(event_type = 'PostToolUse') AS calls,\n  countIf(event_type = 'PostToolUseFailure') AS failures,\n  quantile(0.5)(latency_ms) AS p50_ms,\n  quantile(0.95)(latency_ms) AS p95_ms\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND event_type IN ('PostToolUse', 'PostToolUseFailure')\n  AND startsWith(tool_name, 'mcp__')\n  AND has([${mcp_tool:singlequote}], tool_name)\n  AND has([${user_id:singlequote}], user_id)\n  AND (agent_name = '' OR has([${agent_version:singlequote}], concat(agent_name, ' v', agent_version)))\n  AND (skill_name = '' OR has([${skill_version:singlequote}], concat(skill_name, ' v', skill_version)))\nGROUP BY tool_name\nORDER BY calls DESC"
+                        "rawSql": "SELECT\n  tool_name,\n  countIf(status = 'success') AS calls,\n  countIf(status = 'failure') AS failures,\n  quantile(0.5)(latency_ms) AS p50_ms,\n  quantile(0.95)(latency_ms) AS p95_ms\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND startsWith(tool_name, 'mcp__')\n  AND has([${mcp_tool:singlequote}], tool_name)\n  AND has([${user_id:singlequote}], user_id)\n  AND (agent_name = '' OR has([${agent_name:singlequote}], agent_name))\n  AND (skill_name = '' OR has([${skill_name:singlequote}], skill_name))\nGROUP BY tool_name\nORDER BY calls DESC"
                       }
                     },
                     "refId": "A",
@@ -1501,58 +1529,6 @@
           }
         }
       },
-      "panel-12": {
-        "kind": "Panel",
-        "spec": {
-          "id": 12,
-          "title": "Permission prompt wait time (p50/p95) by tool_name",
-          "description": "",
-          "links": [],
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "query": {
-                      "kind": "DataQuery",
-                      "group": "grafana-clickhouse-datasource",
-                      "version": "v0",
-                      "datasource": {
-                        "name": "clickhouse"
-                      },
-                      "spec": {
-                        "editorType": "sql",
-                        "format": 1,
-                        "rawSql": "SELECT\n  tool_name,\n  countIf(event_type = 'PreToolUse') AS approved,\n  countIf(event_type = 'PermissionDenied') AS denied,\n  quantile(0.5)(latency_ms) AS p50_ms,\n  quantile(0.95)(latency_ms) AS p95_ms\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND event_type IN ('PreToolUse', 'PermissionDenied')\n  AND latency_ms IS NOT NULL\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND (agent_name = '' OR has([${agent_version:singlequote}], concat(agent_name, ' v', agent_version)))\n  AND (skill_name = '' OR has([${skill_version:singlequote}], concat(skill_name, ' v', skill_version)))\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nGROUP BY tool_name\nORDER BY p95_ms DESC"
-                      }
-                    },
-                    "refId": "A",
-                    "hidden": false
-                  }
-                }
-              ],
-              "transformations": [],
-              "queryOptions": {}
-            }
-          },
-          "vizConfig": {
-            "kind": "VizConfig",
-            "group": "table",
-            "version": "",
-            "spec": {
-              "options": {},
-              "fieldConfig": {
-                "defaults": {
-                  "unit": "ms"
-                },
-                "overrides": []
-              }
-            }
-          }
-        }
-      },
       "panel-15": {
         "kind": "Panel",
         "spec": {
@@ -1577,7 +1553,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  timestamp,\n  user_id,\n  session_id,\n  tool_name,\n  multiIf(\n    tool_name = 'Bash', JSONExtractString(raw_payload, 'tool_input', 'command'),\n    tool_name IN ('Read', 'Edit', 'Write', 'NotebookEdit'), JSONExtractString(raw_payload, 'tool_input', 'file_path'),\n    tool_name IN ('Grep', 'Glob'), JSONExtractString(raw_payload, 'tool_input', 'pattern'),\n    tool_name = 'WebFetch', JSONExtractString(raw_payload, 'tool_input', 'url'),\n    tool_name = 'WebSearch', JSONExtractString(raw_payload, 'tool_input', 'query'),\n    tool_name = 'Task', JSONExtractString(raw_payload, 'tool_input', 'description'),\n    tool_name = 'Skill', JSONExtractString(raw_payload, 'tool_input', 'skill'),\n    ''\n  ) AS tool_detail,\n  latency_ms\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND event_type = 'PostToolUse'\n  AND latency_ms IS NOT NULL\n  AND has([${user_id:singlequote}], user_id)\n  AND (agent_name = '' OR has([${agent_version:singlequote}], concat(agent_name, ' v', agent_version)))\n  AND (skill_name = '' OR has([${skill_version:singlequote}], concat(skill_name, ' v', skill_version)))\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nORDER BY latency_ms DESC\nLIMIT 10"
+                        "rawSql": "SELECT\n  timestamp,\n  user_id,\n  session_id,\n  tool_name,\n  substring(JSONExtractString(raw_payload, 'response', 'choices', 1, 'message', 'tool_calls', 1, 'function', 'arguments'), 1, 300) AS tool_detail,\n  latency_ms\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND status = 'success'\n  AND latency_ms IS NOT NULL\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND (agent_name = '' OR has([${agent_name:singlequote}], agent_name))\n  AND (skill_name = '' OR has([${skill_name:singlequote}], skill_name))\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nORDER BY latency_ms DESC\nLIMIT 10"
                       }
                     },
                     "refId": "A",
@@ -1640,78 +1616,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  toStartOfHour(timestamp) AS time,\n  tool_name AS metric,\n  countIf(event_type = 'PostToolUseFailure') / nullIf(countIf(event_type IN ('PostToolUse', 'PostToolUseFailure')), 0) AS value\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND event_type IN ('PostToolUse', 'PostToolUseFailure')\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND (agent_name = '' OR has([${agent_version:singlequote}], concat(agent_name, ' v', agent_version)))\n  AND (skill_name = '' OR has([${skill_version:singlequote}], concat(skill_name, ' v', skill_version)))\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nGROUP BY time, metric\nORDER BY time"
-                      }
-                    },
-                    "refId": "A",
-                    "hidden": false
-                  }
-                }
-              ],
-              "transformations": [],
-              "queryOptions": {}
-            }
-          },
-          "vizConfig": {
-            "kind": "VizConfig",
-            "group": "timeseries",
-            "version": "",
-            "spec": {
-              "options": {
-                "legend": {
-                  "showLegend": false
-                }
-              },
-              "fieldConfig": {
-                "defaults": {
-                  "unit": "percentunit",
-                  "custom": {
-                    "drawStyle": "line",
-                    "lineInterpolation": "smooth",
-                    "lineWidth": 1,
-                    "spanNulls": true,
-                    "showPoints": "auto",
-                    "pointSize": 4,
-                    "thresholdsStyle": {
-                      "mode": "dashed"
-                    }
-                  },
-                  "color": {
-                    "mode": "fixed",
-                    "fixedColor": "blue"
-                  }
-                },
-                "overrides": []
-              }
-            }
-          }
-        }
-      },
-      "panel-28": {
-        "kind": "Panel",
-        "spec": {
-          "id": 28,
-          "title": "Permission-denied rate over time by tool_name",
-          "description": "",
-          "links": [],
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "query": {
-                      "kind": "DataQuery",
-                      "group": "grafana-clickhouse-datasource",
-                      "version": "v0",
-                      "datasource": {
-                        "name": "clickhouse"
-                      },
-                      "spec": {
-                        "editorType": "sql",
-                        "format": 1,
-                        "rawSql": "SELECT\n  toStartOfHour(timestamp) AS time,\n  tool_name AS metric,\n  countIf(event_type = 'PermissionDenied') / nullIf(countIf(event_type IN ('PermissionRequest', 'PermissionDenied')), 0) AS value\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND event_type IN ('PermissionRequest', 'PermissionDenied')\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\nGROUP BY time, metric\nORDER BY time"
+                        "rawSql": "SELECT\n  toStartOfHour(timestamp) AS time,\n  tool_name AS metric,\n  countIf(status = 'failure') / nullIf(countIf(status IN ('success', 'failure')), 0) AS value\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\n  AND (agent_name = '' OR has([${agent_name:singlequote}], agent_name))\n  AND (skill_name = '' OR has([${skill_name:singlequote}], skill_name))\n  AND (NOT startsWith(tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], tool_name))\nGROUP BY time, metric\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -1763,7 +1668,7 @@
         "spec": {
           "id": 7,
           "title": "Full trace of selected session(s) - click the magnifier on prompt/response/raw_payload to see full text",
-          "description": "",
+          "description": "Requires an explicit, partial session selection - returns nothing when 0 or literally all available sessions are selected, since either means \"no real filter\" and would otherwise pull every raw_payload in the table.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1782,7 +1687,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  ev.user_id,\n  ev.session_id,\n  ev.turn_id,\n  ev.sequence_id,\n  ev.timestamp,\n  ev.event_type,\n  ev.tool_name,\n  multiIf(\n    ev.tool_name = 'Bash', JSONExtractString(ev.raw_payload, 'tool_input', 'command'),\n    ev.tool_name IN ('Read', 'Edit', 'Write', 'NotebookEdit'), JSONExtractString(ev.raw_payload, 'tool_input', 'file_path'),\n    ev.tool_name IN ('Grep', 'Glob'), JSONExtractString(ev.raw_payload, 'tool_input', 'pattern'),\n    ev.tool_name = 'WebFetch', JSONExtractString(ev.raw_payload, 'tool_input', 'url'),\n    ev.tool_name = 'WebSearch', JSONExtractString(ev.raw_payload, 'tool_input', 'query'),\n    ev.tool_name = 'Task', JSONExtractString(ev.raw_payload, 'tool_input', 'description'),\n    ev.tool_name = 'Skill', JSONExtractString(ev.raw_payload, 'tool_input', 'skill'),\n    ''\n  ) AS tool_detail,\n  ev.agent_name,\n  ev.agent_version,\n  ev.skill_name,\n  ev.skill_version,\n  ev.status,\n  ev.latency_ms,\n  m.prompt_text,\n  m.response_text,\n  ev.raw_payload\nFROM agent_events ev\nLEFT JOIN agent_messages m\n  ON m.session_id = ev.session_id AND m.turn_id = ev.turn_id AND m.agent_name = ev.agent_name\nWHERE has([${session_id:singlequote}], ev.session_id)\n  AND has([${user_id:singlequote}], ev.user_id)\n  AND (ev.agent_name = '' OR has([${agent_version:singlequote}], concat(ev.agent_name, ' v', ev.agent_version)))\n  AND (ev.skill_name = '' OR has([${skill_version:singlequote}], concat(ev.skill_name, ' v', ev.skill_version)))\n  AND (NOT startsWith(ev.tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], ev.tool_name))\nORDER BY ev.session_id, ev.turn_id ASC, ev.sequence_id ASC"
+                        "rawSql": "WITH selected_session_count AS (\n  SELECT count() AS n FROM (SELECT arrayJoin([${session_id:singlequote}]) AS s) WHERE s != ''\n),\navailable_session_count AS (\n  SELECT countDistinct(session_id) AS n FROM agent_events WHERE has([${user_id:singlequote}], user_id)\n)\nSELECT\n  ev.user_id,\n  ev.session_id,\n  ev.turn_id,\n  ev.sequence_id,\n  ev.timestamp,\n  ev.event_type,\n  ev.tool_name,\n  substring(JSONExtractString(ev.raw_payload, 'response', 'choices', 1, 'message', 'tool_calls', 1, 'function', 'arguments'), 1, 300) AS tool_detail,\n  ev.agent_name,\n  ev.agent_version,\n  ev.skill_name,\n  ev.skill_version,\n  ev.status,\n  ev.latency_ms,\n  m.prompt_text,\n  m.response_text,\n  ev.raw_payload\nFROM agent_events ev\nLEFT JOIN agent_messages m\n  ON m.session_id = ev.session_id AND m.timestamp = ev.timestamp\nWHERE has([${session_id:singlequote}], ev.session_id)\n  AND has([${user_id:singlequote}], ev.user_id)\n  AND (ev.agent_name = '' OR has([${agent_name:singlequote}], ev.agent_name))\n  AND (ev.skill_name = '' OR has([${skill_name:singlequote}], ev.skill_name))\n  AND (NOT startsWith(ev.tool_name, 'mcp__') OR has([${mcp_tool:singlequote}], ev.tool_name))\n  AND (SELECT n FROM selected_session_count) > 0\n  AND (SELECT n FROM selected_session_count) < (SELECT n FROM available_session_count)\nORDER BY ev.session_id, ev.turn_id ASC, ev.sequence_id ASC"
                       }
                     },
                     "refId": "A",
@@ -1856,7 +1761,7 @@
         "spec": {
           "id": 18,
           "title": "Call stack for selected session(s)",
-          "description": "",
+          "description": "Requires an explicit, partial session selection - returns nothing when 0 or literally all available sessions are selected, since either means \"no real filter\" and would otherwise pull every call across every session at once.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1875,7 +1780,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH\nmain_rows AS (\n  SELECT\n    ev.turn_id AS turn_id,\n    ev.sequence_id AS seq,\n    ev.timestamp AS time,\n    ev.agent_name AS agent_name,\n    ev.raw_payload AS raw_payload,\n    multiIf(\n      ev.event_type = 'UserPromptSubmit', 'UserPromptSubmit',\n      ev.event_type = 'SubagentStart', 'SubagentStart',\n      ev.event_type = 'SubagentStop', 'SubagentStop',\n      ev.event_type IN ('PostToolUse', 'PostToolUseFailure'), ev.tool_name,\n      ev.event_type IN ('Stop', 'StopFailure'), ev.event_type,\n      ''\n    ) AS label,\n    multiIf(\n      ev.tool_name = 'Bash', substring(replaceRegexpAll(JSONExtractString(ev.raw_payload, 'tool_input', 'command'), '\\\\s+', ' '), 1, 70),\n      ev.tool_name IN ('Read', 'Edit', 'Write', 'NotebookEdit'), JSONExtractString(ev.raw_payload, 'tool_input', 'file_path'),\n      ev.tool_name IN ('Grep', 'Glob'), JSONExtractString(ev.raw_payload, 'tool_input', 'pattern'),\n      ev.tool_name = 'Skill', JSONExtractString(ev.raw_payload, 'tool_input', 'skill'),\n      ''\n    ) AS detail,\n    ev.status AS status,\n    ev.latency_ms AS latency_ms\n  FROM agent_events ev\n  WHERE has([${session_id:singlequote}], ev.session_id)\n    AND ev.event_type IN ('UserPromptSubmit', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'StopFailure', 'SubagentStart', 'SubagentStop')\n    AND NOT (ev.event_type IN ('SubagentStart', 'SubagentStop') AND ev.agent_name = '')\n),\nturn_bounds AS (\n  SELECT turn_id, min(time) AS turn_time FROM main_rows GROUP BY turn_id\n),\nusage_agent AS (\n  SELECT turn_id, agent_name,\n    sum(input_tokens + output_tokens) AS tok,\n    sum(input_tokens * p.price_in_per_mtok / 1e6 + output_tokens * p.price_out_per_mtok / 1e6) AS cost\n  FROM agent_usage u\n  ASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\n  WHERE has([${session_id:singlequote}], u.session_id) AND u.agent_name != ''\n  GROUP BY turn_id, agent_name\n),\nusage_main AS (\n  SELECT turn_id,\n    sum(input_tokens + output_tokens) AS tok,\n    sum(input_tokens * p.price_in_per_mtok / 1e6 + output_tokens * p.price_out_per_mtok / 1e6) AS cost\n  FROM agent_usage u\n  ASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\n  WHERE has([${session_id:singlequote}], u.session_id) AND u.agent_name = '' AND u.skill_name = ''\n  GROUP BY turn_id\n),\ncontent AS (\n  SELECT\n    m.turn_id AS turn_id, toInt64(m.seq) AS seq_order, m.time AS time,\n    concat(\n      repeat('    ', if(m.agent_name != '', 2, 1)),\n      if(m.agent_name != '', concat('[', m.agent_name, '] '), ''),\n      m.label,\n      if(m.detail != '', concat(' `', m.detail, '`'), ''),\n      if(m.status = 'error', ' [FAIL]', ''),\n      if(m.latency_ms IS NOT NULL, concat(' - ', toString(m.latency_ms), 'ms'), ''),\n      if(m.label = 'SubagentStop' AND ua.tok > 0, concat(' - ', toString(ua.tok), ' tok - $', toString(round(ua.cost, 4))), ''),\n      if(m.label IN ('Stop', 'StopFailure') AND um.tok > 0, concat(' - ', toString(um.tok), ' tok - $', toString(round(um.cost, 4))), '')\n    ) AS call,\n    m.raw_payload AS raw_payload\n  FROM main_rows m\n  LEFT JOIN usage_agent ua ON ua.turn_id = m.turn_id AND ua.agent_name = m.agent_name AND m.agent_name != ''\n  LEFT JOIN usage_main um ON um.turn_id = m.turn_id\n),\nheaders AS (\n  SELECT turn_id, toInt64(-1) AS seq_order, turn_time AS time,\n    concat('Turn ', toString(turn_id)) AS call, '{}' AS raw_payload\n  FROM turn_bounds\n)\nSELECT time, turn_id, call, raw_payload FROM (\n  SELECT * FROM headers UNION ALL SELECT * FROM content\n) ORDER BY turn_id, seq_order"
+                        "rawSql": "WITH selected_session_count AS (\n  SELECT count() AS n FROM (SELECT arrayJoin([${session_id:singlequote}]) AS s) WHERE s != ''\n),\navailable_session_count AS (\n  SELECT countDistinct(session_id) AS n FROM agent_events WHERE has([${user_id:singlequote}], user_id)\n),\nusage_by_call AS (\n  SELECT u.session_id, u.timestamp,\n    sum(u.input_tokens + u.output_tokens) AS tok,\n    sum(u.cost) AS cost\n  FROM agent_usage u\n  WHERE has([${session_id:singlequote}], u.session_id)\n    AND (SELECT n FROM selected_session_count) > 0\n    AND (SELECT n FROM selected_session_count) < (SELECT n FROM available_session_count)\n  GROUP BY u.session_id, u.timestamp\n)\nSELECT\n  ev.timestamp AS time,\n  ev.session_id AS session_id,\n  concat(\n    if(ev.agent_name != '', concat('[', ev.agent_name, if(ev.agent_version != '', concat(' v', ev.agent_version), ''), '] '), ''),\n    if(ev.command_name != '', concat('/', ev.command_name, ' '), ''),\n    if(ev.skill_name != '', concat('(', ev.skill_name, if(ev.skill_version != '', concat(' v', ev.skill_version), ''), ') '), ''),\n    if(ev.tool_name = '', 'reply', concat(\n      ev.tool_name,\n      ' `', substring(replaceRegexpAll(JSONExtractString(ev.raw_payload, 'response', 'choices', 1, 'message', 'tool_calls', 1, 'function', 'arguments'), '\\\\s+', ' '), 1, 70), '`'\n    )),\n    if(ev.status = 'failure', ' [FAIL]', ''),\n    if(ev.latency_ms IS NOT NULL, concat(' - ', toString(ev.latency_ms), 'ms'), ''),\n    if(u.tok > 0, concat(' - ', toString(u.tok), ' tok - $', toString(round(u.cost, 4))), '')\n  ) AS call,\n  ev.raw_payload AS raw_payload\nFROM agent_events ev\nLEFT JOIN usage_by_call u ON u.session_id = ev.session_id AND u.timestamp = ev.timestamp\nWHERE has([${session_id:singlequote}], ev.session_id)\n  AND (SELECT n FROM selected_session_count) > 0\n  AND (SELECT n FROM selected_session_count) < (SELECT n FROM available_session_count)\nORDER BY ev.session_id, ev.timestamp"
                       }
                     },
                     "refId": "A",
@@ -2017,7 +1922,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  u.session_id,\n  u.user_id,\n  any(ev.started_at) AS started_at,\n  sum(u.input_tokens + u.output_tokens) AS tokens,\n  sum(u.input_tokens * p.price_in_per_mtok / 1e6 + u.output_tokens * p.price_out_per_mtok / 1e6) AS cost,\n  any(ev.duration_s) AS duration_s\nFROM agent_usage u\nASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\nLEFT JOIN (\n  SELECT session_id, min(timestamp) AS started_at, dateDiff('second', min(timestamp), max(timestamp)) AS duration_s\n  FROM agent_events\n  GROUP BY session_id\n) ev ON u.session_id = ev.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND (u.agent_name = '' OR has([${agent_version:singlequote}], concat(u.agent_name, ' v', u.agent_version)))\n  AND (u.skill_name = '' OR has([${skill_version:singlequote}], concat(u.skill_name, ' v', u.skill_version)))\nGROUP BY u.session_id, u.user_id\nORDER BY cost DESC\nLIMIT 10"
+                        "rawSql": "SELECT\n  u.session_id,\n  u.user_id,\n  any(ev.started_at) AS started_at,\n  sum(u.input_tokens + u.output_tokens) AS tokens,\n  sum(u.cost) AS cost,\n  any(ev.duration_s) AS duration_s\nFROM agent_usage u\nLEFT JOIN (\n  SELECT session_id, min(timestamp) AS started_at, dateDiff('second', min(timestamp), max(timestamp)) AS duration_s\n  FROM agent_events\n  GROUP BY session_id\n) ev ON u.session_id = ev.session_id\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND (u.agent_name = '' OR has([${agent_name:singlequote}], u.agent_name))\n  AND (u.skill_name = '' OR has([${skill_name:singlequote}], u.skill_name))\nGROUP BY u.session_id, u.user_id\nORDER BY cost DESC\nLIMIT 10"
                       }
                     },
                     "refId": "A",
@@ -2051,6 +1956,54 @@
                         "value": "s"
                       }
                     ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "session_id"
+                    },
+                    "properties": [
+                      {
+                        "id": "links",
+                        "value": [
+                          {
+                            "title": "Filter to this session",
+                            "url": "/d/agents-overview/agents-overview?${__url_time_range}&var-session_id=${__value.text}",
+                            "targetBlank": false
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "user_id"
+                    },
+                    "properties": [
+                      {
+                        "id": "links",
+                        "value": [
+                          {
+                            "title": "Filter to this user",
+                            "url": "/d/agents-overview/agents-overview?${__url_time_range}&var-user_id=${__value.text}",
+                            "targetBlank": false
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "tokens"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "locale"
+                      }
+                    ]
                   }
                 ]
               }
@@ -2082,7 +2035,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  u.session_id,\n  u.turn_id,\n  u.user_id,\n  u.agent_name,\n  m.prompt_text,\n  m.response_text,\n  sum(u.input_tokens + u.output_tokens) AS total_tokens\nFROM agent_usage u\nLEFT JOIN agent_messages m\n  ON m.session_id = u.session_id AND m.turn_id = u.turn_id AND m.agent_name = u.agent_name\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND (u.agent_name = '' OR has([${agent_version:singlequote}], concat(u.agent_name, ' v', u.agent_version)))\n  AND (u.skill_name = '' OR has([${skill_version:singlequote}], concat(u.skill_name, ' v', u.skill_version)))\nGROUP BY u.session_id, u.turn_id, u.user_id, u.agent_name, m.prompt_text, m.response_text\nORDER BY total_tokens DESC\nLIMIT 10"
+                        "rawSql": "SELECT\n  u.session_id,\n  u.user_id,\n  u.agent_name,\n  m.prompt_text,\n  m.response_text,\n  sum(u.input_tokens + u.output_tokens) AS total_tokens\nFROM agent_usage u\nLEFT JOIN agent_messages m\n  ON m.session_id = u.session_id AND m.timestamp = u.timestamp\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND (u.agent_name = '' OR has([${agent_name:singlequote}], u.agent_name))\n  AND (u.skill_name = '' OR has([${skill_name:singlequote}], u.skill_name))\nGROUP BY u.session_id, u.user_id, u.agent_name, m.prompt_text, m.response_text\nORDER BY total_tokens DESC\nLIMIT 10"
                       }
                     },
                     "refId": "A",
@@ -2138,6 +2091,42 @@
                         "value": "locale"
                       }
                     ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "session_id"
+                    },
+                    "properties": [
+                      {
+                        "id": "links",
+                        "value": [
+                          {
+                            "title": "Filter to this session",
+                            "url": "/d/agents-overview/agents-overview?${__url_time_range}&var-session_id=${__value.text}",
+                            "targetBlank": false
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "user_id"
+                    },
+                    "properties": [
+                      {
+                        "id": "links",
+                        "value": [
+                          {
+                            "title": "Filter to this user",
+                            "url": "/d/agents-overview/agents-overview?${__url_time_range}&var-user_id=${__value.text}",
+                            "targetBlank": false
+                          }
+                        ]
+                      }
+                    ]
                   }
                 ]
               }
@@ -2150,7 +2139,7 @@
         "spec": {
           "id": 9,
           "title": "Current agent/skill versions",
-          "description": "",
+          "description": "Currently always empty: agent_registry/skill_registry are only ever written by the retired transcript-reading hooks pipeline (.claude/hooks/register_agents.py, deleted). Nothing in the current LiteLLM-only ingestion path writes to these tables. Needs a future client-side hook to populate again - not a query bug.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2200,7 +2189,7 @@
         "spec": {
           "id": 23,
           "title": "Agent version-change impact (before vs after adopting current version)",
-          "description": "",
+          "description": "Empty until an agent/skill actually has 2+ distinct versions observed in agent_usage - by design, this shows nothing for a brand-new agent/skill on its first version. Not a query bug.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2219,7 +2208,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH usage_f AS (\n  SELECT u.*, u.input_tokens * p.price_in_per_mtok / 1e6 + u.output_tokens * p.price_out_per_mtok / 1e6 AS cost\n  FROM agent_usage u\n  ASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\n  WHERE has([${user_id:singlequote}], u.user_id) AND has([${model:singlequote}], u.model)\n),\nevents_f AS (\n  SELECT * FROM agent_events WHERE has([${user_id:singlequote}], user_id)\n),\nversion_starts AS (\n  SELECT agent_name, agent_version, min(timestamp) AS started_at\n  FROM usage_f\n  WHERE agent_name != ''\n  GROUP BY agent_name, agent_version\n),\nordered AS (\n  SELECT *,\n    lagInFrame(agent_version) OVER (PARTITION BY agent_name ORDER BY started_at) AS prev_version,\n    lagInFrame(started_at) OVER (PARTITION BY agent_name ORDER BY started_at) AS prev_started_at,\n    row_number() OVER (PARTITION BY agent_name ORDER BY started_at DESC) AS rn\n  FROM version_starts\n),\ntransitions AS (\n  SELECT agent_name, agent_version AS current_version, started_at, prev_version, prev_started_at\n  FROM ordered\n  WHERE rn = 1 AND prev_version != ''\n),\nusage_after AS (\n  SELECT t.agent_name, t.current_version, t.prev_version, t.started_at,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp >= t.started_at) AS avg_tokens_after,\n    avgIf(uf.cost, uf.timestamp >= t.started_at) AS avg_cost_after\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.agent_name = t.agent_name AND uf.agent_version = t.current_version\n  GROUP BY t.agent_name, t.current_version, t.prev_version, t.started_at\n),\nusage_before AS (\n  SELECT t.agent_name, t.current_version,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_tokens_before,\n    avgIf(uf.cost, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_cost_before\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.agent_name = t.agent_name AND uf.agent_version = t.prev_version\n  GROUP BY t.agent_name, t.current_version\n),\nevents_after AS (\n  SELECT t.agent_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp >= t.started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp >= t.started_at), 0) AS error_rate_after\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.agent_name = t.agent_name AND ev.agent_version = t.current_version\n  GROUP BY t.agent_name, t.current_version\n),\nevents_before AS (\n  SELECT t.agent_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at), 0) AS error_rate_before\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.agent_name = t.agent_name AND ev.agent_version = t.prev_version\n  GROUP BY t.agent_name, t.current_version\n)\nSELECT\n  ua.agent_name, ua.prev_version, ua.current_version, ua.started_at,\n  ub.avg_tokens_before, ua.avg_tokens_after,\n  ub.avg_cost_before, ua.avg_cost_after,\n  eb.error_rate_before, ea.error_rate_after\nFROM usage_after ua\nLEFT JOIN usage_before ub ON ub.agent_name = ua.agent_name AND ub.current_version = ua.current_version\nLEFT JOIN events_after ea ON ea.agent_name = ua.agent_name AND ea.current_version = ua.current_version\nLEFT JOIN events_before eb ON eb.agent_name = ua.agent_name AND eb.current_version = ua.current_version\nORDER BY ua.agent_name"
+                        "rawSql": "WITH usage_f AS (\n  SELECT *\n  FROM agent_usage\n  WHERE has([${user_id:singlequote}], user_id) AND has([${model:singlequote}], model)\n),\nevents_f AS (\n  SELECT * FROM agent_events WHERE has([${user_id:singlequote}], user_id)\n),\nversion_starts AS (\n  SELECT agent_name, agent_version, min(timestamp) AS started_at\n  FROM usage_f\n  WHERE agent_name != ''\n  GROUP BY agent_name, agent_version\n),\nordered AS (\n  SELECT *,\n    lagInFrame(agent_version) OVER (PARTITION BY agent_name ORDER BY started_at) AS prev_version,\n    lagInFrame(started_at) OVER (PARTITION BY agent_name ORDER BY started_at) AS prev_started_at,\n    row_number() OVER (PARTITION BY agent_name ORDER BY started_at DESC) AS rn\n  FROM version_starts\n),\ntransitions AS (\n  SELECT agent_name, agent_version AS current_version, started_at, prev_version, prev_started_at\n  FROM ordered\n  WHERE rn = 1 AND prev_version != ''\n),\nusage_after AS (\n  SELECT t.agent_name, t.current_version, t.prev_version, t.started_at,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp >= t.started_at) AS avg_tokens_after,\n    avgIf(uf.cost, uf.timestamp >= t.started_at) AS avg_cost_after\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.agent_name = t.agent_name AND uf.agent_version = t.current_version\n  GROUP BY t.agent_name, t.current_version, t.prev_version, t.started_at\n),\nusage_before AS (\n  SELECT t.agent_name, t.current_version,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_tokens_before,\n    avgIf(uf.cost, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_cost_before\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.agent_name = t.agent_name AND uf.agent_version = t.prev_version\n  GROUP BY t.agent_name, t.current_version\n),\nevents_after AS (\n  SELECT t.agent_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp >= t.started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp >= t.started_at), 0) AS error_rate_after\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.agent_name = t.agent_name AND ev.agent_version = t.current_version\n  GROUP BY t.agent_name, t.current_version\n),\nevents_before AS (\n  SELECT t.agent_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at), 0) AS error_rate_before\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.agent_name = t.agent_name AND ev.agent_version = t.prev_version\n  GROUP BY t.agent_name, t.current_version\n)\nSELECT\n  ua.agent_name, ua.prev_version, ua.current_version, ua.started_at,\n  ub.avg_tokens_before, ua.avg_tokens_after,\n  ub.avg_cost_before, ua.avg_cost_after,\n  eb.error_rate_before, ea.error_rate_after\nFROM usage_after ua\nLEFT JOIN usage_before ub ON ub.agent_name = ua.agent_name AND ub.current_version = ua.current_version\nLEFT JOIN events_after ea ON ea.agent_name = ua.agent_name AND ea.current_version = ua.current_version\nLEFT JOIN events_before eb ON eb.agent_name = ua.agent_name AND eb.current_version = ua.current_version\nORDER BY ua.agent_name"
                       }
                     },
                     "refId": "A",
@@ -2299,7 +2288,7 @@
         "spec": {
           "id": 24,
           "title": "Skill version-change impact (before vs after adopting current version)",
-          "description": "",
+          "description": "Empty until an agent/skill actually has 2+ distinct versions observed in agent_usage - by design, this shows nothing for a brand-new agent/skill on its first version. Not a query bug.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2318,7 +2307,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH usage_f AS (\n  SELECT u.*, u.input_tokens * p.price_in_per_mtok / 1e6 + u.output_tokens * p.price_out_per_mtok / 1e6 AS cost\n  FROM agent_usage u\n  ASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\n  WHERE has([${user_id:singlequote}], u.user_id) AND has([${model:singlequote}], u.model)\n),\nevents_f AS (\n  SELECT * FROM agent_events WHERE has([${user_id:singlequote}], user_id)\n),\nversion_starts AS (\n  SELECT skill_name, skill_version, min(timestamp) AS started_at\n  FROM usage_f\n  WHERE skill_name != ''\n  GROUP BY skill_name, skill_version\n),\nordered AS (\n  SELECT *,\n    lagInFrame(skill_version) OVER (PARTITION BY skill_name ORDER BY started_at) AS prev_version,\n    lagInFrame(started_at) OVER (PARTITION BY skill_name ORDER BY started_at) AS prev_started_at,\n    row_number() OVER (PARTITION BY skill_name ORDER BY started_at DESC) AS rn\n  FROM version_starts\n),\ntransitions AS (\n  SELECT skill_name, skill_version AS current_version, started_at, prev_version, prev_started_at\n  FROM ordered\n  WHERE rn = 1 AND prev_version != ''\n),\nusage_after AS (\n  SELECT t.skill_name, t.current_version, t.prev_version, t.started_at,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp >= t.started_at) AS avg_tokens_after,\n    avgIf(uf.cost, uf.timestamp >= t.started_at) AS avg_cost_after\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.skill_name = t.skill_name AND uf.skill_version = t.current_version\n  GROUP BY t.skill_name, t.current_version, t.prev_version, t.started_at\n),\nusage_before AS (\n  SELECT t.skill_name, t.current_version,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_tokens_before,\n    avgIf(uf.cost, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_cost_before\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.skill_name = t.skill_name AND uf.skill_version = t.prev_version\n  GROUP BY t.skill_name, t.current_version\n),\nevents_after AS (\n  SELECT t.skill_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp >= t.started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp >= t.started_at), 0) AS error_rate_after\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.skill_name = t.skill_name AND ev.skill_version = t.current_version\n  GROUP BY t.skill_name, t.current_version\n),\nevents_before AS (\n  SELECT t.skill_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at), 0) AS error_rate_before\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.skill_name = t.skill_name AND ev.skill_version = t.prev_version\n  GROUP BY t.skill_name, t.current_version\n)\nSELECT\n  ua.skill_name, ua.prev_version, ua.current_version, ua.started_at,\n  ub.avg_tokens_before, ua.avg_tokens_after,\n  ub.avg_cost_before, ua.avg_cost_after,\n  eb.error_rate_before, ea.error_rate_after\nFROM usage_after ua\nLEFT JOIN usage_before ub ON ub.skill_name = ua.skill_name AND ub.current_version = ua.current_version\nLEFT JOIN events_after ea ON ea.skill_name = ua.skill_name AND ea.current_version = ua.current_version\nLEFT JOIN events_before eb ON eb.skill_name = ua.skill_name AND eb.current_version = ua.current_version\nORDER BY ua.skill_name"
+                        "rawSql": "WITH usage_f AS (\n  SELECT *\n  FROM agent_usage\n  WHERE has([${user_id:singlequote}], user_id) AND has([${model:singlequote}], model)\n),\nevents_f AS (\n  SELECT * FROM agent_events WHERE has([${user_id:singlequote}], user_id)\n),\nversion_starts AS (\n  SELECT skill_name, skill_version, min(timestamp) AS started_at\n  FROM usage_f\n  WHERE skill_name != ''\n  GROUP BY skill_name, skill_version\n),\nordered AS (\n  SELECT *,\n    lagInFrame(skill_version) OVER (PARTITION BY skill_name ORDER BY started_at) AS prev_version,\n    lagInFrame(started_at) OVER (PARTITION BY skill_name ORDER BY started_at) AS prev_started_at,\n    row_number() OVER (PARTITION BY skill_name ORDER BY started_at DESC) AS rn\n  FROM version_starts\n),\ntransitions AS (\n  SELECT skill_name, skill_version AS current_version, started_at, prev_version, prev_started_at\n  FROM ordered\n  WHERE rn = 1 AND prev_version != ''\n),\nusage_after AS (\n  SELECT t.skill_name, t.current_version, t.prev_version, t.started_at,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp >= t.started_at) AS avg_tokens_after,\n    avgIf(uf.cost, uf.timestamp >= t.started_at) AS avg_cost_after\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.skill_name = t.skill_name AND uf.skill_version = t.current_version\n  GROUP BY t.skill_name, t.current_version, t.prev_version, t.started_at\n),\nusage_before AS (\n  SELECT t.skill_name, t.current_version,\n    avgIf(uf.input_tokens + uf.output_tokens, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_tokens_before,\n    avgIf(uf.cost, uf.timestamp < t.started_at AND uf.timestamp >= t.prev_started_at) AS avg_cost_before\n  FROM transitions t\n  LEFT JOIN usage_f uf ON uf.skill_name = t.skill_name AND uf.skill_version = t.prev_version\n  GROUP BY t.skill_name, t.current_version\n),\nevents_after AS (\n  SELECT t.skill_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp >= t.started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp >= t.started_at), 0) AS error_rate_after\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.skill_name = t.skill_name AND ev.skill_version = t.current_version\n  GROUP BY t.skill_name, t.current_version\n),\nevents_before AS (\n  SELECT t.skill_name, t.current_version,\n    countIf(ev.event_type = 'PostToolUseFailure' AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at) / nullIf(countIf(ev.event_type IN ('PostToolUse', 'PostToolUseFailure') AND ev.timestamp < t.started_at AND ev.timestamp >= t.prev_started_at), 0) AS error_rate_before\n  FROM transitions t\n  LEFT JOIN events_f ev ON ev.skill_name = t.skill_name AND ev.skill_version = t.prev_version\n  GROUP BY t.skill_name, t.current_version\n)\nSELECT\n  ua.skill_name, ua.prev_version, ua.current_version, ua.started_at,\n  ub.avg_tokens_before, ua.avg_tokens_after,\n  ub.avg_cost_before, ua.avg_cost_after,\n  eb.error_rate_before, ea.error_rate_after\nFROM usage_after ua\nLEFT JOIN usage_before ub ON ub.skill_name = ua.skill_name AND ub.current_version = ua.current_version\nLEFT JOIN events_after ea ON ea.skill_name = ua.skill_name AND ea.current_version = ua.current_version\nLEFT JOIN events_before eb ON eb.skill_name = ua.skill_name AND eb.current_version = ua.current_version\nORDER BY ua.skill_name"
                       }
                     },
                     "refId": "A",
@@ -2489,7 +2478,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  toStartOfDay(u.timestamp) AS time,\n  u.user_id AS metric,\n  sum(u.input_tokens * p.price_in_per_mtok / 1e6 + u.output_tokens * p.price_out_per_mtok / 1e6) AS value\nFROM agent_usage u\nASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\nGROUP BY time, metric\nORDER BY time"
+                        "rawSql": "SELECT\n  toStartOfDay(u.timestamp) AS time,\n  u.user_id AS metric,\n  sum(u.cost) AS value\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\nGROUP BY time, metric\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -2624,7 +2613,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  toStartOfWeek(u.timestamp) AS time,\n  u.user_id AS metric,\n  sum(u.input_tokens * p.price_in_per_mtok / 1e6 + u.output_tokens * p.price_out_per_mtok / 1e6) AS value\nFROM agent_usage u\nASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\nGROUP BY time, metric\nORDER BY time"
+                        "rawSql": "SELECT\n  toStartOfWeek(u.timestamp) AS time,\n  u.user_id AS metric,\n  sum(u.cost) AS value\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\nGROUP BY time, metric\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -2686,7 +2675,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  toStartOfWeek(u.timestamp) AS time,\n  concat(multiIf(u.agent_name != '', 'subagent', u.skill_name != '', 'skill', 'main agent'), ' - ', u.model) AS metric,\n  sum(u.input_tokens + u.output_tokens) AS value\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND (u.agent_name = '' OR has([${agent_version:singlequote}], concat(u.agent_name, ' v', u.agent_version)))\n  AND (u.skill_name = '' OR has([${skill_version:singlequote}], concat(u.skill_name, ' v', u.skill_version)))\nGROUP BY time, metric\nORDER BY time"
+                        "rawSql": "SELECT\n  toStartOfWeek(u.timestamp) AS time,\n  concat(multiIf(u.agent_name != '', 'subagent', u.skill_name != '', 'skill', 'main agent'), ' - ', u.model) AS metric,\n  sum(u.input_tokens + u.output_tokens) AS value\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND (u.agent_name = '' OR has([${agent_name:singlequote}], u.agent_name))\n  AND (u.skill_name = '' OR has([${skill_name:singlequote}], u.skill_name))\nGROUP BY time, metric\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -2744,7 +2733,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "SELECT\n  toStartOfWeek(u.timestamp) AS time,\n  concat(multiIf(u.agent_name != '', 'subagent', u.skill_name != '', 'skill', 'main agent'), ' - ', u.model) AS metric,\n  sum(u.input_tokens * p.price_in_per_mtok / 1e6 + u.output_tokens * p.price_out_per_mtok / 1e6) AS value\nFROM agent_usage u\nASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND (u.agent_name = '' OR has([${agent_version:singlequote}], concat(u.agent_name, ' v', u.agent_version)))\n  AND (u.skill_name = '' OR has([${skill_version:singlequote}], concat(u.skill_name, ' v', u.skill_version)))\nGROUP BY time, metric\nORDER BY time"
+                        "rawSql": "SELECT\n  toStartOfWeek(u.timestamp) AS time,\n  concat(multiIf(u.agent_name != '', 'subagent', u.skill_name != '', 'skill', 'main agent'), ' - ', u.model) AS metric,\n  sum(u.cost) AS value\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND has([${user_id:singlequote}], u.user_id)\n  AND has([${model:singlequote}], u.model)\n  AND (u.agent_name = '' OR has([${agent_name:singlequote}], u.agent_name))\n  AND (u.skill_name = '' OR has([${skill_name:singlequote}], u.skill_name))\nGROUP BY time, metric\nORDER BY time"
                       }
                     },
                     "refId": "A",
@@ -2775,6 +2764,247 @@
                   "unit": "currencyUSD"
                 },
                 "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-38": {
+        "kind": "Panel",
+        "spec": {
+          "id": 38,
+          "title": "Tokens by command over time",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    timestamp AS time,\n    command_name AS metric,\n    input_tokens AS in_val,\n    output_tokens AS out_val\n  FROM agent_usage\n  WHERE $__timeFilter(timestamp)\n    AND command_name != ''\n    AND has([${user_id:singlequote}], user_id)\n    AND has([${model:singlequote}], model)\n    AND has([${command_name:singlequote}], command_name)\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "locale",
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 1,
+                    "spanNulls": true,
+                    "showPoints": "auto",
+                    "pointSize": 4,
+                    "thresholdsStyle": {
+                      "mode": "dashed"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "red",
+                        "value": 6000
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-39": {
+        "kind": "Panel",
+        "spec": {
+          "id": 39,
+          "title": "Cost by command over time",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    u.timestamp AS time,\n    u.command_name AS metric,\n    u.input_cost AS in_val,\n    u.output_cost AS out_val\n  FROM agent_usage u\n  WHERE $__timeFilter(u.timestamp)\n    AND u.command_name != ''\n    AND has([${user_id:singlequote}], u.user_id)\n    AND has([${model:singlequote}], u.model)\n    AND has([${command_name:singlequote}], u.command_name)\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "currencyUSD",
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 1,
+                    "spanNulls": true,
+                    "showPoints": "auto",
+                    "pointSize": 4,
+                    "thresholdsStyle": {
+                      "mode": "dashed"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "red",
+                        "value": 0.1
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-40": {
+        "kind": "Panel",
+        "spec": {
+          "id": 40,
+          "title": "Failed tool calls",
+          "description": "Tool executions that returned an error (tool_result is_error=true), not LLM-API-level failures (those never carry a tool_name - see agent_events.status). Recovered from \"messages\" at ingest time only, so this has no historical backfill - only shows failures from calls ingested after this panel was added.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 1,
+                        "rawSql": "SELECT\n  timestamp,\n  user_id,\n  session_id,\n  failed_tool_name AS tool_name,\n  failed_tool_args AS arguments,\n  failed_tool_error AS error\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND failed_tool_name != ''\n  AND has([${user_id:singlequote}], user_id)\nORDER BY timestamp DESC\nLIMIT 20"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "",
+            "spec": {
+              "options": {},
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "session_id"
+                    },
+                    "properties": [
+                      {
+                        "id": "links",
+                        "value": [
+                          {
+                            "title": "Filter to this session",
+                            "url": "/d/agents-overview/agents-overview?${__url_time_range}&var-session_id=${__value.text}",
+                            "targetBlank": false
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -2915,6 +3145,45 @@
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-4"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "Commands",
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-38"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-39"
                                   }
                                 }
                               }
@@ -3192,19 +3461,6 @@
                         "height": 8,
                         "element": {
                           "kind": "ElementReference",
-                          "name": "panel-12"
-                        }
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "x": 0,
-                        "y": 97,
-                        "width": 24,
-                        "height": 8,
-                        "element": {
-                          "kind": "ElementReference",
                           "name": "panel-15"
                         }
                       }
@@ -3225,13 +3481,13 @@
                     {
                       "kind": "GridLayoutItem",
                       "spec": {
-                        "x": 12,
-                        "y": 159,
-                        "width": 12,
+                        "x": 0,
+                        "y": 97,
+                        "width": 24,
                         "height": 8,
                         "element": {
                           "kind": "ElementReference",
-                          "name": "panel-28"
+                          "name": "panel-40"
                         }
                       }
                     }
@@ -3415,7 +3671,7 @@
       {
         "kind": "QueryVariable",
         "spec": {
-          "name": "agent_version",
+          "name": "agent_name",
           "label": "Agent",
           "current": {
             "text": "",
@@ -3434,7 +3690,7 @@
             "spec": {
               "editorType": "sql",
               "format": 1,
-              "rawSql": "SELECT DISTINCT concat(agent_name, ' v', version) AS av FROM agent_registry ORDER BY av"
+              "rawSql": "SELECT DISTINCT agent_name FROM agent_events WHERE agent_name != '' ORDER BY agent_name"
             }
           },
           "regex": "",
@@ -3443,13 +3699,13 @@
           "multi": true,
           "includeAll": true,
           "allowCustomValue": true,
-          "description": "Value format: <agent_name> v<version>"
+          "description": ""
         }
       },
       {
         "kind": "QueryVariable",
         "spec": {
-          "name": "skill_version",
+          "name": "skill_name",
           "label": "Skill",
           "current": {
             "text": "",
@@ -3468,7 +3724,7 @@
             "spec": {
               "editorType": "sql",
               "format": 1,
-              "rawSql": "SELECT DISTINCT concat(skill_name, ' v', version) AS sv FROM skill_registry ORDER BY sv"
+              "rawSql": "SELECT DISTINCT skill_name FROM agent_events WHERE skill_name != '' ORDER BY skill_name"
             }
           },
           "regex": "",
@@ -3477,7 +3733,40 @@
           "multi": true,
           "includeAll": true,
           "allowCustomValue": true,
-          "description": "Value format: <skill_name> v<version>"
+          "description": ""
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "name": "command_name",
+          "label": "Command",
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "hide": "dontHide",
+          "refresh": "onTimeRangeChanged",
+          "skipUrlSync": false,
+          "query": {
+            "kind": "DataQuery",
+            "group": "grafana-clickhouse-datasource",
+            "version": "v0",
+            "datasource": {
+              "name": "clickhouse"
+            },
+            "spec": {
+              "editorType": "sql",
+              "format": 1,
+              "rawSql": "SELECT DISTINCT command_name FROM agent_events WHERE command_name != '' ORDER BY command_name"
+            }
+          },
+          "regex": "",
+          "sort": "alphabeticalAsc",
+          "options": [],
+          "multi": true,
+          "includeAll": true,
+          "allowCustomValue": true
         }
       },
       {

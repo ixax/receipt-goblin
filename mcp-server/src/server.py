@@ -1,16 +1,16 @@
 """MCP server exposing read access to the agent-tracking ClickHouse database.
 
-Runs as its own docker-compose service, alongside `ingest-api` (write-only)
+Runs as its own docker-compose service, alongside `webhook` (write-only)
 and `grafana`. Claude Code talks to it over Streamable HTTP (see `.mcp.json`
 at the project root), instead of `docker exec`-ing into the ClickHouse
-container the way the `whatsup` skill used to.
+container.
 
 Two tools: `whatsup`, which only ever runs its three fixed queries, and
 `query`, which accepts arbitrary SQL from the model but is validated in
 `_validate_readonly_sql` below (SELECT/WITH only, single statement, no
 DDL/DML keywords, no system tables, no remote/file/URL table functions).
 There is no separate read-only ClickHouse user (docker-compose.yml uses one
-shared user for ingest-api/mcp-server/grafana - see its comments), so
+shared user for webhook/mcp-server/grafana - see its comments), so
 this code-level validation is the only thing standing between `query` and
 a write/DDL statement - keep it strict rather than convenient.
 """
@@ -19,6 +19,8 @@ import re
 
 import clickhouse_connect
 from mcp.server.fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 # Defaults live in docker-compose.yml (single source of truth); these vars
 # are always set by the time this container starts, so no fallback here.
@@ -38,13 +40,24 @@ mcp = FastMCP("clickhouse")
 # directly as uvicorn's top-level `app` sidesteps that entirely.
 app = mcp.streamable_http_app()
 
+
+async def health(request: Request) -> JSONResponse:
+    try:
+        get_client().command("SELECT 1")
+        return JSONResponse({"status": "ok"})
+    except Exception as exc:
+        return JSONResponse({"status": "error", "detail": str(exc)}, status_code=503)
+
+
+app.add_route("/health", health, methods=["GET"])
+
 _client = None
 
 # The tables this stack actually writes to - anything else (system.*,
 # information_schema.*, a typo'd table name) is out of scope for `query`.
 _ALLOWED_TABLES = {
     "agent_events", "agent_usage", "agent_messages",
-    "agent_registry", "skill_registry", "model_pricing",
+    "agent_registry", "skill_registry",
 }
 
 # Word-boundary matched against the uppercased query - catches these
@@ -120,24 +133,24 @@ def whatsup(hours: int = 24) -> dict:
     ).result_rows[0]
     total_tokens = tokens_row[0] or 0
 
+    # LiteLLM already computes an accurate per-call cost (cache-pricing-aware)
+    # in its own response_cost, stored verbatim as agent_usage.cost - no
+    # ASOF JOIN against a manually-maintained price table needed or wanted
+    # (that table used to exist and silently overcounted cost by several
+    # times whenever prompt caching was in play, since it priced every
+    # input token at full rate with no cache discount).
     cost_row = client.query(
-        "SELECT sum(u.input_tokens * p.price_in_per_mtok / 1e6 "
-        "+ u.output_tokens * p.price_out_per_mtok / 1e6) "
-        "FROM agent_usage u "
-        "ASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from "
-        "WHERE u.timestamp >= now() - INTERVAL %(hours)s HOUR",
+        "SELECT sum(cost) FROM agent_usage "
+        "WHERE timestamp >= now() - INTERVAL %(hours)s HOUR",
         parameters={"hours": hours},
     ).result_rows[0]
     total_cost = cost_row[0]
 
     top_rows = client.query(
-        "SELECT u.user_id, "
-        "sum(u.input_tokens * p.price_in_per_mtok / 1e6 + u.output_tokens * p.price_out_per_mtok / 1e6) AS cost, "
-        "sum(u.input_tokens + u.output_tokens) AS tokens "
-        "FROM agent_usage u "
-        "ASOF LEFT JOIN model_pricing p ON u.model = p.model AND u.timestamp >= p.effective_from "
-        "WHERE u.timestamp >= now() - INTERVAL %(hours)s HOUR "
-        "GROUP BY u.user_id ORDER BY cost DESC LIMIT 5",
+        "SELECT user_id, sum(cost) AS cost, sum(input_tokens + output_tokens) AS tokens "
+        "FROM agent_usage "
+        "WHERE timestamp >= now() - INTERVAL %(hours)s HOUR "
+        "GROUP BY user_id ORDER BY cost DESC LIMIT 5",
         parameters={"hours": hours},
     ).result_rows
 
@@ -158,7 +171,7 @@ def whatsup(hours: int = 24) -> dict:
 def query(sql: str, max_rows: int = 200) -> dict:
     """Run a read-only SQL query against the agent-tracking ClickHouse tables
     (agent_events, agent_usage, agent_messages, agent_registry,
-    skill_registry, model_pricing). Only a single SELECT/WITH statement is
+    skill_registry). Only a single SELECT/WITH statement is
     allowed - no DDL/DML, no system tables, no remote/file/URL table
     functions. Results are capped at max_rows (default 200, hard cap 1000);
     set truncated=True in the response means there were more rows than that.

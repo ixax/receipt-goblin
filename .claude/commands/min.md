@@ -1,9 +1,7 @@
 ---
-name: min
 description: >
   Curated context compaction — classifies session state into active work worth keeping versus resolved noise worth discarding, then compacts accordingly.
   Manual only, CLI-agnostic (Claude Code or Codex) — invoke as /min when context has grown large but the session needs to continue, not restart.
-version: 1.1.0
 disable-model-invocation: true
 ---
 

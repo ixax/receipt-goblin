@@ -1,44 +1,37 @@
 # Agent Tracking Stack
 
 Local stack for tracking cost/efficiency of AI coding agents (Claude Code and Codex CLI) with full call-chain tracing.
-Hooks on the host POST to `ingest-api`, which writes to ClickHouse; Grafana reads from ClickHouse; a CLI session reads back out via the `mcp-server` MCP server.
+Every LLM call is routed through a local LiteLLM proxy; its `generic_api` callback POSTs the full `StandardLoggingPayload` to `webhook`, which parses and writes to ClickHouse; Grafana reads from ClickHouse; a CLI session reads back out via the `mcp-server` MCP server.
 
 ## Repository layout
 
 | Path                                      | What it is                                                                                                                                                                          |
 |--------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `clickhouse/config.d/memory.xml`          | Caps ClickHouse memory at 85% of its `mem_limit`.                                                                                                                                   |
-| `clickhouse/schema.sql`                   | DDL for all tables + `model_pricing` seed. Auto-applies only on first container start (empty volume).                                                                               |
-| `grafana/dashboards/agents_overview.json` | "Agents Overview" dashboard, `dashboard.grafana.app/v2beta1` schema, 31 panels across 6 tabs, uid `agents-overview` (stable URL).                                                   |
+| `clickhouse/schema.sql`                   | DDL for all tables. Auto-applies only on first container start (empty volume).                                                                                                      |
+| `grafana/dashboards/agents_overview.json` | "Agents Overview" dashboard, `dashboard.grafana.app/v2beta1` schema, 37 panels across 6 tabs, uid `agents-overview` (stable URL).                                                   |
 | `grafana/docker-entrypoint.sh`            | Renders the ClickHouse datasource template via `sed`, then execs Grafana.                                                                                                           |
-| `ingest-api/main.py`                      | Write-only FastAPI app: `/ingest/{event,usage,message}`, `/registry/{agent,skill}`, `/health`.                                                                                      |
+| `litellm/config.yaml`                     | LiteLLM proxy config - model list, virtual-key auth, and the `metrics_webhook` `generic_api` callback that feeds `webhook`.                                                          |
+| `webhook/src/server.py`                   | Receives LiteLLM's webhook POSTs, captures the raw body to `webhook/captures/`, and calls into `clickhouse_ingest.py`.                                                              |
+| `webhook/src/clickhouse_ingest.py`        | Parses `StandardLoggingPayload` (incl. `Agent`/`Skill` tool_use blocks in `messages`) and writes `agent_events`/`agent_usage`/`agent_messages`/`agent_invocations`.                 |
 | `mcp-server/src/server.py`                | Read-only-by-validation FastMCP server: `whatsup(hours)` (3 fixed queries) and `query(sql, max_rows)` (arbitrary SELECT/WITH; validation rules — see "Rules to not violate" below). |
-| `.mcp.json`                               | Registers `mcp-server` at `${AGENT_CLI_TRACKING_MCP_URL:-http://localhost:8001/mcp}` (Claude Code env-var expansion).                                                           |
+| `.mcp.json`                               | Registers `mcp-server` at `http://localhost:8001/mcp` (Claude Code env-var expansion).                                                           |
 | `docker-compose.yml`                      | Every service, network, volumes, `mem_limit`s. Single source of truth for `CLICKHOUSE_*` defaults.                                                                                  |
 
-`.claude/` and `.codex/` hold the hooks, agents, and skills that feed this stack - browse `.claude/hooks/`, `.claude/agents/`, `.claude/skills/`, `.codex/hooks/` directly rather than looking for a file-by-file index here.
+`.claude/` and `.codex/` hold the agents and skills that run in this repo - browse `.claude/agents/`, `.claude/skills/` directly rather than looking for a file-by-file index here.
 Each file/frontmatter is self-explanatory once opened.
 Agents and skills are picked up by their `name`/`description` frontmatter alone - that's always visible, and is the only thing that should drive when to use one.
 Don't restate "when to use X" here; if a selection criterion is missing, add it to that agent's/skill's own `description` instead.
-One non-obvious fact worth calling out because it doesn't show up just from reading either hooks file: Codex has no `$CLAUDE_PROJECT_DIR`-equivalent env var, so `.codex/hooks.json` uses an absolute path internally - not portable to another checkout as-is.
-
-Everything local and disposable lives under one gitignored root, `.state/` (never under git - see `.gitignore`):
-
-| Path                          | What it's for                                                                                   |
-|-------------------------------|----------------------------------------------------------------------------------------------------|
-| `.state/tracking/<session_id>.json` | `common.py`'s turn/sequence counters and tool/permission latency timers, one flat file per session - written by every hook call, on either CLI. |
-| `.state/MIN_DUMP.md`          | The `/min` skill's latest session snapshot - one fixed path, not per-session, overwritten on every run (see `.claude/skills/min/SKILL.md`). |
-
-Future loop-dev artifacts (e.g. `NOTES.md`, `TASKS.md`) should follow `MIN_DUMP.md`'s pattern - a fixed-name file directly under `.state/`, not a new per-session directory - unless there's a concrete reason a given file needs to be scoped per session.
+Neither CLI's transcripts are read directly anymore - `agent_name`/`skill_name` are recovered from the LiteLLM payload itself (see `clickhouse_ingest.py`'s `_agent_invocations_from_messages`/`_skill_name_from_last_turn`), so there's no hook or `.state/` bookkeeping left in this repo.
 
 ## Rules to not violate
 
-- **Skills, agents, and any config/naming this repo owns must stay CLI-agnostic.** This stack tracks Claude Code and Codex CLI equally - don't write a skill/agent body that only makes sense for one of them without saying so explicitly, and don't name a variable/file after "Claude" when the thing it controls is actually shared (`CLAUDE_TRACKING_API_URL` used to do exactly this - renamed to `AGENT_CLI_TRACKING_API_URL`, see README "Configuration"). The one exception: names Claude Code or Codex itself defines (`CLAUDE_PROJECT_DIR`, `.claude/`, `.codex/`) - don't rename those, they aren't ours to rename.
-- **No per-service env defaults in Python/entrypoint code.** `docker-compose.yml` is the only place `CLICKHOUSE_*` defaults live; `main.py`/`server.py` read them with plain `os.environ[...]`, and `grafana/docker-entrypoint.sh` asserts (`:?`) rather than re-defaulting. A second copy of the defaults has drifted before (ingest-api once silently defaulted the password to `""`).
-- **Never `UPDATE`/`ALTER` `model_pricing` rows.** Insert a new row with a new `effective_from` instead - cost is computed at query time via `ASOF JOIN`, so this keeps historical cost accurate.
+- **Skills, agents, and any config/naming this repo owns must stay CLI-agnostic.** This stack tracks Claude Code and Codex CLI equally - don't write a skill/agent body that only makes sense for one of them without saying so explicitly, and don't name a variable/file after "Claude" when the thing it controls is actually shared (a now-retired hook-era variable, `CLAUDE_TRACKING_API_URL`, once did exactly this - see git history if precedent is needed). The one exception: names Claude Code or Codex itself defines (`CLAUDE_PROJECT_DIR`, `.claude/`, `.codex/`) - don't rename those, they aren't ours to rename.
+- **No per-service env defaults in Python/entrypoint code.** `docker-compose.yml` is the only place `CLICKHOUSE_*` defaults live; `webhook/src/server.py`/`mcp-server/src/server.py` read them with plain `os.environ[...]`, and `grafana/docker-entrypoint.sh` asserts (`:?`) rather than re-defaulting. A second copy of the defaults has drifted before (the old ingest-api once silently defaulted the password to `""`).
+- **Never derive cost from a local price table again.** `agent_usage.cost`/`input_cost`/`output_cost` come straight from LiteLLM's own `response_cost`/`cost_breakdown` - a manually-maintained `model_pricing` table with an `ASOF JOIN` derivation used to exist for this and was removed after it was found to overcount cost by several times whenever prompt caching was in play (it priced every input token at full rate, ignoring the cache-read/cache-write discount LiteLLM already applies correctly).
 - **`schema.sql` changes need a manual re-apply** on an already-initialized volume: `docker exec -i agent-tracking-clickhouse clickhouse-client --multiquery < clickhouse/schema.sql`, or drop the `clickhouse-data` volume (destroys data).
 - **Bump `version` in frontmatter whenever you edit an agent's or skill's behavior.** The registry is `ReplacingMergeTree ORDER BY (name, version)`, so old rows keep pointing at the version active when they ran.
-- **ingest-api stays write-only.** All reads go through `mcp-server`, never `docker exec`-ing into ClickHouse.
+- **`webhook` stays write-only for external/interactive reads.** All human/agent investigation goes through `mcp-server`, never `docker exec`-ing into ClickHouse directly. The one exception is internal to `clickhouse_ingest.py` itself: resolving `agent_invocation_id` → `subagent_type` needs a `SELECT` against `agent_invocations` before the write it's completing - that's part of the ingestion path, not a general read API, so it doesn't count against this rule.
 - **`clickhouse-analyst`'s tools stay limited to `mcp__clickhouse__query`/`whatsup`.** Never add it Bash or any other direct ClickHouse access - all reads must go through `mcp-server`, per the rule above.
 - **`file-ops`/`script-ops` never get `git` (and `file-ops` never gets `Bash`).** Blast-radius judgment calls (`git`, `docker`) stay with the caller, not a delegate.
 - **Don't loosen `_validate_readonly_sql` in `mcp-server/src/server.py`.** There's no separate read-only ClickHouse user backing `query` - that function (single statement, SELECT/WITH only, no DDL/DML keywords, no system tables, no remote/file/URL table functions) is the only thing standing between it and a write/DDL statement.
