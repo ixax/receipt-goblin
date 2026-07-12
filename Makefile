@@ -9,7 +9,7 @@ PORT := $(if $(strip $(LITELLM_PORT)),$(LITELLM_PORT),4000)
 # Full proxy URI, in case LiteLLM isn't on localhost (a shared/remote host) -
 # LITELLM_PORT alone can't express that, so this takes precedence when set.
 URI := $(if $(strip $(LITELLM_URI)),$(LITELLM_URI),http://localhost:$(PORT))
-.PHONY: start stop env
+.PHONY: start stop env test
 
 start:
 	docker compose up -d --build
@@ -19,6 +19,15 @@ status:
 
 stop:
 	docker compose down
+
+# Runs webhook/tests (pure clickhouse_ingest.py functions, no live
+# ClickHouse needed - see webhook/tests/conftest.py). Needs
+# webhook/requirements-dev.txt installed in .venv first: `pip install -r
+# webhook/requirements-dev.txt`. webhook/pytest.ini forces per-test verbose
+# output (-v) and silences dependency warnings (urllib3/clickhouse-connect
+# deprecation noise unrelated to this repo's own code).
+test:
+	.venv/bin/python -m pytest -c webhook/pytest.ini webhook/tests
 
 # Prints export statements to route Claude Code, Codex, and other OpenAI/
 # Anthropic-SDK-based tools through the local LiteLLM proxy. Not stored in

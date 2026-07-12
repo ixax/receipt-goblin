@@ -299,16 +299,53 @@ def _agent_name_and_version_for_invocation(client, agent_invocation_id: str) -> 
         return "", ""
 
 
-def _upsert_agent_invocations(client, session_id: str, messages: Any) -> None:
+_INVOCATION_COLUMNS = ["agent_id", "session_id", "subagent_type", "description", "spawned_at"]
+_EVENT_COLUMNS = [
+    "timestamp", "user_id", "session_id", "trace_id", "parent_session_id",
+    "turn_id", "sequence_id", "event_type", "tool_name", "agent_name",
+    "agent_version", "skill_name", "skill_version", "command_name",
+    "agent_invocation_id", "status", "latency_ms",
+    "failed_tool_name", "failed_tool_args", "failed_tool_error", "raw_payload",
+]
+_USAGE_COLUMNS = [
+    "timestamp", "user_id", "session_id", "trace_id", "turn_id", "model",
+    "agent_name", "agent_version", "skill_name", "skill_version",
+    "command_name", "agent_invocation_id", "mcp_tool_name",
+    "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens",
+    "stop_reason", "service_tier", "speed",
+    "cache_creation_1h_tokens", "cache_creation_5m_tokens",
+    "web_search_requests", "web_fetch_requests",
+    "cost", "input_cost", "output_cost", "cache_hit", "ttft_ms",
+]
+_MESSAGE_COLUMNS = [
+    "timestamp", "user_id", "session_id", "trace_id", "turn_id",
+    "agent_name", "agent_version", "skill_name", "skill_version",
+    "command_name", "agent_invocation_id", "prompt_text", "response_text",
+]
+
+
+def _agent_invocation_rows(session_id: str, messages: Any, now: Optional[datetime] = None) -> list[list]:
+    now = now or datetime.now(timezone.utc)
     invocations = _agent_invocations_from_messages(messages)
-    if not invocations:
+    return [[agent_id, session_id, subagent_type, description, now] for agent_id, subagent_type, description in invocations]
+
+
+def _insert_agent_invocations(client, rows: list[list]) -> None:
+    if not rows:
         return
-    now = datetime.now(timezone.utc)
-    client.insert(
-        "agent_invocations",
-        [[agent_id, session_id, subagent_type, description, now] for agent_id, subagent_type, description in invocations],
-        column_names=["agent_id", "session_id", "subagent_type", "description", "spawned_at"],
-    )
+    client.insert("agent_invocations", rows, column_names=_INVOCATION_COLUMNS)
+
+
+def _insert_event(client, row: list) -> None:
+    client.insert("agent_events", [row], column_names=_EVENT_COLUMNS)
+
+
+def _insert_usage(client, row: list) -> None:
+    client.insert("agent_usage", [row], column_names=_USAGE_COLUMNS)
+
+
+def _insert_message(client, row: list) -> None:
+    client.insert("agent_messages", [row], column_names=_MESSAGE_COLUMNS)
 
 
 def _event_row(
@@ -464,28 +501,18 @@ def ingest_standard_logging_payload(payload: dict) -> None:
         client = get_client()
 
         messages = payload.get("messages")
-        _upsert_agent_invocations(client, session_id, messages)
+        _insert_agent_invocations(client, _agent_invocation_rows(session_id, messages))
 
         agent_invocation_id = _agent_invocation_id(payload)
         agent_name, agent_version = _agent_name_and_version_for_invocation(client, agent_invocation_id)
         skill_name, skill_version = _skill_name_and_version(payload)
         command_name = _active_command_name(messages)
 
-        client.insert(
-            "agent_events",
-            [_event_row(
-                payload, session_id, trace_id,
-                agent_name, agent_version, skill_name, skill_version,
-                command_name, agent_invocation_id,
-            )],
-            column_names=[
-                "timestamp", "user_id", "session_id", "trace_id", "parent_session_id",
-                "turn_id", "sequence_id", "event_type", "tool_name", "agent_name",
-                "agent_version", "skill_name", "skill_version", "command_name",
-                "agent_invocation_id", "status", "latency_ms",
-                "failed_tool_name", "failed_tool_args", "failed_tool_error", "raw_payload",
-            ],
-        )
+        _insert_event(client, _event_row(
+            payload, session_id, trace_id,
+            agent_name, agent_version, skill_name, skill_version,
+            command_name, agent_invocation_id,
+        ))
 
         if payload.get("status") == "success":
             usage_row = _usage_row(
@@ -494,20 +521,7 @@ def ingest_standard_logging_payload(payload: dict) -> None:
                 command_name, agent_invocation_id,
             )
             if usage_row is not None:
-                client.insert(
-                    "agent_usage",
-                    [usage_row],
-                    column_names=[
-                        "timestamp", "user_id", "session_id", "trace_id", "turn_id", "model",
-                        "agent_name", "agent_version", "skill_name", "skill_version",
-                        "command_name", "agent_invocation_id", "mcp_tool_name",
-                        "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens",
-                        "stop_reason", "service_tier", "speed",
-                        "cache_creation_1h_tokens", "cache_creation_5m_tokens",
-                        "web_search_requests", "web_fetch_requests",
-                        "cost", "input_cost", "output_cost", "cache_hit", "ttft_ms",
-                    ],
-                )
+                _insert_usage(client, usage_row)
 
             message_row = _message_row(
                 payload, session_id, trace_id,
@@ -515,15 +529,7 @@ def ingest_standard_logging_payload(payload: dict) -> None:
                 command_name, agent_invocation_id,
             )
             if message_row is not None:
-                client.insert(
-                    "agent_messages",
-                    [message_row],
-                    column_names=[
-                        "timestamp", "user_id", "session_id", "trace_id", "turn_id",
-                        "agent_name", "agent_version", "skill_name", "skill_version",
-                        "command_name", "agent_invocation_id", "prompt_text", "response_text",
-                    ],
-                )
+                _insert_message(client, message_row)
     except Exception:
         logger.exception(
             "failed to ingest LiteLLM payload into ClickHouse "

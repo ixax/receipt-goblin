@@ -1,0 +1,513 @@
+[
+  {
+    "id": "25d7feab-b9bd-4c4e-aba2-9ba69357b1cd",
+    "litellm_call_id": "25d7feab-b9bd-4c4e-aba2-9ba69357b1cd",
+    "trace_id": "ea219a89-9dd0-4f32-8c66-6f4d01e9788c",
+    "call_type": "anthropic_messages",
+    "cache_hit": false,
+    "stream": true,
+    "status": "success",
+    "status_fields": {
+      "llm_api_status": "success",
+      "guardrail_status": "not_run"
+    },
+    "custom_llm_provider": "anthropic",
+    "saved_cache_cost": 0.0,
+    "startTime": 1783858008.311951,
+    "endTime": 1783858010.669179,
+    "completionStartTime": 1783858008.313657,
+    "response_time": 0.0017061233520507812,
+    "model": "anthropic/claude-haiku-4-5",
+    "metadata": {
+      "user_api_key_hash": "17558d218db2d19bad4f2b031c98836a569891bfd7bf40011f42e464d7215f98",
+      "user_api_key_alias": "test key",
+      "user_api_key_spend": 15.036813949999996,
+      "user_api_key_max_budget": null,
+      "user_api_key_budget_reset_at": null,
+      "user_api_key_team_id": "206ec527-2402-4c8b-b5b5-8bd65b8bca0f",
+      "user_api_key_org_id": null,
+      "user_api_key_org_alias": null,
+      "user_api_key_project_id": null,
+      "user_api_key_project_alias": null,
+      "user_api_key_user_id": "default_user_id",
+      "user_api_key_team_alias": "Test",
+      "user_api_key_user_email": null,
+      "user_api_key_end_user_id": "{\"device_id\":\"cecdef58fc537c4004ceb7de000f99dae9230a5d7c7f73a4ffa56e381b617640\",\"account_uuid\":\"01f2c644-745f-4b58-a8a5-c395cbb363ac\",\"session_id\":\"1b98655a-75a4-443b-8a75-68a0e2e49d2e\"}",
+      "user_api_key_request_route": "/v1/messages",
+      "spend_logs_metadata": null,
+      "requester_ip_address": "172.18.0.1",
+      "user_agent": "claude-cli/2.1.207 (external, cli)",
+      "requester_metadata": {
+        "user_id": "{\"device_id\":\"cecdef58fc537c4004ceb7de000f99dae9230a5d7c7f73a4ffa56e381b617640\",\"account_uuid\":\"01f2c644-745f-4b58-a8a5-c395cbb363ac\",\"session_id\":\"ea219a89-9dd0-4f32-8c66-6f4d01e9788c\"}"
+      },
+      "prompt_management_metadata": null,
+      "applied_guardrails": [],
+      "mcp_tool_call_metadata": null,
+      "vector_store_request_metadata": null,
+      "usage_object": {
+        "completion_tokens": 190,
+        "prompt_tokens": 4672,
+        "total_tokens": 4862,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": null,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 190,
+          "image_tokens": null,
+          "video_tokens": null
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": null,
+          "cached_tokens": 0,
+          "text_tokens": 6,
+          "image_tokens": null,
+          "video_tokens": null,
+          "cache_creation_tokens": 4666,
+          "cache_creation_token_details": {
+            "ephemeral_5m_input_tokens": 4666,
+            "ephemeral_1h_input_tokens": 0
+          }
+        },
+        "cache_creation_input_tokens": 4666,
+        "cache_read_input_tokens": 0
+      },
+      "requester_custom_headers": {
+        "x-claude-code-session-id": "ea219a89-9dd0-4f32-8c66-6f4d01e9788c",
+        "x-stainless-arch": "x64",
+        "x-stainless-lang": "js",
+        "x-stainless-os": "MacOS",
+        "x-stainless-package-version": "0.94.0",
+        "x-stainless-retry-count": "0",
+        "x-stainless-runtime": "node",
+        "x-stainless-runtime-version": "v26.3.0",
+        "x-stainless-timeout": "600",
+        "x-app": "cli",
+        "x-claude-code-agent-id": "aac9d05f148e9ae4a"
+      },
+      "cold_storage_object_key": null,
+      "user_api_key_auth_metadata": {
+        "tag_rpm_limit": {},
+        "rpm_limit_type": "guaranteed_throughput",
+        "throttle_on_budget_exceeded": false
+      },
+      "team_alias": null,
+      "team_id": null
+    },
+    "cache_key": null,
+    "response_cost": 0.006788500000000001,
+    "cost_breakdown": {
+      "input_cost": 0.005838500000000001,
+      "output_cost": 0.0009500000000000001,
+      "total_cost": 0.006788500000000001,
+      "tool_usage_cost": 0.0,
+      "cache_creation_cost": 0.005832500000000001,
+      "original_cost": 0.006788500000000001,
+      "discount_percent": 0.0,
+      "discount_amount": 0.0,
+      "margin_percent": 0.0,
+      "margin_fixed_amount": 0.0,
+      "margin_total_amount": 0.0
+    },
+    "total_tokens": 4862,
+    "prompt_tokens": 4672,
+    "completion_tokens": 190,
+    "request_tags": [
+      "User-Agent: claude-cli",
+      "User-Agent: claude-cli/2.1.207 (external, cli)"
+    ],
+    "end_user": "{\"device_id\":\"cecdef58fc537c4004ceb7de000f99dae9230a5d7c7f73a4ffa56e381b617640\",\"account_uuid\":\"01f2c644-745f-4b58-a8a5-c395cbb363ac\",\"session_id\":\"1b98655a-75a4-443b-8a75-68a0e2e49d2e\"}",
+    "api_base": "https://api.anthropic.com/v1/messages",
+    "model_group": "claude-haiku-4-5",
+    "model_id": "6b2189907ec14453d9f6a19585eca198b4e0c9b9b37ede2a9cf25465658a3712",
+    "requester_ip_address": "172.18.0.1",
+    "user_agent": "claude-cli/2.1.207 (external, cli)",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "<system-reminder>\nAs you answer the user's questions, you can use the following context:\n# claudeMd\nCodebase and user instructions are shown below. Be sure to adhere to these instructions. IMPORTANT: These instructions OVERRIDE any default behavior and you MUST follow them exactly as written.\n\nContents of /Users/ixax/.claude/projects/-Users-ixax-PycharmProjects-claude-wrapper/memory/MEMORY.md (user's auto-memory, persists across conversations):\n\n- [Never run docker compose myself](feedback_docker_compose_user_only.md) \u2014 user runs docker compose in claude-wrapper\n- [Align markdown table pipes](feedback_markdown_table_alignment.md) \u2014 pad columns so `|` line up vertically\n- [Grafana 13.1.0 upgrade for tabs](project_grafana_13_upgrade.md) \u2014 bumped for dynamic dashboards; watch for provisioned-dashboard save bug #119450\n- [Markdown line wrapping](feedback_markdown_line_wrapping.md) \u2014 long lines, one sentence per line in prose, not hard-wrapped\n# userEmail\nThe user's email address is mail@ixax.me.\n# currentDate\nToday's date is 2026-07-12.\n\n      IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.\n</system-reminder>\n\n"
+          },
+          {
+            "type": "text",
+            "text": "Read the file /Users/ixax/PycharmProjects/claude-wrapper/Makefile and produce a short summary (under 150 words) of what it does \u2014 what targets/commands it defines and their purpose."
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "toolu_01U55bhCyEy4SfYv2uwfoegW",
+            "name": "Read",
+            "input": {
+              "file_path": "/Users/ixax/PycharmProjects/claude-wrapper/Makefile"
+            }
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "tool_use_id": "toolu_01U55bhCyEy4SfYv2uwfoegW",
+            "type": "tool_result",
+            "content": "1\tifneq (,$(wildcard ./.env))\n2\t    include .env\n3\tendif\n4\t\n5\tENV_VARS := $(shell [ -f .env ] && sed 's/=.*//' .env)\n6\tifneq ($(MAKECMDGOALS),clear_env)\n7\t    unexport $(ENV_VARS)\n8\tendif\n9\t\n10\tPORT := $(if $(strip $(LITELLM_PORT)),$(LITELLM_PORT),4000)\n11\t\n12\t.PHONY: validate_key check_env set_env clear_env\n13\t\n14\tvalidate_key:\n15\t\t@if [ -z \"$(strip $(LITELLM_VIRTUAL_KEY))\" ]; then \\\n16\t\t\techo \"\u274c Error: LITELLM_VIRTUAL_KEY is missing or empty in your .env file!\" >&2; \\\n17\t\t\texit 1; \\\n18\t\tfi\n19\t\n20\tcheck_env: validate_key\n21\t\t@echo \"Active Shell Environment Values:\"\n22\t\t@echo \"  ANTHROPIC_BASE_URL       = $${ANTHROPIC_BASE_URL:-[Not Set]}\"\n23\t\t@echo \"  ANTHROPIC_MODEL          = $${ANTHROPIC_MODEL:-[Not Set]}\"\n24\t\t@echo \"  LITELLM_VIRTUAL_KEY      = $${LITELLM_VIRTUAL_KEY:-[Not Set]}\"\n25\t\t@echo \"  ANTHROPIC_CUSTOM_HEADERS = $${ANTHROPIC_CUSTOM_HEADERS:-[Not Set]}\"\n26\t\n27\tset_env: validate_key\n28\t\t@echo 'Copy-paste and execute:'\n29\t\t@echo 'export ANTHROPIC_BASE_URL=\"http://localhost:$(PORT)\"'\n30\t\t@echo 'export ANTHROPIC_MODEL=\"claude-sonnet-5\"'\n31\t\t@echo 'export LITELLM_VIRTUAL_KEY=\"$(LITELLM_VIRTUAL_KEY)\"'\n32\t\t@echo 'export ANTHROPIC_CUSTOM_HEADERS=\"x-litellm-api-key: Bearer $(LITELLM_VIRTUAL_KEY)\"'\n33\t\n34\tclear_env:\n35\t\t@echo 'Copy-paste and execute'\n36\t\t@echo 'unset ANTHROPIC_BASE_URL'\n37\t\t@echo 'unset ANTHROPIC_MODEL'\n38\t\t@echo 'unset LITELLM_VIRTUAL_KEY'\n39\t\t@echo 'unset ANTHROPIC_CUSTOM_HEADERS'\n40\t\n41\tstart:\n42\t\tdocker compose up -d --build\n43\t\n44\tstop:\n45\t\tdocker compose down\n46\t",
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ]
+      }
+    ],
+    "response": {
+      "id": "25d7feab-b9bd-4c4e-aba2-9ba69357b1cd",
+      "created": 1783858010,
+      "model": "claude-haiku-4-5",
+      "object": "chat.completion",
+      "system_fingerprint": null,
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "message": {
+            "content": "## Summary\n\nThis Makefile manages environment configuration and Docker services for a LiteLLM proxy setup:\n\n- **validate_key**: Checks that `LITELLM_VIRTUAL_KEY` is set in `.env`\n- **check_env**: Displays current active shell environment variables for Anthropic/LiteLLM configuration\n- **set_env**: Outputs shell export commands to configure the environment to use a local LiteLLM proxy on a specified port (default 4000)\n- **clear_env**: Outputs shell unset commands to clear the environment variables\n- **start**: Launches Docker containers in detached mode with fresh build\n- **stop**: Stops and removes running Docker containers\n\nThe file also loads `.env` variables and dynamically determines the LiteLLM port from the environment or defaults to 4000.",
+            "role": "assistant",
+            "tool_calls": null,
+            "function_call": null
+          }
+        }
+      ],
+      "usage": {
+        "completion_tokens": 190,
+        "prompt_tokens": 4672,
+        "total_tokens": 4862,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": null,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 190,
+          "image_tokens": null,
+          "video_tokens": null
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": null,
+          "cached_tokens": 0,
+          "text_tokens": 6,
+          "image_tokens": null,
+          "video_tokens": null,
+          "cache_creation_tokens": 4666,
+          "cache_creation_token_details": {
+            "ephemeral_5m_input_tokens": 4666,
+            "ephemeral_1h_input_tokens": 0
+          }
+        },
+        "cache_creation_input_tokens": 4666,
+        "cache_read_input_tokens": 0
+      }
+    },
+    "model_parameters": {
+      "max_tokens": 32000,
+      "stream": true,
+      "thinking": {
+        "budget_tokens": 31999,
+        "type": "enabled"
+      },
+      "tools": [
+        {
+          "name": "Read",
+          "description": "Reads a file from the local filesystem. You can access any file directly by using this tool.\nAssume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.\n\nUsage:\n- The file_path parameter must be an absolute path, not a relative path\n- By default, it reads up to 2000 lines starting from the beginning of the file\n- When you already know which part of the file you need, only read that part. This can be important for larger files.\n- Results are returned using cat -n format, with line numbers starting at 1\n- This tool allows Claude Code to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Claude Code is a multimodal LLM.\n- This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: \"1-5\"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.\n- This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.\n- This tool can only read files, not directories. To list files in a directory, use the registered shell tool.\n- You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.\n- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.\n- Do NOT re-read a file you just edited to verify \u2014 Edit/Write would have errored if the change failed, and the harness tracks file state for you.",
+          "input_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "file_path": {
+                "description": "The absolute path to the file to read",
+                "type": "string"
+              },
+              "offset": {
+                "description": "The line number to start reading from. Only provide if the file is too large to read at once",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "limit": {
+                "description": "The number of lines to read. Only provide if the file is too large to read at once.",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "pages": {
+                "description": "Page range for PDF files (e.g., \"1-5\", \"3\", \"10-20\"). Only applicable to PDF files. Maximum 20 pages per request.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "file_path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "Grep",
+          "description": "A powerful search tool built on ripgrep\n\n  Usage:\n  - ALWAYS use Grep for search tasks. NEVER invoke `grep` or `rg` as a Bash command. The Grep tool has been optimized for correct permissions and access.\n  - Supports full regex syntax (e.g., \"log.*Error\", \"function\\s+\\w+\")\n  - Filter files with glob parameter (e.g., \"*.js\", \"**/*.tsx\") or type parameter (e.g., \"js\", \"py\", \"rust\")\n  - Output modes: \"content\" shows matching lines, \"files_with_matches\" shows only file paths (default), \"count\" shows match counts\n  - Use Agent tool for open-ended searches requiring multiple rounds\n  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use `interface\\{\\}` to find `interface{}` in Go code)\n  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like `struct \\{[\\s\\S]*?field`, use `multiline: true`\n",
+          "input_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "pattern": {
+                "description": "The regular expression pattern to search for in file contents",
+                "type": "string"
+              },
+              "path": {
+                "description": "File or directory to search in (rg PATH). Defaults to current working directory.",
+                "type": "string"
+              },
+              "glob": {
+                "description": "Glob pattern to filter files (e.g. \"*.js\", \"*.{ts,tsx}\") - maps to rg --glob",
+                "type": "string"
+              },
+              "output_mode": {
+                "description": "Output mode: \"content\" shows matching lines (supports -A/-B/-C context, -n line numbers, head_limit), \"files_with_matches\" shows file paths (supports head_limit), \"count\" shows match counts (supports head_limit). Defaults to \"files_with_matches\".",
+                "type": "string",
+                "enum": [
+                  "content",
+                  "files_with_matches",
+                  "count"
+                ]
+              },
+              "-B": {
+                "description": "Number of lines to show before each match (rg -B). Requires output_mode: \"content\", ignored otherwise.",
+                "type": "number"
+              },
+              "-A": {
+                "description": "Number of lines to show after each match (rg -A). Requires output_mode: \"content\", ignored otherwise.",
+                "type": "number"
+              },
+              "-C": {
+                "description": "Alias for context.",
+                "type": "number"
+              },
+              "context": {
+                "description": "Number of lines to show before and after each match (rg -C). Requires output_mode: \"content\", ignored otherwise.",
+                "type": "number"
+              },
+              "-n": {
+                "description": "Show line numbers in output (rg -n). Requires output_mode: \"content\", ignored otherwise. Defaults to true.",
+                "type": "boolean"
+              },
+              "-i": {
+                "description": "Case insensitive search (rg -i)",
+                "type": "boolean"
+              },
+              "-o": {
+                "description": "Print only the matched (non-empty) parts of each matching line, one match per output line (rg -o / --only-matching). Requires output_mode: \"content\", ignored otherwise. Defaults to false.",
+                "type": "boolean"
+              },
+              "type": {
+                "description": "File type to search (rg --type). Common types: js, py, rust, go, java, etc. More efficient than include for standard file types.",
+                "type": "string"
+              },
+              "head_limit": {
+                "description": "Limit output to first N lines/entries, equivalent to \"| head -N\". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). Defaults to 250 when unspecified. Pass 0 for unlimited (use sparingly \u2014 large result sets waste context).",
+                "type": "number"
+              },
+              "offset": {
+                "description": "Skip first N lines/entries before applying head_limit, equivalent to \"| tail -n +N | head -N\". Works across all output modes. Defaults to 0.",
+                "type": "number"
+              },
+              "multiline": {
+                "description": "Enable multiline mode where . matches newlines and patterns can span lines (rg -U --multiline-dotall). Default: false.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "pattern"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "Glob",
+          "description": "- Fast file pattern matching tool that works with any codebase size\n- Supports glob patterns like \"**/*.js\" or \"src/**/*.ts\"\n- Returns matching file paths sorted by modification time\n- Use this tool when you need to find files by name patterns\n- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead",
+          "input_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "pattern": {
+                "description": "The glob pattern to match files against",
+                "type": "string"
+              },
+              "path": {
+                "description": "The directory to search in. If not specified, the current working directory will be used. IMPORTANT: Omit this field to use the default directory. DO NOT enter \"undefined\" or \"null\" - simply omit it for the default behavior. Must be a valid directory path if provided.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "pattern"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "context_management": {
+        "edits": [
+          {
+            "type": "clear_thinking_20251015",
+            "keep": "all"
+          }
+        ]
+      }
+    },
+    "hidden_params": {
+      "model_id": null,
+      "cache_key": null,
+      "api_base": null,
+      "response_cost": 0.006788500000000001,
+      "additional_headers": null,
+      "litellm_overhead_time_ms": null,
+      "batch_models": null,
+      "litellm_model_name": null,
+      "usage_object": null
+    },
+    "model_map_information": {
+      "model_map_key": "anthropic/claude-haiku-4-5",
+      "model_map_value": {
+        "key": "claude-haiku-4-5",
+        "max_tokens": 64000,
+        "max_input_tokens": 200000,
+        "max_output_tokens": 64000,
+        "input_cost_per_token": 1e-06,
+        "input_cost_per_token_flex": null,
+        "input_cost_per_token_priority": null,
+        "cache_creation_input_token_cost": 1.25e-06,
+        "cache_creation_input_token_cost_above_200k_tokens": null,
+        "cache_read_input_token_cost": 1e-07,
+        "cache_read_input_token_cost_above_200k_tokens": null,
+        "cache_read_input_token_cost_above_200k_tokens_priority": null,
+        "cache_read_input_token_cost_above_272k_tokens": null,
+        "cache_read_input_token_cost_above_272k_tokens_priority": null,
+        "cache_read_input_token_cost_above_512k_tokens": null,
+        "cache_read_input_token_cost_flex": null,
+        "cache_read_input_token_cost_priority": null,
+        "cache_creation_input_token_cost_above_1hr": 2e-06,
+        "input_cost_per_character": null,
+        "input_cost_per_token_above_128k_tokens": null,
+        "input_cost_per_token_above_200k_tokens": null,
+        "input_cost_per_token_above_200k_tokens_priority": null,
+        "input_cost_per_token_above_272k_tokens": null,
+        "input_cost_per_token_above_272k_tokens_priority": null,
+        "input_cost_per_token_above_512k_tokens": null,
+        "input_cost_per_query": null,
+        "input_cost_per_second": null,
+        "input_cost_per_audio_token": null,
+        "input_cost_per_image_token": null,
+        "input_cost_per_image": null,
+        "input_cost_per_audio_per_second": null,
+        "input_cost_per_video_per_second": null,
+        "input_cost_per_token_batches": null,
+        "output_cost_per_token_batches": null,
+        "output_cost_per_token": 5e-06,
+        "output_cost_per_token_flex": null,
+        "output_cost_per_token_priority": null,
+        "regional_processing_uplift_multiplier_eu": null,
+        "regional_processing_uplift_multiplier_us": null,
+        "output_cost_per_audio_token": null,
+        "output_cost_per_character": null,
+        "output_cost_per_reasoning_token": null,
+        "output_cost_per_token_above_128k_tokens": null,
+        "output_cost_per_character_above_128k_tokens": null,
+        "output_cost_per_token_above_200k_tokens": null,
+        "output_cost_per_token_above_200k_tokens_priority": null,
+        "output_cost_per_token_above_272k_tokens": null,
+        "output_cost_per_token_above_272k_tokens_priority": null,
+        "output_cost_per_token_above_512k_tokens": null,
+        "output_cost_per_second": null,
+        "output_cost_per_second_1080p": null,
+        "output_cost_per_video_per_second": null,
+        "output_cost_per_image": null,
+        "output_cost_per_image_token": null,
+        "output_vector_size": null,
+        "citation_cost_per_token": null,
+        "tiered_pricing": null,
+        "litellm_provider": "anthropic",
+        "mode": "chat",
+        "supports_system_messages": null,
+        "supports_response_schema": true,
+        "supports_vision": true,
+        "supports_function_calling": true,
+        "supports_tool_choice": true,
+        "supports_assistant_prefill": true,
+        "supports_prompt_caching": true,
+        "supports_audio_input": null,
+        "supports_audio_output": null,
+        "supports_pdf_input": true,
+        "supports_embedding_image_input": null,
+        "supports_native_streaming": null,
+        "supports_native_structured_output": null,
+        "supports_web_search": null,
+        "supports_url_context": null,
+        "supports_reasoning": true,
+        "supports_adaptive_thinking": null,
+        "supports_none_reasoning_effort": null,
+        "supports_minimal_reasoning_effort": null,
+        "supports_low_reasoning_effort": null,
+        "supports_xhigh_reasoning_effort": null,
+        "supports_max_reasoning_effort": null,
+        "bedrock_output_config_effort_ceiling": null,
+        "bedrock_converse_supports_strict_tools": null,
+        "supports_computer_use": true,
+        "search_context_cost_per_query": null,
+        "web_search_billing_unit": null,
+        "tpm": null,
+        "rpm": null,
+        "ocr_cost_per_page": null,
+        "ocr_cost_per_credit": null,
+        "annotation_cost_per_page": null,
+        "provider_specific_entry": null,
+        "uses_embed_content": null,
+        "supports_image_size": null,
+        "supported_openai_params": [
+          "stream",
+          "stop",
+          "temperature",
+          "top_p",
+          "max_tokens",
+          "max_completion_tokens",
+          "tools",
+          "tool_choice",
+          "extra_headers",
+          "parallel_tool_calls",
+          "response_format",
+          "user",
+          "web_search_options",
+          "speed",
+          "context_management",
+          "cache_control",
+          "thinking",
+          "reasoning_effort"
+        ]
+      }
+    },
+    "error_str": null,
+    "error_information": {
+      "error_code": "",
+      "error_class": "",
+      "llm_provider": "",
+      "traceback": "",
+      "error_message": "",
+      "error_rate_limit_category": null,
+      "error_rate_limit_type": null
+    },
+    "response_cost_failure_debug_info": null,
+    "guardrail_information": null,
+    "standard_built_in_tools_params": {
+      "web_search_options": null,
+      "file_search": null
+    }
+  }
+]
