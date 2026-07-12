@@ -7,23 +7,24 @@ hook - see AGENTS.md.
 """
 import json
 import logging
-import os
 import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 import clickhouse_connect
 
+from .config import (
+    CLICKHOUSE_DATABASE,
+    CLICKHOUSE_HOST,
+    CLICKHOUSE_PASSWORD,
+    CLICKHOUSE_PORT,
+    CLICKHOUSE_USER,
+)
+
 _AGENT_ID_RE = re.compile(r"agentId:\s*([0-9a-f]+)")
 _COMMAND_NAME_RE = re.compile(r"<command-name>/?(.*?)</command-name>")
 
 logger = logging.getLogger("webhook.clickhouse_ingest")
-
-CLICKHOUSE_HOST = os.environ["CLICKHOUSE_HOST"]
-CLICKHOUSE_PORT = int(os.environ["CLICKHOUSE_PORT"])
-CLICKHOUSE_USER = os.environ["CLICKHOUSE_USER"]
-CLICKHOUSE_PASSWORD = os.environ["CLICKHOUSE_PASSWORD"]
-CLICKHOUSE_DATABASE = os.environ["CLICKHOUSE_DATABASE"]
 
 _client = None
 
@@ -323,6 +324,17 @@ _MESSAGE_COLUMNS = [
 ]
 _GIT_BRANCH_COLUMNS = ["session_id", "git_branch", "captured_at"]
 
+_INVOCATION_SPAWNED_AT_IDX = _INVOCATION_COLUMNS.index("spawned_at")
+_EVENT_TIMESTAMP_IDX = _EVENT_COLUMNS.index("timestamp")
+_EVENT_AGENT_NAME_IDX = _EVENT_COLUMNS.index("agent_name")
+_EVENT_AGENT_VERSION_IDX = _EVENT_COLUMNS.index("agent_version")
+_USAGE_TIMESTAMP_IDX = _USAGE_COLUMNS.index("timestamp")
+_USAGE_AGENT_NAME_IDX = _USAGE_COLUMNS.index("agent_name")
+_USAGE_AGENT_VERSION_IDX = _USAGE_COLUMNS.index("agent_version")
+_MESSAGE_TIMESTAMP_IDX = _MESSAGE_COLUMNS.index("timestamp")
+_MESSAGE_AGENT_NAME_IDX = _MESSAGE_COLUMNS.index("agent_name")
+_MESSAGE_AGENT_VERSION_IDX = _MESSAGE_COLUMNS.index("agent_version")
+
 
 def _agent_invocation_rows(session_id: str, messages: Any, now: Optional[datetime] = None) -> list[list]:
     now = now or datetime.now(timezone.utc)
@@ -556,3 +568,140 @@ def ingest_webhook_body(body: Any) -> None:
     for payload in payloads:
         if isinstance(payload, dict):
             ingest_standard_logging_payload(payload)
+
+
+def _serialize_row(row: Optional[list], timestamp_idx: int) -> Optional[list]:
+    if row is None:
+        return None
+    row = list(row)
+    row[timestamp_idx] = row[timestamp_idx].isoformat()
+    return row
+
+
+def _deserialize_row(row: Optional[list], timestamp_idx: int) -> Optional[list]:
+    if row is None:
+        return None
+    row = list(row)
+    row[timestamp_idx] = datetime.fromisoformat(row[timestamp_idx])
+    return row
+
+
+def build_event(payload: dict) -> dict:
+    """The messages-dependent, DB-free half of ingesting one
+    StandardLoggingPayload - everything that can be computed with pure
+    functions, no ClickHouse round-trip. Called synchronously in the
+    webhook's request handler (see server.py) so the only thing that goes
+    onto the Redis queue is this compact, JSON-safe dict - never the raw
+    payload, never "messages" (StandardLoggingPayload's full, ever-growing
+    conversation history - see AGENTS.md on webhook/captures size).
+
+    agent_name/agent_version can't be resolved here - that needs a SELECT
+    against agent_invocations, which only makes sense once this batch's own
+    invocation_rows have actually been inserted. Left blank; patched in by
+    ingest_events_batch() once it knows them.
+
+    Never raises internally - lets the caller (queue_client.enqueue) decide
+    whether one bad payload should drop just that item or the whole batch,
+    matching this module's usual "ingestion is best-effort" stance.
+    """
+    session_id, trace_id = _session_and_trace_id(payload)
+    messages = payload.get("messages")
+    invocation_rows = _agent_invocation_rows(session_id, messages)
+    agent_invocation_id = _agent_invocation_id(payload)
+    skill_name, skill_version = _skill_name_and_version(payload)
+    command_name = _active_command_name(messages)
+
+    event_row = _event_row(
+        payload, session_id, trace_id,
+        "", "", skill_name, skill_version,
+        command_name, agent_invocation_id,
+    )
+
+    usage_row = None
+    message_row = None
+    if payload.get("status") == "success":
+        usage_row = _usage_row(
+            payload, session_id, trace_id,
+            "", "", skill_name, skill_version,
+            command_name, agent_invocation_id,
+        )
+        message_row = _message_row(
+            payload, session_id, trace_id,
+            "", "", skill_name, skill_version,
+            command_name, agent_invocation_id,
+        )
+
+    return {
+        "agent_invocation_id": agent_invocation_id,
+        "invocation_rows": [
+            _serialize_row(row, _INVOCATION_SPAWNED_AT_IDX) for row in invocation_rows
+        ],
+        "event_row": _serialize_row(event_row, _EVENT_TIMESTAMP_IDX),
+        "usage_row": _serialize_row(usage_row, _USAGE_TIMESTAMP_IDX),
+        "message_row": _serialize_row(message_row, _MESSAGE_TIMESTAMP_IDX),
+    }
+
+
+def ingest_events_batch(events: list[dict]) -> None:
+    """Runs in webhook-worker, not webhook - takes a batch of build_event()
+    outputs read back off the Redis stream and writes them with exactly one
+    client.insert() per table, instead of the up-to-4-inserts-per-payload
+    the synchronous path used to do. This is the batching that takes load
+    off ClickHouse under concurrent webhook traffic - see AGENTS.md.
+
+    Never raises - a malformed/unexpected event in the batch must not
+    crash the worker loop (the caller still needs to XACK or retry the
+    batch's message ids regardless).
+    """
+    if not events:
+        return
+    try:
+        client = get_client()
+
+        invocation_rows = [
+            _deserialize_row(row, _INVOCATION_SPAWNED_AT_IDX)
+            for event in events
+            for row in (event.get("invocation_rows") or [])
+        ]
+        _insert_agent_invocations(client, invocation_rows)
+
+        agent_fields_cache: dict[str, tuple[str, str]] = {}
+        event_rows, usage_rows, message_rows = [], [], []
+
+        for event in events:
+            agent_invocation_id = event.get("agent_invocation_id") or ""
+            if agent_invocation_id:
+                if agent_invocation_id not in agent_fields_cache:
+                    agent_fields_cache[agent_invocation_id] = _agent_name_and_version_for_invocation(
+                        client, agent_invocation_id
+                    )
+                agent_name, agent_version = agent_fields_cache[agent_invocation_id]
+            else:
+                agent_name, agent_version = "", ""
+
+            event_row = _deserialize_row(event.get("event_row"), _EVENT_TIMESTAMP_IDX)
+            if event_row is not None:
+                event_row[_EVENT_AGENT_NAME_IDX] = agent_name
+                event_row[_EVENT_AGENT_VERSION_IDX] = agent_version
+                event_rows.append(event_row)
+
+            usage_row = _deserialize_row(event.get("usage_row"), _USAGE_TIMESTAMP_IDX)
+            if usage_row is not None:
+                usage_row[_USAGE_AGENT_NAME_IDX] = agent_name
+                usage_row[_USAGE_AGENT_VERSION_IDX] = agent_version
+                usage_rows.append(usage_row)
+
+            message_row = _deserialize_row(event.get("message_row"), _MESSAGE_TIMESTAMP_IDX)
+            if message_row is not None:
+                message_row[_MESSAGE_AGENT_NAME_IDX] = agent_name
+                message_row[_MESSAGE_AGENT_VERSION_IDX] = agent_version
+                message_rows.append(message_row)
+
+        if event_rows:
+            client.insert("agent_events", event_rows, column_names=_EVENT_COLUMNS)
+        if usage_rows:
+            client.insert("agent_usage", usage_rows, column_names=_USAGE_COLUMNS)
+        if message_rows:
+            client.insert("agent_messages", message_rows, column_names=_MESSAGE_COLUMNS)
+    except Exception:
+        logger.exception("failed to ingest event batch (n=%d)", len(events))

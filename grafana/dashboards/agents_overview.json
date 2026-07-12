@@ -249,7 +249,7 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   }
                 },
@@ -323,7 +323,7 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   }
                 },
@@ -395,23 +395,10 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   },
-                  "displayName": "${__field.labels.metric}",
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "green",
-                        "value": null
-                      },
-                      {
-                        "color": "red",
-                        "value": 6000
-                      }
-                    ]
-                  }
+                  "displayName": "${__field.labels.metric}"
                 },
                 "overrides": []
               }
@@ -481,23 +468,10 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   },
-                  "displayName": "${__field.labels.metric}",
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "green",
-                        "value": null
-                      },
-                      {
-                        "color": "red",
-                        "value": 6000
-                      }
-                    ]
-                  }
+                  "displayName": "${__field.labels.metric}"
                 },
                 "overrides": []
               }
@@ -567,23 +541,10 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   },
-                  "displayName": "${__field.labels.metric}",
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "green",
-                        "value": null
-                      },
-                      {
-                        "color": "red",
-                        "value": 0.1
-                      }
-                    ]
-                  }
+                  "displayName": "${__field.labels.metric}"
                 },
                 "overrides": []
               }
@@ -653,23 +614,10 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   },
-                  "displayName": "${__field.labels.metric}",
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "green",
-                        "value": null
-                      },
-                      {
-                        "color": "red",
-                        "value": 0.1
-                      }
-                    ]
-                  }
+                  "displayName": "${__field.labels.metric}"
                 },
                 "overrides": []
               }
@@ -739,23 +687,10 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   },
-                  "displayName": "${__field.labels.metric}",
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "green",
-                        "value": null
-                      },
-                      {
-                        "color": "red",
-                        "value": 6000
-                      }
-                    ]
-                  }
+                  "displayName": "${__field.labels.metric}"
                 },
                 "overrides": []
               }
@@ -825,23 +760,10 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   },
-                  "displayName": "${__field.labels.metric}",
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "green",
-                        "value": null
-                      },
-                      {
-                        "color": "red",
-                        "value": 0.1
-                      }
-                    ]
-                  }
+                  "displayName": "${__field.labels.metric}"
                 },
                 "overrides": []
               }
@@ -911,23 +833,10 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   },
-                  "displayName": "${__field.labels.metric}",
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "green",
-                        "value": null
-                      },
-                      {
-                        "color": "red",
-                        "value": 6000
-                      }
-                    ]
-                  }
+                  "displayName": "${__field.labels.metric}"
                 },
                 "overrides": []
               }
@@ -997,23 +906,10 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   },
-                  "displayName": "${__field.labels.metric}",
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "green",
-                        "value": null
-                      },
-                      {
-                        "color": "red",
-                        "value": 0.1
-                      }
-                    ]
-                  }
+                  "displayName": "${__field.labels.metric}"
                 },
                 "overrides": []
               }
@@ -1081,7 +977,7 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   },
                   "color": {
@@ -1404,7 +1300,7 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   }
                 },
@@ -1714,7 +1610,7 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   },
                   "color": {
@@ -2463,7 +2359,7 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   }
                 },
@@ -2539,7 +2435,7 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   }
                 },
@@ -2859,23 +2755,10 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   },
-                  "displayName": "${__field.labels.metric}",
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "green",
-                        "value": null
-                      },
-                      {
-                        "color": "red",
-                        "value": 6000
-                      }
-                    ]
-                  }
+                  "displayName": "${__field.labels.metric}"
                 },
                 "overrides": []
               }
@@ -2945,23 +2828,10 @@
                     "showPoints": "auto",
                     "pointSize": 4,
                     "thresholdsStyle": {
-                      "mode": "dashed"
+                      "mode": "off"
                     }
                   },
-                  "displayName": "${__field.labels.metric}",
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "green",
-                        "value": null
-                      },
-                      {
-                        "color": "red",
-                        "value": 0.1
-                      }
-                    ]
-                  }
+                  "displayName": "${__field.labels.metric}"
                 },
                 "overrides": []
               }
@@ -4137,7 +4007,10 @@
                     },
                     "spanNulls": true,
                     "showPoints": "auto",
-                    "pointSize": 4
+                    "pointSize": 4,
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
                   },
                   "displayName": "${__field.labels.metric}"
                 },

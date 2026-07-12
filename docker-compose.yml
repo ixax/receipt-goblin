@@ -9,6 +9,9 @@ x-clickhouse-native-port: &clickhouse-native-port ${CLICKHOUSE_NATIVE_PORT:-9000
 x-mcp-server-port: &mcp-server-port ${MCP_SERVER_PORT:-8001}
 x-grafana-port: &grafana-port ${GRAFANA_PORT:-3000}
 
+x-redis-host: &redis-host ${REDIS_HOST:-redis}
+x-redis-port: &redis-port ${REDIS_PORT:-6379}
+
 x-webhook-url: &webhook-url ${WEBHOOK_URL:-http://webhook:8000/api/v1/metrics}
 x-webhook-port: &webhook-port ${WEBHOOK_PORT:-8010}
 
@@ -118,6 +121,27 @@ services:
     networks:
       - receipt-goblin
 
+  redis:
+    # Queue between webhook (producer) and webhook-worker (consumer) - see
+    # webhook/src/queue_client.py. maxmemory bounds the worst case (a stuck
+    # worker/ClickHouse) instead of growing unboundedly; the stream's own
+    # MAXLEN (queue_client.MAXLEN) is what actually keeps it there in
+    # practice - see AGENTS.md for the sizing math.
+    image: redis:7-alpine
+    container_name: receipt-goblin-redis
+    command: ["redis-server", "--maxmemory", "700mb", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
+    mem_limit: 768m
+    restart: always
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - receipt-goblin
+
   webhook:
     # Builds the same prod image as webhook/Dockerfile (deps baked in via its
     # own RUN pip install layer), then overlays live source on top for dev:
@@ -143,6 +167,8 @@ services:
       CLICKHOUSE_USER: *clickhouse-user
       CLICKHOUSE_PASSWORD: *clickhouse-password
       CLICKHOUSE_DATABASE: *clickhouse-database
+      REDIS_HOST: *redis-host
+      REDIS_PORT: *redis-port
     mem_limit: 128m
     restart: always
     healthcheck:
@@ -152,6 +178,36 @@ services:
       retries: 20
     depends_on:
       clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - receipt-goblin
+
+  webhook-worker:
+    # Same image as webhook (build: ./webhook builds it again from the same
+    # Dockerfile/layer cache, not a separate image) - only `command:` differs.
+    # Drains queue_client.STREAM_KEY in batches and does the actual
+    # ClickHouse inserts - see webhook/src/worker.py.
+    build: ./webhook
+    container_name: receipt-goblin-webhook-worker
+    volumes:
+      - ./webhook/src:/app/src:ro
+    command: ["python", "-m", "src.worker"]
+    environment:
+      CLICKHOUSE_HOST: *clickhouse-host
+      CLICKHOUSE_PORT: *clickhouse-port
+      CLICKHOUSE_USER: *clickhouse-user
+      CLICKHOUSE_PASSWORD: *clickhouse-password
+      CLICKHOUSE_DATABASE: *clickhouse-database
+      REDIS_HOST: *redis-host
+      REDIS_PORT: *redis-port
+    mem_limit: 256m
+    restart: always
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - receipt-goblin
@@ -210,3 +266,4 @@ volumes:
   clickhouse-data:
   grafana-data:
   litellm-db-data:
+  redis-data:

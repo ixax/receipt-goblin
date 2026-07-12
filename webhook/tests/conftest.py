@@ -8,8 +8,13 @@ os.environ.setdefault("CLICKHOUSE_PORT", "9000")
 os.environ.setdefault("CLICKHOUSE_USER", "test-user")
 os.environ.setdefault("CLICKHOUSE_PASSWORD", "test-password")
 os.environ.setdefault("CLICKHOUSE_DATABASE", "test-db")
+os.environ.setdefault("REDIS_HOST", "test-redis-host")
+os.environ.setdefault("REDIS_PORT", "6379")
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+# webhook/ (not webhook/src) so clickhouse_ingest.py's `from .config import
+# ...` resolves - it needs to be imported as part of the `src` package for
+# that relative import to work, not as a flat top-level module.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 CAPTURES_DIR = Path(__file__).resolve().parent / "captures"
 

@@ -5,11 +5,12 @@ webhook/captures/). DB-touching functions (get_client,
 _agent_name_and_version_for_invocation, _insert_*, ingest_*) are out of
 scope here - they require a live ClickHouse connection."""
 
+import json
 from datetime import datetime, timezone
 
 from conftest import load_capture
 
-import clickhouse_ingest as ci
+from src import clickhouse_ingest as ci
 
 
 # ---------------------------------------------------------------------------
@@ -285,3 +286,73 @@ def test_message_row_success_captures_prompt_and_response_text():
 def test_message_row_unsuccess_no_prompt_or_response_text_returns_none():
     payload = {"messages": [], "response": {"choices": []}}
     assert ci._message_row(payload, "session-1", "trace-1", "", "", "", "", "", "") is None
+
+
+# ---------------------------------------------------------------------------
+# build_event - the queue-facing, DB-free half of ingestion (see
+# queue_client.enqueue). Must never serialize "messages" onto the wire.
+# ---------------------------------------------------------------------------
+
+def test_build_event_success_returns_json_safe_dict_without_messages():
+    payload = load_capture("success_plain")
+    event = ci.build_event(payload)
+
+    encoded = json.dumps(event)
+    assert '"messages":' not in encoded
+    assert event["event_row"] is not None
+    assert event["usage_row"] is not None
+    assert event["message_row"] is not None
+    # timestamps are serialized to ISO strings, not raw datetime objects,
+    # so the dict is safe to json.dumps() straight onto the Redis stream.
+    assert isinstance(event["event_row"][ci._EVENT_TIMESTAMP_IDX], str)
+
+
+def test_build_event_unsuccess_failure_payload_has_no_usage_or_message_row():
+    payload = load_capture("failure")
+    event = ci.build_event(payload)
+
+    assert event["event_row"] is not None
+    assert event["usage_row"] is None
+    assert event["message_row"] is None
+
+
+# ---------------------------------------------------------------------------
+# ingest_events_batch - runs in webhook-worker, takes build_event() outputs
+# read back off Redis and inserts them with one client.insert() per table.
+# ---------------------------------------------------------------------------
+
+class _FakeClient:
+    def __init__(self):
+        self.inserts = []
+
+    def insert(self, table, rows, column_names):
+        self.inserts.append((table, rows, column_names))
+
+    def query(self, *args, **kwargs):
+        class _Result:
+            result_rows = []
+        return _Result()
+
+
+def test_ingest_events_batch_success_issues_one_insert_per_table(monkeypatch):
+    events = [
+        ci.build_event(load_capture("success_plain")),
+        ci.build_event(load_capture("success_with_command")),
+    ]
+    fake_client = _FakeClient()
+    monkeypatch.setattr(ci, "get_client", lambda: fake_client)
+
+    ci.ingest_events_batch(events)
+
+    tables = [table for table, _rows, _cols in fake_client.inserts]
+    assert tables.count("agent_events") == 1
+    assert tables.count("agent_usage") == 1
+    assert tables.count("agent_messages") == 1
+
+    event_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_events")
+    assert len(event_rows) == 2
+
+
+def test_ingest_events_batch_unsuccess_empty_list_skips_client_entirely(monkeypatch):
+    monkeypatch.setattr(ci, "get_client", lambda: (_ for _ in ()).throw(AssertionError("get_client should not be called")))
+    ci.ingest_events_batch([])

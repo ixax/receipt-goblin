@@ -9,9 +9,10 @@ See `AGENTS.md` for architecture and schema details.
 
 1. Every LLM call from the CLI (Claude Code or Codex) is routed through a local LiteLLM proxy on `:4000` instead of hitting Anthropic/OpenAI directly.
 2. LiteLLM's `generic_api` callback POSTs the full `StandardLoggingPayload` for each call to `webhook` on `:8010`.
-3. `webhook` captures the raw body to `webhook/captures/` (for offline inspection), parses it, and writes rows straight into ClickHouse on `:8123` - nothing is buffered or batched beyond that single request. Agent/skill invocations are recovered from the payload itself (see `AGENTS.md`), not from a CLI-side hook.
-4. Grafana on `:3000` queries ClickHouse directly for every panel; there's no caching layer, so a dashboard refresh always reflects current table state.
-5. Reads go the other way: `webhook` is write-only, so a CLI session reads data back out (e.g. `/whatsup` in Claude Code) via the `mcp-server` MCP server on `:8001`, registered in `.mcp.json`.
+3. `webhook` computes a compact event from the raw body (no ClickHouse access - see `AGENTS.md`) and pushes it onto a `redis` queue; optionally (`CAPTURE_ENABLED`, off by default) it also captures the raw body to `webhook/captures/` for offline inspection. Agent/skill invocations are recovered from the payload itself, not from a CLI-side hook.
+4. `webhook-worker` drains that queue in batches and is the only thing that actually writes to ClickHouse on `:8123` for this traffic - a few large inserts instead of one per request, so ClickHouse isn't hit directly by request volume (see "Why a queue in front of ClickHouse" in `AGENTS.md`).
+5. Grafana on `:3000` queries ClickHouse directly for every panel; there's no caching layer, so a dashboard refresh always reflects current table state.
+6. Reads go the other way: `webhook`/`webhook-worker` are write-only, so a CLI session reads data back out (e.g. `/whatsup` in Claude Code) via the `mcp-server` MCP server on `:8001`, registered in `.mcp.json`.
 
 ## Getting started
 
@@ -44,8 +45,8 @@ make start
 make status
 ```
 
-`webhook`, `mcp-server`, and `grafana` won't start until `clickhouse` shows `healthy` (all three `depends_on: condition: service_healthy`).
-Re-run the command above until all services show up and `clickhouse` is no longer `starting`/`unhealthy`.
+`mcp-server` and `grafana` won't start until `clickhouse` shows `healthy`; `webhook` and `webhook-worker` also wait on `redis` (all `depends_on: condition: service_healthy`).
+Re-run the command above until all services show up and `clickhouse`/`redis` are no longer `starting`/`unhealthy`.
 
 ### Issue yourself a personal key and route a coding agent through the proxy
 
@@ -95,10 +96,10 @@ Add `-v` to also delete the ClickHouse data volume (next `up` re-applies `schema
 
 | Symptom                                                | Likely cause / fix                                                                                     |
 |-----------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
-| `webhook`/`grafana` stuck in `Created`, never start        | Their `depends_on: condition: service_healthy` is blocking on the `clickhouse` healthcheck. Run `docker compose ps` - if `clickhouse` shows `unhealthy`, check `docker inspect receipt-goblin-clickhouse --format '{{json .State.Health}}'` for the actual healthcheck error, and confirm ClickHouse itself is fine with `docker exec receipt-goblin-clickhouse clickhouse-client --user default --password "$CLICKHOUSE_PASSWORD" --query "SELECT 1"`. The image ships `wget`, not `curl` - the healthcheck uses `wget --spider`. |
-| `webhook` can't reach ClickHouse (once running)             | Check `docker compose logs clickhouse` / `docker compose logs webhook` for the actual connection error; `webhook`'s `/health` route runs `SELECT 1` against ClickHouse and reports the exception if it fails. |
+| `webhook`/`grafana` stuck in `Created`, never start        | Their `depends_on: condition: service_healthy` is blocking on the `clickhouse` healthcheck (`webhook`/`webhook-worker` also wait on `redis`). Run `docker compose ps` - if `clickhouse` shows `unhealthy`, check `docker inspect receipt-goblin-clickhouse --format '{{json .State.Health}}'` for the actual healthcheck error, and confirm ClickHouse itself is fine with `docker exec receipt-goblin-clickhouse clickhouse-client --user default --password "$CLICKHOUSE_PASSWORD" --query "SELECT 1"`. The image ships `wget`, not `curl` - the healthcheck uses `wget --spider`. |
+| `webhook` can't reach ClickHouse (once running)             | `webhook` itself doesn't talk to ClickHouse for `/api/v1/metrics` anymore (see "How data flows" above) - check `docker compose logs redis` / `docker compose logs webhook-worker` for the actual connection error instead. `webhook`'s `/health` route still runs `SELECT 1` against ClickHouse plus a Redis `PING` and reports whichever exception hit first. |
 | `/whatsup` fails or times out                                  | Confirm `mcp-server` is `healthy`/running (`docker compose ps`) and reachable at `http://localhost:8001/mcp`; check `docker compose logs mcp-server`. Claude Code only picks up `.mcp.json` changes on the next session start. |
-| No rows landing in ClickHouse at all                          | Confirm the CLI is actually routed through LiteLLM (`ANTHROPIC_BASE_URL`/`ANTHROPIC_CUSTOM_HEADERS` set, see "Routing Claude Code through it" below), then check `docker compose logs litellm` for callback errors and `docker compose logs webhook` for ingest exceptions - `ingest_standard_logging_payload` never raises out to LiteLLM, it only logs, so a parsing bug shows up as a log line, not a retry loop. |
+| No rows landing in ClickHouse at all                          | Confirm the CLI is actually routed through LiteLLM (`ANTHROPIC_BASE_URL`/`ANTHROPIC_CUSTOM_HEADERS` set, see "Routing Claude Code through it" below), then check `docker compose logs litellm` for callback errors, `docker compose logs webhook` for enqueue exceptions, and `docker compose logs webhook-worker` for batch-insert exceptions - `ingest_events_batch` never raises out of the worker loop, it only logs, so a parsing bug shows up as a log line, not a stuck consumer. Also check `redis-cli -h localhost XLEN webhook:events` - a growing, never-draining backlog points at `webhook-worker` being stuck rather than `webhook` failing to enqueue. |
 | Dashboard edits stop saving after a Grafana upgrade            | Grafana 13.1.0 (bumped from 11.2.0 for tabs support - see "Dynamic dashboards" below) had a known OSS 12.4.0 bug where "Dynamic Dashboards" broke *provisioned* dashboards on save ([grafana/grafana#119450](https://github.com/grafana/grafana/issues/119450)) - our exact setup (`type: file` provider, `allowUiUpdates: true` in `grafana/provisioning/dashboards/dashboard.yml`). Unconfirmed whether 13.1.0 still has it; if UI edits silently fail to persist, that's the first thing to check. |
 | Grafana stops responding after a few clicks/panel loads (no crash in browser) | Check `docker inspect receipt-goblin-grafana --format '{{.State.OOMKilled}} {{.State.ExitCode}}'` - Grafana 13.1.0 is meaningfully heavier than 11.2.0 (alerting scheduler, zanzana authz, bleve search indexing, app registry, background plugin auto-updater) and hit the old `mem_limit: 512m` within a couple of dashboard interactions (`OOMKilled=true`, exit 137). Bumped to `1g` in `docker-compose.yml` alongside the 13.1.0 upgrade; there's a `restart: always` policy, so an OOM-killed container comes back on its own - raise the limit further if it recurs. |
 | No `agent_name`/`skill_name` on events                  | Recovered from the LiteLLM payload itself, not a CLI-side hook - see `AGENTS.md` (`_agent_invocations_from_messages`/`_skill_name_from_last_turn` in `clickhouse_ingest.py`). A subagent's own rows only resolve `agent_name` once the orchestrator's `Agent` tool_use/tool_result pair has itself been ingested and upserted into `agent_invocations` - a subagent call that reaches `webhook` before that happens will have `agent_invocation_id` set but blank `agent_name`. |
@@ -120,6 +121,10 @@ Everything below is background/design detail, not needed day-to-day - see `AGENT
 | `CLICKHOUSE_PORT`        | `8123`                                    | webhook, mcp-server, grafana                                                                             |
 | `CLICKHOUSE_HTTP_PORT`   | `8123`                                    | host port mapping for clickhouse's HTTP interface                                                           |
 | `CLICKHOUSE_NATIVE_PORT` | `9000`                                    | host port mapping for clickhouse's native protocol                                                          |
+| `REDIS_HOST`             | `redis`                                   | webhook, webhook-worker - queue between the two, see "How data flows" above                                 |
+| `REDIS_PORT`             | `6379`                                    | webhook, webhook-worker                                                                                     |
+| `CAPTURE_ENABLED`        | `false`                                   | webhook - write every raw POST body to `CAPTURE_DIR`, see "Inspecting captured traffic" below. Off by default: real prompt/response content, and one file per request adds disk I/O to the hot path. |
+| `CAPTURE_DIR`            | `/app/captures`                           | webhook - only read when `CAPTURE_ENABLED=true`                                                             |
 | `MCP_SERVER_PORT`        | `8001`                                    | host port mapping for mcp-server                                                                         |
 | `GRAFANA_PORT`           | `3000`                                    | host port mapping for grafana                                                                               |
 | `WEBHOOK_PORT`           | `8010`                                    | host port mapping for webhook                                                                           |
@@ -132,7 +137,7 @@ Everything below is background/design detail, not needed day-to-day - see `AGENT
 `CLICKHOUSE_PASSWORD` must stay non-empty: ClickHouse restricts the `default` user to localhost-only access whenever user/password are unset, which breaks the other containers connecting over the Docker network.
 `*_PORT` variables only change the **host** side of each port mapping - the container-internal port stays fixed, so services keep reaching each other over the `receipt-goblin` Docker network regardless of what you set these to.
 
-Each service also has a `mem_limit`: `clickhouse` 2g (paired with `clickhouse/config.d/memory.xml`'s 0.85 ratio so it respects the cgroup limit instead of trying to use host RAM), `grafana` 1g, `webhook`/`mcp-server` 256m each, `litellm-db` 256m.
+Each service also has a `mem_limit`: `clickhouse` 2g (paired with `clickhouse/config.d/memory.xml`'s 0.85 ratio so it respects the cgroup limit instead of trying to use host RAM), `grafana` 1g, `redis` 768m (`--maxmemory 700mb` - see `AGENTS.md` "Why a queue in front of ClickHouse" for the sizing math), `mcp-server`/`webhook-worker` 256m each, `webhook` 128m, `litellm-db` 256m.
 
 ### Schema
 
@@ -157,7 +162,7 @@ Model choice (`agent_usage.model`) is the closest proxy: cheaper/faster models a
 
 ### Message-level text
 
-`agent_events.raw_payload` carries the full `StandardLoggingPayload` (minus `messages`, which is the ever-growing full conversation history and already on disk verbatim in `webhook/captures/*.json`).
+`agent_events.raw_payload` carries the full `StandardLoggingPayload` minus `messages` (the ever-growing full conversation history - also on disk verbatim in `webhook/captures/*.json` when `CAPTURE_ENABLED` is on, see "Inspecting captured traffic" below).
 `agent_messages` adds what's missing from that: the last user message's text and the model's own reply text for that call, via `_last_user_text()`/`_flatten_content()` in `clickhouse_ingest.py`.
 A row is only written when at least one of `prompt_text`/`response_text` is non-empty.
 
@@ -217,7 +222,7 @@ Seven template variables in order: `$agent_name`, `$skill_name`, `$command_name`
 ### Debugging ingestion
 
 Field extraction from the LiteLLM payload is best-effort and can drift across LiteLLM versions.
-`docker compose logs -f webhook` shows one log line per exception raised by `ingest_standard_logging_payload` (it never re-raises, so a parsing bug never breaks LiteLLM's ack); every raw POST body also lands verbatim under `webhook/captures/` for offline replay (see "Inspecting captured traffic" below).
+`docker compose logs -f webhook` shows one log line per exception raised while enqueueing (`build_event`/`queue_client.enqueue`, never re-raised, so a parsing bug never breaks LiteLLM's ack); `docker compose logs -f webhook-worker` shows the same for the batched-insert side (`ingest_events_batch`). `redis-cli -h localhost XLEN webhook:events` shows the current backlog - non-zero-but-draining is normal, non-zero-and-growing means `webhook-worker` has fallen behind or died. Setting `CAPTURE_ENABLED=true` (off by default, see "Configuration" below) also lands every raw POST body verbatim under `webhook/captures/` for offline replay (see "Inspecting captured traffic" below).
 
 ## LiteLLM
 
@@ -313,10 +318,10 @@ The same `make env` (see above) also prints `OPENAI_API_BASE`/`OPENAI_API_KEY` l
 
 ### Inspecting captured traffic
 
-`webhook` logs one line per ingested payload (or per exception, see "Debugging ingestion" above) - `docker compose logs -f webhook` while driving a session through either CLI.
+`webhook` logs one line per captured/enqueued payload (or per exception, see "Debugging ingestion" above) - `docker compose logs -f webhook` while driving a session through either CLI.
 It listens on host port `8010` (container port `8000`), reachable inside the `receipt-goblin` Docker network as `webhook:8000`.
 
-Every hit also lands as its own timestamped JSON file under `webhook/captures/` on the host (bind-mounted, not a Docker volume - `ls webhook/captures/` works directly, no `docker exec` needed), raw as received.
+Set `CAPTURE_ENABLED=true` (off by default - see "Configuration" below) to also have every hit land as its own timestamped JSON file under `webhook/captures/` on the host (bind-mounted, not a Docker volume - `ls webhook/captures/` works directly, no `docker exec` needed), raw as received.
 `log_format: json_array` in `litellm/config.yaml` means each file is usually a list of `StandardLoggingPayload` objects, not a single one.
 This directory is gitignored - it's real prompt/response content, not something to commit.
 `docker-compose.yml` still `build`s `webhook/Dockerfile` (deps baked into the image), then bind-mounts `webhook/src` over the image's `/app/src` and overrides `command:` to add `--reload` - editing `src/server.py` restarts the server without a rebuild, but changing `requirements.txt` does need `docker compose build webhook`. `captures/` is mounted separately (it's runtime output, not source) so it lands on the host either way.

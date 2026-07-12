@@ -1,32 +1,35 @@
 """
 Receives LiteLLM's generic_api webhook payloads: captures each raw POST body
-to disk (for offline inspection) and parses/inserts the contained
-StandardLoggingPayload entries into ClickHouse - see clickhouse_ingest.py.
+to disk (for offline inspection), then hands the contained
+StandardLoggingPayload entries to queue_client.enqueue() - a fast, DB-free
+push onto Redis. webhook-worker (worker.py) is what actually parses/inserts
+into ClickHouse, in batches - see AGENTS.md.
 """
 
 import json
 import logging
-import os
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 
 from fastapi import FastAPI, Request
 
-from .clickhouse_ingest import get_client, ingest_git_branch, ingest_webhook_body
+from .clickhouse_ingest import get_client, ingest_git_branch
+from .config import CAPTURE_DIR, CAPTURE_ENABLED
+from .queue_client import enqueue, get_async_redis
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 app = FastAPI()
 
-CAPTURE_DIR = Path(os.environ.get("CAPTURE_DIR", "/app/captures"))
-CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
+if CAPTURE_ENABLED:
+    CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @app.get("/health")
-def health():
+async def health():
     try:
         get_client().command("SELECT 1")
+        await get_async_redis().ping()
         return {"status": "ok"}
     except Exception as exc:
         return {"status": "error", "detail": str(exc)}
@@ -35,17 +38,20 @@ def health():
 @app.post("/api/v1/metrics")
 async def receive_metrics(request: Request):
     body = await request.json()
-    now = datetime.now(timezone.utc)
 
     # One file per POST, raw as received - log_format: json_array in
     # litellm/config.yaml means `body` is usually a list of
-    # StandardLoggingPayload objects, not a single one.
-    filename = f"{now.strftime('%Y%m%dT%H%M%S%f')}-{uuid.uuid4().hex[:8]}.json"
-    (CAPTURE_DIR / filename).write_text(json.dumps(body, indent=2, default=str))
+    # StandardLoggingPayload objects, not a single one. Off by default, see
+    # config.CAPTURE_ENABLED.
+    if CAPTURE_ENABLED:
+        now = datetime.now(timezone.utc)
+        filename = f"{now.strftime('%Y%m%dT%H%M%S%f')}-{uuid.uuid4().hex[:8]}.json"
+        (CAPTURE_DIR / filename).write_text(json.dumps(body, indent=2, default=str))
 
-    ingest_webhook_body(body)
+    payloads = body if isinstance(body, list) else [body]
+    await enqueue(payloads)
 
-    return {"status": "received"}
+    return {"status": "queued"}
 
 
 @app.post("/api/v1/session-git-branch")

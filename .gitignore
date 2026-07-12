@@ -3,3 +3,5 @@
 .env
 MIN_DUMP.md
 webhook/captures/
+.venv
+webhook/.venv
