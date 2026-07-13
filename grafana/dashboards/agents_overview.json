@@ -6839,8 +6839,8 @@
           "name": "agent_name",
           "label": "Agent",
           "current": {
-            "text": "",
-            "value": ""
+            "text": "All",
+            "value": "$__all"
           },
           "hide": "dontHide",
           "refresh": "onTimeRangeChanged",
@@ -6873,8 +6873,8 @@
           "name": "skill_name",
           "label": "Skill",
           "current": {
-            "text": "",
-            "value": ""
+            "text": "All",
+            "value": "$__all"
           },
           "hide": "dontHide",
           "refresh": "onTimeRangeChanged",
@@ -6907,8 +6907,8 @@
           "name": "command_name",
           "label": "Command",
           "current": {
-            "text": "",
-            "value": ""
+            "text": "All",
+            "value": "$__all"
           },
           "hide": "dontHide",
           "refresh": "onTimeRangeChanged",
@@ -6940,8 +6940,8 @@
           "name": "mcp_tool",
           "label": "MCP tool",
           "current": {
-            "text": "",
-            "value": ""
+            "text": "All",
+            "value": "$__all"
           },
           "hide": "dontHide",
           "refresh": "onTimeRangeChanged",
@@ -6973,8 +6973,8 @@
           "name": "model",
           "label": "Model",
           "current": {
-            "text": "",
-            "value": ""
+            "text": "All",
+            "value": "$__all"
           },
           "hide": "dontHide",
           "refresh": "onTimeRangeChanged",
@@ -7006,8 +7006,8 @@
           "name": "user_id",
           "label": "User",
           "current": {
-            "text": "",
-            "value": ""
+            "text": "All",
+            "value": "$__all"
           },
           "hide": "dontHide",
           "refresh": "onTimeRangeChanged",
@@ -7039,8 +7039,8 @@
           "name": "session_id",
           "label": "Session",
           "current": {
-            "text": "",
-            "value": ""
+            "text": "All",
+            "value": "$__all"
           },
           "hide": "dontHide",
           "refresh": "onTimeRangeChanged",
@@ -7073,8 +7073,8 @@
           "name": "git_branch",
           "label": "Git branch",
           "current": {
-            "text": "",
-            "value": ""
+            "text": "All",
+            "value": "$__all"
           },
           "hide": "dontHide",
           "refresh": "onTimeRangeChanged",

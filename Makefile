@@ -15,7 +15,7 @@ start:
 	docker compose up -d --build
 
 status:
-	docker ps
+	docker compose ps
 
 stop:
 	docker compose down

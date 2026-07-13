@@ -1,5 +1,9 @@
 # Agent Tracking Stack
 
+## Minimal resource requirements
+
+Memory: 8 GiB. CPU: 4.
+
 Local stack for tracking cost and efficiency of AI coding agents (Claude Code and Codex CLI), with full call-chain tracing - agent, skill, and MCP tool usage are all tracked, not just top-level agent activity.
 See `AGENTS.md` for architecture and schema details.
 
