@@ -24,11 +24,11 @@ Copy `.env.example` to `.env` and fill in:
 cp .env.example .env
 ```
 
-| Variable | Required? | What it's for |
-|---|---|---|
-| `LITELLM_MASTER_KEY` | **Yes** - `docker-compose.yml` refuses to start without it | Admin credential for LiteLLM's own `/ui` and `/key/generate`. Pick anything reasonably secret - it's never sent to Anthropic/OpenAI, only used to log into the local admin UI. |
-| `LITELLM_URI` | No - defaults to `http://localhost:$LITELLM_PORT` | Only set this if LiteLLM isn't on localhost (a shared/remote host) - read by `make env`, takes precedence over `LITELLM_PORT` there. |
-| `LITELLM_PORT`, `LITELLM_DB_PASSWORD`, `CLICKHOUSE_PASSWORD`, etc. | No - all have working defaults | See "Configuration" under "Reference" below for the full list. |
+| Variable                                                           | Required?                                                  | What it's for                                                                                                                                                                  |
+|--------------------------------------------------------------------|------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `LITELLM_MASTER_KEY`                                               | **Yes** - `docker-compose.yml` refuses to start without it | Admin credential for LiteLLM's own `/ui` and `/key/generate`. Pick anything reasonably secret - it's never sent to Anthropic/OpenAI, only used to log into the local admin UI. |
+| `LITELLM_URI`                                                      | No - defaults to `http://localhost:$LITELLM_PORT`          | Only set this if LiteLLM isn't on localhost (a shared/remote host) - read by `make env`, takes precedence over `LITELLM_PORT` there.                                           |
+| `LITELLM_PORT`, `LITELLM_DB_PASSWORD`, `CLICKHOUSE_PASSWORD`, etc. | No - all have working defaults                             | See "Configuration" under "Reference" below for the full list.                                                                                                                 |
 
 Everything else in `docker-compose.yml` (ports, ClickHouse credentials) has a sane default - you only need to touch `.env` for the row above.
 Your personal LiteLLM key does **not** go in `.env` at all - see the next step.
@@ -45,8 +45,9 @@ make start
 make status
 ```
 
+`make status` runs a plain `docker ps` (every container on the host, not scoped to this stack) - look for the `receipt-goblin-*` containers among the results.
 `mcp-server` and `grafana` won't start until `clickhouse` shows `healthy`; `webhook` and `webhook-worker` also wait on `redis` (all `depends_on: condition: service_healthy`).
-Re-run the command above until all services show up and `clickhouse`/`redis` are no longer `starting`/`unhealthy`.
+Re-run the command above until all `receipt-goblin-*` containers show up and `clickhouse`/`redis` are no longer `starting`/`unhealthy`.
 
 ### Issue yourself a personal key and route a coding agent through the proxy
 
@@ -90,21 +91,21 @@ Calls the `mcp-server` MCP server (`mcp__clickhouse__whatsup`, see `.mcp.json`) 
 make stop
 ```
 
-Add `-v` to also delete the ClickHouse data volume (next `up` re-applies `schema.sql` from scratch).
+To also delete the ClickHouse data volume (next `up` re-applies `schema.sql` from scratch), run `docker compose down -v` directly instead of `make stop` - `make`'s `stop` target doesn't forward extra flags to the underlying `docker compose down`.
 
 ## Troubleshooting
 
-| Symptom                                                | Likely cause / fix                                                                                     |
-|-----------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
-| `webhook`/`grafana` stuck in `Created`, never start        | Their `depends_on: condition: service_healthy` is blocking on the `clickhouse` healthcheck (`webhook`/`webhook-worker` also wait on `redis`). Run `docker compose ps` - if `clickhouse` shows `unhealthy`, check `docker inspect receipt-goblin-clickhouse --format '{{json .State.Health}}'` for the actual healthcheck error, and confirm ClickHouse itself is fine with `docker exec receipt-goblin-clickhouse clickhouse-client --user default --password "$CLICKHOUSE_PASSWORD" --query "SELECT 1"`. The image ships `wget`, not `curl` - the healthcheck uses `wget --spider`. |
-| `webhook` can't reach ClickHouse (once running)             | `webhook` itself doesn't talk to ClickHouse for `/api/v1/metrics` anymore (see "How data flows" above) - check `docker compose logs redis` / `docker compose logs webhook-worker` for the actual connection error instead. `webhook`'s `/health` route still runs `SELECT 1` against ClickHouse plus a Redis `PING` and reports whichever exception hit first. |
-| `/whatsup` fails or times out                                  | Confirm `mcp-server` is `healthy`/running (`docker compose ps`) and reachable at `http://localhost:8001/mcp`; check `docker compose logs mcp-server`. Claude Code only picks up `.mcp.json` changes on the next session start. |
-| No rows landing in ClickHouse at all                          | Confirm the CLI is actually routed through LiteLLM (`ANTHROPIC_BASE_URL`/`ANTHROPIC_CUSTOM_HEADERS` set, see "Routing Claude Code through it" below), then check `docker compose logs litellm` for callback errors, `docker compose logs webhook` for enqueue exceptions, and `docker compose logs webhook-worker` for batch-insert exceptions - `ingest_events_batch` never raises out of the worker loop, it only logs, so a parsing bug shows up as a log line, not a stuck consumer. Also check `redis-cli -h localhost XLEN webhook:events` - a growing, never-draining backlog points at `webhook-worker` being stuck rather than `webhook` failing to enqueue. |
-| Dashboard edits stop saving after a Grafana upgrade            | Grafana 13.1.0 (bumped from 11.2.0 for tabs support - see "Dynamic dashboards" below) had a known OSS 12.4.0 bug where "Dynamic Dashboards" broke *provisioned* dashboards on save ([grafana/grafana#119450](https://github.com/grafana/grafana/issues/119450)) - our exact setup (`type: file` provider, `allowUiUpdates: true` in `grafana/provisioning/dashboards/dashboard.yml`). Unconfirmed whether 13.1.0 still has it; if UI edits silently fail to persist, that's the first thing to check. |
-| Grafana stops responding after a few clicks/panel loads (no crash in browser) | Check `docker inspect receipt-goblin-grafana --format '{{.State.OOMKilled}} {{.State.ExitCode}}'` - Grafana 13.1.0 is meaningfully heavier than 11.2.0 (alerting scheduler, zanzana authz, bleve search indexing, app registry, background plugin auto-updater) and hit the old `mem_limit: 512m` within a couple of dashboard interactions (`OOMKilled=true`, exit 137). Bumped to `1g` in `docker-compose.yml` alongside the 13.1.0 upgrade; there's a `restart: always` policy, so an OOM-killed container comes back on its own - raise the limit further if it recurs. |
-| No `agent_name`/`skill_name` on events                  | Recovered from the LiteLLM payload itself, not a CLI-side hook - see `AGENTS.md` (`_agent_invocations_from_messages`/`_skill_name_from_last_turn` in `clickhouse_ingest.py`). A subagent's own rows only resolve `agent_name` once the orchestrator's `Agent` tool_use/tool_result pair has itself been ingested and upserted into `agent_invocations` - a subagent call that reaches `webhook` before that happens will have `agent_invocation_id` set but blank `agent_name`. |
-| Grafana panel shows a query error                             | The `grafana-clickhouse-datasource` plugin's query JSON shape has changed across versions; open the panel in edit mode - the SQL in `rawSql` is otherwise plain, portable ClickHouse SQL. |
-| Claude Code via the LiteLLM proxy fails with `x-api-key header is required` | Missing `ANTHROPIC_CUSTOM_HEADERS`, or `LITELLM_MASTER_KEY` isn't set - see "Routing Claude Code through it" under "LiteLLM" below. |
+| Symptom                                                                       | Likely cause / fix                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+|-------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `webhook`/`grafana` stuck in `Created`, never start                           | Their `depends_on: condition: service_healthy` is blocking on the `clickhouse` healthcheck (`webhook`/`webhook-worker` also wait on `redis`). Run `docker compose ps` - if `clickhouse` shows `unhealthy`, check `docker inspect receipt-goblin-clickhouse --format '{{json .State.Health}}'` for the actual healthcheck error, and confirm ClickHouse itself is fine with `docker exec receipt-goblin-clickhouse clickhouse-client --user default --password "$CLICKHOUSE_PASSWORD" --query "SELECT 1"`. The image ships `wget`, not `curl` - the healthcheck uses `wget --spider`.                                                                                  |
+| `webhook` can't reach ClickHouse (once running)                               | `webhook` itself doesn't talk to ClickHouse for `/api/v1/metrics` anymore (see "How data flows" above) - check `docker compose logs redis` / `docker compose logs webhook-worker` for the actual connection error instead. `webhook`'s `/health` route still runs `SELECT 1` against ClickHouse plus a Redis `PING` and reports whichever exception hit first.                                                                                                                                                                                                                                                                                                        |
+| `/whatsup` fails or times out                                                 | Confirm `mcp-server` is `healthy`/running (`docker compose ps`) and reachable at `http://localhost:8001/mcp`; check `docker compose logs mcp-server`. Claude Code only picks up `.mcp.json` changes on the next session start.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| No rows landing in ClickHouse at all                                          | Confirm the CLI is actually routed through LiteLLM (`ANTHROPIC_BASE_URL`/`ANTHROPIC_CUSTOM_HEADERS` set, see "Routing Claude Code through it" below), then check `docker compose logs litellm` for callback errors, `docker compose logs webhook` for enqueue exceptions, and `docker compose logs webhook-worker` for batch-insert exceptions - `ingest_events_batch` never raises out of the worker loop, it only logs, so a parsing bug shows up as a log line, not a stuck consumer. Also check `redis-cli -h localhost XLEN webhook:events` - a growing, never-draining backlog points at `webhook-worker` being stuck rather than `webhook` failing to enqueue. |
+| Dashboard edits stop saving after a Grafana upgrade                           | Grafana 13.1.0 (bumped from 11.2.0 for tabs support - see "Dynamic dashboards" below) had a known OSS 12.4.0 bug where "Dynamic Dashboards" broke *provisioned* dashboards on save ([grafana/grafana#119450](https://github.com/grafana/grafana/issues/119450)) - our exact setup (`type: file` provider, `allowUiUpdates: true` in `grafana/provisioning/dashboards/dashboard.yml`). Unconfirmed whether 13.1.0 still has it; if UI edits silently fail to persist, that's the first thing to check.                                                                                                                                                                 |
+| Grafana stops responding after a few clicks/panel loads (no crash in browser) | Check `docker inspect receipt-goblin-grafana --format '{{.State.OOMKilled}} {{.State.ExitCode}}'` - Grafana 13.1.0 is meaningfully heavier than 11.2.0 (alerting scheduler, zanzana authz, bleve search indexing, app registry, background plugin auto-updater) and can hit `mem_limit: 512m` within a couple of dashboard interactions (`OOMKilled=true`, exit 137). There's a `restart: always` policy, so an OOM-killed container comes back on its own - raise `grafana`'s `mem_limit` in `docker-compose.yml` if it recurs.                                                                                                                                      |
+| No `agent_name`/`skill_name` on events                                        | Recovered from the LiteLLM payload itself, not a CLI-side hook - see `AGENTS.md` (`_agent_invocations_from_messages`/`_skill_name_from_last_turn` in `clickhouse_ingest.py`). A subagent's own rows only resolve `agent_name` once the orchestrator's `Agent` tool_use/tool_result pair has itself been ingested and upserted into `agent_invocations` - a subagent call that reaches `webhook` before that happens will have `agent_invocation_id` set but blank `agent_name`.                                                                                                                                                                                       |
+| Grafana panel shows a query error                                             | The `grafana-clickhouse-datasource` plugin's query JSON shape has changed across versions; open the panel in edit mode - the SQL in `rawSql` is otherwise plain, portable ClickHouse SQL.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Claude Code via the LiteLLM proxy fails with `x-api-key header is required`   | Missing `ANTHROPIC_CUSTOM_HEADERS`, or `LITELLM_MASTER_KEY` isn't set - see "Routing Claude Code through it" under "LiteLLM" below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ## Reference
 
@@ -112,49 +113,48 @@ Everything below is background/design detail, not needed day-to-day - see `AGENT
 
 ### Configuration
 
-| Variable                 | Default                                   | Used by                                                                                                     |
-|--------------------------|--------------------------------------------|----------------------------------------------------------------------------------------------------------|
-| `CLICKHOUSE_DATABASE`    | `default`                                 | clickhouse, webhook, mcp-server, grafana                                                                 |
-| `CLICKHOUSE_USER`        | `default`                                 | clickhouse, webhook, mcp-server, grafana                                                                 |
-| `CLICKHOUSE_PASSWORD`    | `changeme`                                | clickhouse, webhook, mcp-server, grafana                                                                 |
-| `CLICKHOUSE_HOST`        | `clickhouse`                              | webhook, mcp-server, grafana                                                                             |
-| `CLICKHOUSE_PORT`        | `8123`                                    | webhook, mcp-server, grafana                                                                             |
-| `CLICKHOUSE_HTTP_PORT`   | `8123`                                    | host port mapping for clickhouse's HTTP interface                                                           |
-| `CLICKHOUSE_NATIVE_PORT` | `9000`                                    | host port mapping for clickhouse's native protocol                                                          |
-| `REDIS_HOST`             | `redis`                                   | webhook, webhook-worker - queue between the two, see "How data flows" above                                 |
-| `REDIS_PORT`             | `6379`                                    | webhook, webhook-worker                                                                                     |
-| `CAPTURE_ENABLED`        | `false`                                   | webhook - write every raw POST body to `CAPTURE_DIR`, see "Inspecting captured traffic" below. Off by default: real prompt/response content, and one file per request adds disk I/O to the hot path. |
-| `CAPTURE_DIR`            | `/app/captures`                           | webhook - only read when `CAPTURE_ENABLED=true`                                                             |
-| `MCP_SERVER_PORT`        | `8001`                                    | host port mapping for mcp-server                                                                         |
-| `GRAFANA_PORT`           | `3000`                                    | host port mapping for grafana                                                                               |
-| `WEBHOOK_PORT`           | `8010`                                    | host port mapping for webhook                                                                           |
-| `LITELLM_PORT`           | `4000`                                    | host port mapping for litellm                                                                               |
-| `LITELLM_IMAGE`          | `ghcr.io/berriai/litellm:main-latest`     | litellm - pin this to a released tag before sharing the stack, see "LiteLLM" below                          |
-| `WEBHOOK_URL`            | `http://webhook:8000/api/v1/metrics` | litellm - where it POSTs the `StandardLoggingPayload` for each call                                         |
-| `LITELLM_MASTER_KEY`     | required, no default                      | litellm - admin credential for `/ui` and `/key/generate`; real Anthropic/OpenAI keys and per-person virtual keys are managed through the UI instead, see "LiteLLM" below |
-| `LITELLM_DB_PASSWORD`    | `changeme`                                | litellm, litellm-db - Postgres password for LiteLLM's own virtual-keys/budgets database                    |
+| Variable                 | Default                              | Used by                                                                                                                                                                                                                                                                                                                                                                                                              |
+|--------------------------|--------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `CLICKHOUSE_DATABASE`    | `default`                            | clickhouse, webhook, mcp-server, grafana                                                                                                                                                                                                                                                                                                                                                                             |
+| `CLICKHOUSE_USER`        | `default`                            | clickhouse, webhook, mcp-server, grafana                                                                                                                                                                                                                                                                                                                                                                             |
+| `CLICKHOUSE_PASSWORD`    | `changeme`                           | clickhouse, webhook, mcp-server, grafana                                                                                                                                                                                                                                                                                                                                                                             |
+| `CLICKHOUSE_HOST`        | `clickhouse`                         | webhook, mcp-server, grafana                                                                                                                                                                                                                                                                                                                                                                                         |
+| `CLICKHOUSE_PORT`        | `8123`                               | webhook, mcp-server, grafana                                                                                                                                                                                                                                                                                                                                                                                         |
+| `CLICKHOUSE_HTTP_PORT`   | `8123`                               | host port mapping for clickhouse's HTTP interface                                                                                                                                                                                                                                                                                                                                                                    |
+| `CLICKHOUSE_NATIVE_PORT` | `9000`                               | host port mapping for clickhouse's native protocol                                                                                                                                                                                                                                                                                                                                                                   |
+| `REDIS_HOST`             | `redis`                              | webhook, webhook-worker - queue between the two, see "How data flows" above                                                                                                                                                                                                                                                                                                                                          |
+| `REDIS_PORT`             | `6379`                               | webhook, webhook-worker                                                                                                                                                                                                                                                                                                                                                                                              |
+| `CAPTURE_ENABLED`        | `false`                              | webhook - write every raw POST body to `CAPTURE_DIR`, see "Inspecting captured traffic" below. Off by default: real prompt/response content, and one file per request adds disk I/O to the hot path. **Not currently passed through by `docker-compose.yml`'s `webhook` service** - setting it in `.env` alone has no effect; add it under `webhook`'s `environment:` in `docker-compose.yml` to actually enable it. |
+| `CAPTURE_DIR`            | `/app/captures`                      | webhook - only read when `CAPTURE_ENABLED=true`. Same caveat as above - not wired into `docker-compose.yml`'s `webhook` service today.                                                                                                                                                                                                                                                                               |
+| `MCP_SERVER_PORT`        | `8001`                               | host port mapping for mcp-server                                                                                                                                                                                                                                                                                                                                                                                     |
+| `GRAFANA_PORT`           | `3000`                               | host port mapping for grafana                                                                                                                                                                                                                                                                                                                                                                                        |
+| `WEBHOOK_PORT`           | `8010`                               | host port mapping for webhook                                                                                                                                                                                                                                                                                                                                                                                        |
+| `LITELLM_PORT`           | `4000`                               | host port mapping for litellm                                                                                                                                                                                                                                                                                                                                                                                        |
+| `WEBHOOK_URL`            | `http://webhook:8000/api/v1/metrics` | litellm - where it POSTs the `StandardLoggingPayload` for each call                                                                                                                                                                                                                                                                                                                                                  |
+| `LITELLM_MASTER_KEY`     | required, no default                 | litellm - admin credential for `/ui` and `/key/generate`; real Anthropic/OpenAI keys and per-person virtual keys are managed through the UI instead, see "LiteLLM" below                                                                                                                                                                                                                                             |
+| `LITELLM_DB_PASSWORD`    | `changeme`                           | litellm, litellm-db - Postgres password for LiteLLM's own virtual-keys/budgets database                                                                                                                                                                                                                                                                                                                              |
 
 `CLICKHOUSE_PASSWORD` must stay non-empty: ClickHouse restricts the `default` user to localhost-only access whenever user/password are unset, which breaks the other containers connecting over the Docker network.
 `*_PORT` variables only change the **host** side of each port mapping - the container-internal port stays fixed, so services keep reaching each other over the `receipt-goblin` Docker network regardless of what you set these to.
 
-Each service also has a `mem_limit`: `clickhouse` 2g (paired with `clickhouse/config.d/memory.xml`'s 0.85 ratio so it respects the cgroup limit instead of trying to use host RAM), `grafana` 1g, `redis` 768m (`--maxmemory 700mb` - see `AGENTS.md` "Why a queue in front of ClickHouse" for the sizing math), `mcp-server`/`webhook-worker` 256m each, `webhook` 128m, `litellm-db` 256m.
+Each service also has a `mem_limit`: `clickhouse` 2g (paired with `clickhouse/config.d/memory.xml`'s 0.85 ratio so it respects the cgroup limit instead of trying to use host RAM), `litellm` 2g, `grafana` 512m (see the Grafana OOM row under "Troubleshooting" above), `redis` 768m (`--maxmemory 700mb` - see `AGENTS.md` "Why a queue in front of ClickHouse" for the sizing math), `mcp-server`/`webhook-worker` 256m each, `webhook` 128m, `litellm-db` 256m.
 
 ### Schema
 
-| Table            | Purpose                                                                        |
-|-------------------|----------------------------------------------------------------------------------|
-| `agent_events`    | One row per LiteLLM call, full `raw_payload` JSON (the `StandardLoggingPayload`, minus `messages`). |
-| `agent_usage`     | One row per model call: tokens, plus `cost`/`input_cost`/`output_cost` straight from LiteLLM's own `response_cost`/`cost_breakdown` - cache-pricing-aware and never derived locally (a manually-maintained `model_pricing` table + `ASOF JOIN` used to compute cost instead, and was removed after it was found to overcount by several times whenever prompt caching was in play). |
-| `agent_messages`  | One row per call, holding `prompt_text`/`response_text`.                        |
-| `session_git_branch` | One row per session, `git_branch` snapshotted once at `SessionStart` by `hooks/report_git_branch.py` - not from LiteLLM, see below. Join on `session_id` against the tables above. |
+| Table                | Purpose                                                                                                                                                                                                                                                                                                                                                                             |
+|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `agent_events`       | One row per LiteLLM call, full `raw_payload` JSON (the `StandardLoggingPayload`, minus `messages`).                                                                                                                                                                                                                                                                                 |
+| `agent_usage`        | One row per model call: tokens, plus `cost`/`input_cost`/`output_cost` straight from LiteLLM's own `response_cost`/`cost_breakdown` - cache-pricing-aware and never derived locally (a manually-maintained `model_pricing` table + `ASOF JOIN` used to compute cost instead, and was removed after it was found to overcount by several times whenever prompt caching was in play). |
+| `agent_messages`     | One row per call, holding `prompt_text`/`response_text`.                                                                                                                                                                                                                                                                                                                            |
+| `session_git_branch` | One row per session, `git_branch` snapshotted once at `SessionStart` by `hooks/report_git_branch.py` - not from LiteLLM, see below. Join on `session_id` against the tables above.                                                                                                                                                                                                  |
 
 ### Per-request signals on `agent_usage`
 
 Beyond token counts, each usage row also carries a few fields read straight off LiteLLM's `StandardLoggingPayload`, added because token/cost alone can't tell a normal completion from a truncated or refused one, or show which cache tier actually got written:
 
-| Column | Source | Why |
-|---|---|---|
-| `stop_reason` | `response.choices[0].finish_reason` | `end_turn` vs `max_tokens` vs `refusal` vs `tool_use` - a `max_tokens` row means the reply got cut off, not just that it was expensive. |
+| Column                                                 | Source                                                                                    | Why                                                                                                                                                               |
+|--------------------------------------------------------|-------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `stop_reason`                                          | `response.choices[0].finish_reason`                                                       | `end_turn` vs `max_tokens` vs `refusal` vs `tool_use` - a `max_tokens` row means the reply got cut off, not just that it was expensive.                           |
 | `cache_creation_1h_tokens`, `cache_creation_5m_tokens` | `usage.prompt_tokens_details.cache_creation_token_details.ephemeral_{1h,5m}_input_tokens` | 1h and 5m ephemeral cache writes are priced differently; `cache_creation_tokens` stays their sum for the existing cost/token panels, these two are the breakdown. |
 
 There's no request-level "reasoning effort" field anywhere in the payload (checked - `grep`ed real captures for `effort`/`reasoning_effort`/`budget`, none exist).
@@ -193,12 +193,11 @@ description: ...
 ---
 ```
 
-**Skills** (`.claude/skills/<dirname>/SKILL.md`) - the *directory name* is the invocation identifier (`/<dirname>`); frontmatter `name:` is purely a cosmetic display label and does not affect invocation. Renaming a skill's directory to embed a version would also change its literal slash command, so `name:` stays unversioned (matching the directory) and version tracking uses a plain separate field instead - informational only, since nothing currently reads it.
+**Skills** (`.claude/skills/<dirname>/SKILL.md`) - the *directory name* is the invocation identifier (`/<dirname>`); frontmatter `name:` is purely a cosmetic display label and does not affect invocation. In practice `name:` is kept versioned and identical to the directory name (`<name>_v<version>`), same convention as Subagents, and there's no separate `version:` field:
 
 ```
 ---
-name: whatsup
-version: 2.0.0
+name: test-linter_v2.0.0
 description: ...
 ---
 ```
@@ -230,90 +229,46 @@ A local LiteLLM gateway (`litellm` + `litellm-db` + `webhook` services in `docke
 This gateway *is* how the ClickHouse tracking stack described above gets its data now - `webhook` is the only ingestion path (see "How data flows" above).
 
 The model names are meant to be stable regardless of what's actually billing them: `claude-sonnet-5`/`claude-haiku-4-5`/`claude-opus-4-8`/`claude-fable-5`/`gpt-5-codex`/`gpt-5` are what you pick in Claude Code's own model selector, put in agent/skill frontmatter `model:` fields, and set as Codex CLI's model - everywhere - and that stays true whether a name is currently backed by OAuth passthrough (no Anthropic key on hand yet) or a real, centrally-held provider key added later through the admin UI.
-People get a personal LiteLLM *virtual key* either way, and per-key budgets/rate-limits/model access are enforced entirely by LiteLLM - see "Admin UI: issuing a personal key" below.
+People get a personal LiteLLM *virtual key* either way, and per-key budgets/rate-limits/model access are enforced entirely by LiteLLM - see "Issue yourself a personal key and route a coding agent through the proxy" under "Getting started" above.
 `litellm-db` (Postgres) is what makes virtual keys persistent - without a database, LiteLLM either refuses to generate them or keeps them in memory only, gone on the next restart.
 
 ### Model name mapping
 
 The whole point of picking `model_name` values up front is that agent/skill frontmatter and both CLIs' model settings reference these same names, unaware of what's actually behind them:
 
-| Virtual name (use everywhere) | Real model                    | Backend right now                                                   |
-|--------------------------------|--------------------------------|----------------------------------------------------------------------|
-| `claude-sonnet-5`              | `anthropic/claude-sonnet-5`    | OAuth passthrough, `litellm/config.yaml` (no Anthropic key yet)       |
-| `claude-haiku-4-5`             | `anthropic/claude-haiku-4-5`   | OAuth passthrough, `litellm/config.yaml` (no Anthropic key yet)       |
-| `claude-opus-4-8`              | `anthropic/claude-opus-4-8`    | OAuth passthrough, `litellm/config.yaml` (no Anthropic key yet)       |
-| `claude-fable-5`               | `anthropic/claude-fable-5`     | OAuth passthrough, `litellm/config.yaml` (no Anthropic key yet)       |
-| `gpt-5-codex`                  | `openai/gpt-5-codex`           | Not defined yet - needs a real `OPENAI_API_KEY`, see "Later" below    |
-| `gpt-5`                        | `openai/gpt-5`                 | Not defined yet - needs a real `OPENAI_API_KEY`, see "Later" below    |
+| Virtual name (use everywhere) | Real model                   | Backend right now                                               |
+|-------------------------------|------------------------------|-----------------------------------------------------------------|
+| `claude-sonnet-5`             | `anthropic/claude-sonnet-5`  | OAuth passthrough, `litellm/config.yaml` (no Anthropic key yet) |
+| `claude-haiku-4-5`            | `anthropic/claude-haiku-4-5` | OAuth passthrough, `litellm/config.yaml` (no Anthropic key yet) |
+| `claude-opus-4-8`             | `anthropic/claude-opus-4-8`  | OAuth passthrough, `litellm/config.yaml` (no Anthropic key yet) |
+| `claude-fable-5`              | `anthropic/claude-fable-5`   | OAuth passthrough, `litellm/config.yaml` (no Anthropic key yet) |
+| `gpt-5-codex`                 | `openai/gpt-5-codex`         | Not defined yet - needs a real `OPENAI_API_KEY`                 |
+| `gpt-5`                       | `openai/gpt-5`               | Not defined yet - needs a real `OPENAI_API_KEY`                 |
 
 This table is the file-based (git-tracked) half of the mapping, and it's enough on its own for Claude-only skills/agents shared across sessions - no admin UI setup required beyond issuing personal keys.
 
 It stops being enough the day a skill/agent's frontmatter needs to resolve to *different* real models depending on which CLI runs it (e.g. Codex should hit `gpt-5-codex` for a name that means "the good model", while Claude Code should hit `claude-sonnet-5` for that exact same name) - `model_name` in `config.yaml` is a single flat namespace, it can't branch on which CLI asked.
 That branching is what LiteLLM's **Team/Key Model Aliases** are for: a Team (or an individual key) can remap an alias to a different real `model_name`, so the same alias resolves differently depending on which key made the call.
 Unlike everything above, model aliases are **not** expressible in `config.yaml` - they're Team/Key configuration, which only exists once created through `/ui` or the API, persisted in `litellm-db`.
-There's no reason to set this up before `gpt-5-codex`/`gpt-5` actually exist (see "Later" below) - until then, a Team alias would just point at a model that doesn't work yet.
+There's no reason to set this up before `gpt-5-codex`/`gpt-5` actually exist (a real `OPENAI_API_KEY` gets added) - until then, a Team alias would just point at a model that doesn't work yet.
 Once it's needed: **Teams** → create e.g. `claude-users` with Model Alias `SHARED_NAME → claude-sonnet-5`, and `codex-users` with `SHARED_NAME → gpt-5-codex`; issue personal keys scoped to the matching team.
-
-### Starting it
-
-```bash
-docker compose up -d --build litellm litellm-db webhook
-docker compose logs -f litellm
-```
-
-First boot takes a bit longer than usual - LiteLLM runs its Postgres schema migration against `litellm-db` before it starts serving.
 
 ### Right now: no Anthropic/OpenAI key yet
 
 `claude-sonnet-5`/`claude-haiku-4-5`/`claude-opus-4-8`/`claude-fable-5` are defined in `litellm/config.yaml`'s `model_list` with no `api_key` - `model_group_settings.forward_client_headers_to_llm_api` forwards the caller's own `claude login` subscription token straight to Anthropic instead.
-`gpt-5-codex`/`gpt-5` have no equivalent (OpenAI has nothing like Anthropic's OAuth passthrough), so they simply don't exist yet - add them once a real `OPENAI_API_KEY` shows up, see "Later" below.
-
-### Admin UI: issuing a personal key
-
-1. Open http://localhost:4000/ui and log in with `admin` / `LITELLM_MASTER_KEY`.
-2. **Keys** → **Create New Key**.
-3. Restrict `Models` to whichever of `claude-sonnet-5`/`claude-haiku-4-5`/`claude-opus-4-8`/`claude-fable-5` that person should have, and set `Max Budget` / `Rate Limits` as needed.
-4. Give the generated `sk-...` key to that person.
+`gpt-5-codex`/`gpt-5` have no equivalent (OpenAI has nothing like Anthropic's OAuth passthrough), so they simply don't exist yet - add them once a real `OPENAI_API_KEY` shows up.
 
 ### Routing Claude Code through it
 
-```bash
-make env
-```
-
-Prints `export` statements with a `<virtual key>` placeholder for `ANTHROPIC_BASE_URL`/`ANTHROPIC_CUSTOM_HEADERS`/etc. (`LITELLM_URI`/`LITELLM_PORT` in `.env` control the URL if you changed it from the default). Model choice isn't part of this - Claude Code picks its own model through its normal interface, same as always.
-Copy the output, replace `<virtual key>` with your personal virtual key from the step above, and paste the result into `~/.zshrc`/`~/.bashrc` so every new shell picks it up - see "Getting started" above.
+`make env` (see "Getting started" above) prints `export` statements with a `<virtual key>` placeholder for `ANTHROPIC_BASE_URL`/`ANTHROPIC_CUSTOM_HEADERS`/etc. (`LITELLM_URI`/`LITELLM_PORT` in `.env` control the URL if you changed it from the default). Model choice isn't part of this - Claude Code picks its own model through its normal interface, same as always.
 Then `claude login` (subscription OAuth, Pro/Max/Team) as usual.
 
 `ANTHROPIC_CUSTOM_HEADERS` is required even though nothing else guards these routes: without a distinct header proving something *else* authenticated to LiteLLM, it can't tell the incoming `Authorization` (the subscription token) apart from its own auth and strips it before forwarding - Anthropic then replies `x-api-key header is required` (see [BerriAI/litellm#19618](https://github.com/BerriAI/litellm/issues/19618)).
 `general_settings.litellm_key_header_name: x-litellm-api-key` in `litellm/config.yaml` is what makes LiteLLM read the virtual key from that header, checking it against the budget/model/rate-limit rules on the key, independently of whatever gets forwarded to Anthropic.
 
-### Later: checklist for when a real Anthropic/OpenAI key shows up
-
-Do these in order - skipping the `config.yaml` cleanup step is what leads to the undefined "same `model_name` in both places" state warned about below.
-
-**When an Anthropic key arrives:**
-
-- [ ] `/ui` → **Models** → **Add New Model** → `Model Name: claude-sonnet-5` (the *same* name, not a new one) → `LiteLLM Model Name: anthropic/claude-sonnet-5` → paste the real key in `API Key`. Repeat for `claude-haiku-4-5`, `claude-opus-4-8`, `claude-fable-5`.
-- [ ] In `litellm/config.yaml`: delete all four Claude entries from `model_list`, and remove their four names from `model_group_settings.forward_client_headers_to_llm_api` (delete the whole line if OpenAI isn't wired up yet either).
-- [ ] `docker compose restart litellm` (or `up -d` again - no image/volume changes needed).
-- [ ] Update the "Model name mapping" table above: Claude rows go from "OAuth passthrough, `litellm/config.yaml`" to "Central org key, admin UI".
-- [ ] Drop `claude login` from "Routing Claude Code through it" above.
-- [ ] Frontmatter `model:` values and everyone's personal virtual keys need **no changes at all** - that's the entire point of the stable naming.
-
-**When an OpenAI key arrives:**
-
-- [ ] `/ui` → **Models** → **Add New Model** → `Model Name: gpt-5-codex` → `LiteLLM Model Name: openai/gpt-5-codex` → paste the real key. Repeat for `gpt-5`.
-- [ ] Update the "Model name mapping" table above: the two OpenAI rows go from "Not defined yet" to "Central org key, admin UI".
-- [ ] Issue personal virtual keys for Codex users (**Keys** → **Create New Key**, `Models` restricted to `gpt-5-codex`/`gpt-5`) and wire up "Routing Codex CLI through it" below for real.
-- [ ] Only *now* does the cross-CLI shared-name problem from "Model name mapping" above become real - if a skill/agent needs one frontmatter `model:` value to mean `claude-sonnet-5` under Claude Code and `gpt-5-codex` under Codex, that's the point to set up Team Model Aliases (see above), not before.
-
-Don't leave a `model_list` entry and a UI/DB-managed model sharing one `model_name` at the same time - that combination is undefined behavior, not a valid transition state to linger in.
-`general_settings.store_model_in_db: true` is what lets the UI persist model definitions to `litellm-db` instead of requiring a `model_list` entry + restart - that's also what makes rotating a key later (or rolling `claude-sonnet-5` onto a `claude-sonnet-6` release) a UI edit, not a file edit.
-
 ### Routing Codex CLI through it
 
-Once `gpt-5-codex`/`gpt-5` exist (see "Later" above - Codex has no subscription-passthrough option, so this can't happen before a real `OPENAI_API_KEY` is added), issue a personal virtual key the same way (**Keys** → **Create New Key**, `Models` restricted to `gpt-5-codex`/`gpt-5`).
+Once `gpt-5-codex`/`gpt-5` exist (Codex has no subscription-passthrough option, so this can't happen before a real `OPENAI_API_KEY` is added), issue a personal virtual key the same way (**Keys** → **Create New Key**, `Models` restricted to `gpt-5-codex`/`gpt-5`).
 The same `make env` (see above) also prints `OPENAI_API_BASE`/`OPENAI_API_KEY` lines from that key - Codex (and other OpenAI-SDK-based tools) read it directly, no custom header needed on that side. Set Codex's own model setting to `gpt-5-codex` or `gpt-5`.
 
 ### Inspecting captured traffic
@@ -321,7 +276,7 @@ The same `make env` (see above) also prints `OPENAI_API_BASE`/`OPENAI_API_KEY` l
 `webhook` logs one line per captured/enqueued payload (or per exception, see "Debugging ingestion" above) - `docker compose logs -f webhook` while driving a session through either CLI.
 It listens on host port `8010` (container port `8000`), reachable inside the `receipt-goblin` Docker network as `webhook:8000`.
 
-Set `CAPTURE_ENABLED=true` (off by default - see "Configuration" below) to also have every hit land as its own timestamped JSON file under `webhook/captures/` on the host (bind-mounted, not a Docker volume - `ls webhook/captures/` works directly, no `docker exec` needed), raw as received.
+Set `CAPTURE_ENABLED=true` under `webhook`'s `environment:` in `docker-compose.yml` (off by default, and **not** currently forwarded from `.env` - see "Configuration" below) to also have every hit land as its own timestamped JSON file under `webhook/captures/` on the host (bind-mounted, not a Docker volume - `ls webhook/captures/` works directly, no `docker exec` needed), raw as received.
 `log_format: json_array` in `litellm/config.yaml` means each file is usually a list of `StandardLoggingPayload` objects, not a single one.
 This directory is gitignored - it's real prompt/response content, not something to commit.
 `docker-compose.yml` still `build`s `webhook/Dockerfile` (deps baked into the image), then bind-mounts `webhook/src` over the image's `/app/src` and overrides `command:` to add `--reload` - editing `src/server.py` restarts the server without a rebuild, but changing `requirements.txt` does need `docker compose build webhook`. `captures/` is mounted separately (it's runtime output, not source) so it lands on the host either way.
