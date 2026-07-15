@@ -11,13 +11,13 @@ PORT := $(if $(strip $(LITELLM_PORT)),$(LITELLM_PORT),4000)
 URI := $(if $(strip $(LITELLM_URI)),$(LITELLM_URI),http://localhost:$(PORT))
 .PHONY: start stop env test
 
-start:
+start up:
 	docker compose up -d --build
 
 status:
 	docker compose ps
 
-stop:
+stop down:
 	docker compose down
 
 # Runs webhook/tests (pure clickhouse_ingest.py functions, no live

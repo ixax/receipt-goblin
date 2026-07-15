@@ -61,5 +61,5 @@ async def receive_git_branch(request: Request):
     # StandardLoggingPayload nor ANTHROPIC_CUSTOM_HEADERS can carry the
     # client's cwd/git state. See session_git_branch in clickhouse/schema.sql.
     body = await request.json()
-    ingest_git_branch(body.get("session_id", ""), body.get("git_branch", ""))
+    ingest_git_branch(body.get("session_id", ""), body.get("git_branch", ""), body.get("git_repo", ""))
     return {"status": "received"}

@@ -22,23 +22,33 @@ CREATE TABLE IF NOT EXISTS agent_invocations
 ENGINE = ReplacingMergeTree(spawned_at)
 ORDER BY (agent_id);
 
--- session_id -> git branch, captured once at SessionStart by
+-- session_id -> git branch/repo, captured once at SessionStart by
 -- hooks/report_git_branch.py (Claude Code and Codex CLI both run it - see
 -- .claude/settings.json / .codex/hooks.json). This is the one lifecycle
 -- hook this stack still has: neither LiteLLM's StandardLoggingPayload nor
 -- ANTHROPIC_CUSTOM_HEADERS (a static env var) can carry the client's cwd/
 -- git state, which is otherwise invisible to webhook/src/clickhouse_ingest.py
 -- - see AGENTS.md for why every other hook was removed in favor of that
--- payload. Branch is a snapshot from session start, not live - a
--- mid-session `git checkout` won't update the row.
+-- payload. Branch/repo are a snapshot from session start, not live - a
+-- mid-session `git checkout` or directory change won't update the row.
+-- git_repo is the repo's directory basename (falls back to the remote
+-- "origin" URL's basename when set - see _current_repo in
+-- hooks/report_git_branch.py), so it stays stable across clones under
+-- different local folder names.
 CREATE TABLE IF NOT EXISTS session_git_branch
 (
     session_id  String,
     git_branch  String,
+    git_repo    String DEFAULT '',
     captured_at DateTime64(3) DEFAULT now64(3)
 )
 ENGINE = ReplacingMergeTree(captured_at)
 ORDER BY (session_id);
+
+-- Table predates git_repo: ALTER for stacks whose ClickHouse volume already
+-- existed before this column was added (docker-entrypoint-initdb.d only
+-- runs CREATE TABLE on a fresh volume - see the reapply note up top).
+ALTER TABLE session_git_branch ADD COLUMN IF NOT EXISTS git_repo String DEFAULT '';
 
 -- One row per lifecycle event (hook invocation). raw_payload keeps the full
 -- untouched JSON Claude Code sent, so any field missed by the extracted

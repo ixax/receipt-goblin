@@ -150,7 +150,7 @@ Each service also has a `mem_limit`: `clickhouse` 2g (paired with `clickhouse/co
 | `agent_events`       | One row per LiteLLM call, full `raw_payload` JSON (the `StandardLoggingPayload`, minus `messages`).                                                                                                                                                                                                                                                                                 |
 | `agent_usage`        | One row per model call: tokens, plus `cost`/`input_cost`/`output_cost` straight from LiteLLM's own `response_cost`/`cost_breakdown` - cache-pricing-aware and never derived locally (a manually-maintained `model_pricing` table + `ASOF JOIN` used to compute cost instead, and was removed after it was found to overcount by several times whenever prompt caching was in play). |
 | `agent_messages`     | One row per call, holding `prompt_text`/`response_text`.                                                                                                                                                                                                                                                                                                                            |
-| `session_git_branch` | One row per session, `git_branch` snapshotted once at `SessionStart` by `hooks/report_git_branch.py` - not from LiteLLM, see below. Join on `session_id` against the tables above.                                                                                                                                                                                                  |
+| `session_git_branch` | One row per session, `git_branch`/`git_repo` snapshotted once at `SessionStart` by `hooks/report_git_branch.py` - not from LiteLLM, see below. Join on `session_id` against the tables above.                                                                                                                                                                                       |
 
 ### Per-request signals on `agent_usage`
 
@@ -170,9 +170,11 @@ Model choice (`agent_usage.model`) is the closest proxy: cheaper/faster models a
 `agent_messages` adds what's missing from that: the last user message's text and the model's own reply text for that call, via `_last_user_text()`/`_flatten_content()` in `clickhouse_ingest.py`.
 A row is only written when at least one of `prompt_text`/`response_text` is non-empty.
 
-### Git branch (`session_git_branch`)
+### Git branch/repo (`session_git_branch`)
 
-Every other table here is populated from LiteLLM's `StandardLoggingPayload`, which never sees the calling CLI's working directory or git state. `session_git_branch` is the one exception: `hooks/report_git_branch.py` runs once at `SessionStart` (registered in `.claude/settings.json` and `.codex/hooks.json`), reads the branch via `git rev-parse --abbrev-ref HEAD` in the session's `cwd`, and POSTs it straight to `webhook`'s `/api/v1/session-git-branch` route - bypassing LiteLLM entirely. It's a snapshot, not live: a `git checkout` partway through a session won't update the row.
+Every other table here is populated from LiteLLM's `StandardLoggingPayload`, which never sees the calling CLI's working directory or git state.
+`session_git_branch` is the one exception: `hooks/report_git_branch.py` runs once at `SessionStart` (registered in `.claude/settings.json` and `.codex/hooks.json`), reads the branch via `git rev-parse --abbrev-ref HEAD` and the repo via the `origin` remote's URL (falling back to the working tree's toplevel directory name when there's no `origin`) in the session's `cwd`, and POSTs both straight to `webhook`'s `/api/v1/session-git-branch` route - bypassing LiteLLM entirely.
+It's a snapshot, not live: a `git checkout` or `cd` to a different repo partway through a session won't update the row.
 
 ### MCP server (`mcp-server`)
 

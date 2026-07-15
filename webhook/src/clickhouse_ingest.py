@@ -322,7 +322,7 @@ _MESSAGE_COLUMNS = [
     "agent_name", "agent_version", "skill_name", "skill_version",
     "command_name", "agent_invocation_id", "prompt_text", "response_text",
 ]
-_GIT_BRANCH_COLUMNS = ["session_id", "git_branch", "captured_at"]
+_GIT_BRANCH_COLUMNS = ["session_id", "git_branch", "git_repo", "captured_at"]
 
 _INVOCATION_SPAWNED_AT_IDX = _INVOCATION_COLUMNS.index("spawned_at")
 _EVENT_TIMESTAMP_IDX = _EVENT_COLUMNS.index("timestamp")
@@ -549,13 +549,14 @@ def ingest_standard_logging_payload(payload: dict) -> None:
         )
 
 
-def ingest_git_branch(session_id: str, git_branch: str) -> None:
-    """Insert a session's git branch, reported by hooks/report_git_branch.py
-    at SessionStart. Never raises - a tracking-side failure must not surface
-    as an error to the CLI session that reported it."""
+def ingest_git_branch(session_id: str, git_branch: str, git_repo: str = "") -> None:
+    """Insert a session's git branch/repo, reported by
+    hooks/report_git_branch.py at SessionStart. Never raises - a
+    tracking-side failure must not surface as an error to the CLI session
+    that reported it."""
     try:
         client = get_client()
-        _insert_git_branch(client, [session_id, git_branch, datetime.now(timezone.utc)])
+        _insert_git_branch(client, [session_id, git_branch, git_repo, datetime.now(timezone.utc)])
     except Exception:
         logger.exception("failed to ingest git branch (session_id=%s)", session_id)
 
