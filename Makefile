@@ -36,6 +36,6 @@ test:
 # ~/.zshrc / ~/.bashrc (see README "Routing Claude Code through it").
 env:
 	@echo 'export ANTHROPIC_BASE_URL="$(URI)"'
-	@echo 'export OPENAI_API_BASE="$(URI)"'
 	@echo 'export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer <virtual key>"'
+	@echo 'export OPENAI_API_BASE="$(URI)"'
 	@echo 'export OPENAI_API_KEY="<virtual key>"'

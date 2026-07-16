@@ -31,7 +31,6 @@ cp .env.example .env
 | Variable                                                           | Required?                                                  | What it's for                                                                                                                                                                  |
 |--------------------------------------------------------------------|------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `LITELLM_MASTER_KEY`                                               | **Yes** - `docker-compose.yml` refuses to start without it | Admin credential for LiteLLM's own `/ui` and `/key/generate`. Pick anything reasonably secret - it's never sent to Anthropic/OpenAI, only used to log into the local admin UI. |
-| `LITELLM_URI`                                                      | No - defaults to `http://localhost:$LITELLM_PORT`          | Only set this if LiteLLM isn't on localhost (a shared/remote host) - read by `make env`, takes precedence over `LITELLM_PORT` there.                                           |
 | `LITELLM_PORT`, `LITELLM_DB_PASSWORD`, `CLICKHOUSE_PASSWORD`, etc. | No - all have working defaults                             | See "Configuration" under "Reference" below for the full list.                                                                                                                 |
 
 Everything else in `docker-compose.yml` (ports, ClickHouse credentials) has a sane default - you only need to touch `.env` for the row above.
@@ -266,7 +265,7 @@ Once it's needed: **Teams** → create e.g. `claude-users` with Model Alias `SHA
 
 ### Routing Claude Code through it
 
-`make env` (see "Getting started" above) prints `export` statements with a `<virtual key>` placeholder for `ANTHROPIC_BASE_URL`/`ANTHROPIC_CUSTOM_HEADERS`/etc. (`LITELLM_URI`/`LITELLM_PORT` in `.env` control the URL if you changed it from the default). Model choice isn't part of this - Claude Code picks its own model through its normal interface, same as always.
+`make env` (see "Getting started" above) prints `export` statements with a `<virtual key>` placeholder for `ANTHROPIC_BASE_URL`/`ANTHROPIC_CUSTOM_HEADERS`/etc. (`LITELLM_PORT` in `.env` control the URL if you changed it from the default). Model choice isn't part of this - Claude Code picks its own model through its normal interface, same as always.
 Then `claude login` (subscription OAuth, Pro/Max/Team) as usual.
 
 `ANTHROPIC_CUSTOM_HEADERS` is required even though nothing else guards these routes: without a distinct header proving something *else* authenticated to LiteLLM, it can't tell the incoming `Authorization` (the subscription token) apart from its own auth and strips it before forwarding - Anthropic then replies `x-api-key header is required` (see [BerriAI/litellm#19618](https://github.com/BerriAI/litellm/issues/19618)).
