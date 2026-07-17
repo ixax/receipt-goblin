@@ -223,6 +223,11 @@ services:
       CLICKHOUSE_DATABASE: *clickhouse-database
       REDIS_HOST: *redis-host
       REDIS_PORT: *redis-port
+      # worker.py never calls /key/info itself, but config.py is shared with
+      # webhook (see AGENTS.md "every tunable lives in config.py") and reads
+      # these with no fallback - unset here would crash worker.py on import.
+      LITELLM_MASTER_KEY: *litellm-master-key
+      LITELLM_BASE_URL: *litellm-base-url
     mem_limit: 256m
     restart: always
     depends_on:
