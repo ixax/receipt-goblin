@@ -40,10 +40,10 @@ services:
       - clickhouse-data:/var/lib/clickhouse
       # Runs automatically on first container start (empty data dir only) -
       # this is how schema.sql gets applied without a manual step.
-      - ./clickhouse/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - ./services/clickhouse/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
       # Caps ClickHouse's own memory usage at 85% of the mem_limit above
-      # (see clickhouse/config.d/memory.xml) instead of the host's RAM.
-      - ./clickhouse/config.d/memory.xml:/etc/clickhouse-server/config.d/memory.xml:ro
+      # (see services/clickhouse/config.d/memory.xml) instead of the host's RAM.
+      - ./services/clickhouse/config.d/memory.xml:/etc/clickhouse-server/config.d/memory.xml:ro
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
       interval: 5s
@@ -59,9 +59,6 @@ services:
       - target: 3000
         published: *grafana-port
     environment:
-      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
       CLICKHOUSE_USER: *clickhouse-user
@@ -72,10 +69,11 @@ services:
     restart: always
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./grafana/docker-entrypoint.sh:/docker-entrypoint-custom.sh:ro
-      - ./grafana/provisioning/datasources:/etc/grafana/provisioning-templates/datasources:ro
-      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
-      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./services/grafana/docker-entrypoint.sh:/docker-entrypoint-custom.sh:ro
+      - ./services/grafana/config.yml:/etc/grafana/config.yml:ro
+      - ./services/grafana/provisioning/datasources:/etc/grafana/provisioning-templates/datasources:ro
+      - ./services/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./services/grafana/dashboards:/var/lib/grafana/dashboards
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 5s
@@ -88,16 +86,17 @@ services:
       - receipt-goblin
 
   mcp-server:
-    # Builds the same prod image as mcp-server/Dockerfile (deps baked in via
+    # Builds the same prod image as services/mcp-server/Dockerfile (deps baked in via
     # its own RUN pip install layer), then overlays live source on top for
     # dev: ./src bind-mounted over the image's /app/src, and `command:`
     # overrides the Dockerfile's CMD to add --reload. Editing
-    # mcp-server/src/server.py restarts uvicorn without a rebuild; changing
+    # services/mcp-server/src/server.py restarts uvicorn without a rebuild; changing
     # requirements.txt does need `docker compose build mcp-server`.
-    build: ./mcp-server
+    build: ./services/mcp-server
     container_name: receipt-goblin-mcp-server
     volumes:
-      - ./mcp-server/src:/app/src:ro
+      - ./services/mcp-server/src:/app/src:ro
+      - ./services/mcp-server/config.yml:/app/config.yml:ro
     command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
     ports:
       - target: 8001
@@ -123,17 +122,16 @@ services:
 
   redis:
     # Queue between webhook (producer) and webhook-worker (consumer) - see
-    # webhook/src/queue_client.py. maxmemory bounds the worst case (a stuck
-    # worker/ClickHouse) instead of growing unboundedly; the stream's own
-    # MAXLEN (queue_client.MAXLEN) is what actually keeps it there in
-    # practice - see AGENTS.md for the sizing math.
+    # services/webhook/src/queue_client.py. Tuning lives in
+    # services/redis/redis.conf, not here.
     image: redis:7-alpine
     container_name: receipt-goblin-redis
-    command: ["redis-server", "--maxmemory", "700mb", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     mem_limit: 768m
     restart: always
     volumes:
       - redis-data:/data
+      - ./services/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -143,20 +141,21 @@ services:
       - receipt-goblin
 
   webhook:
-    # Builds the same prod image as webhook/Dockerfile (deps baked in via its
+    # Builds the same prod image as services/webhook/Dockerfile (deps baked in via its
     # own RUN pip install layer), then overlays live source on top for dev:
     # ./src bind-mounted over the image's /app/src, and `command:` overrides
-    # the Dockerfile's CMD to add --reload. Editing webhook/src/server.py
+    # the Dockerfile's CMD to add --reload. Editing services/webhook/src/server.py
     # restarts uvicorn without a rebuild; changing requirements.txt does need
     # `docker compose build webhook`.
-    build: ./webhook
+    build: ./services/webhook
     container_name: receipt-goblin-webhook
     volumes:
-      - ./webhook/src:/app/src:ro
+      - ./services/webhook/src:/app/src:ro
+      - ./services/webhook/config.yml:/app/config.yml:ro
       # Captured payloads land here on the host, not just inside the
-      # container - see webhook/src/server.py CAPTURE_DIR. Kept separate from
+      # container - see services/webhook/src/server.py CAPTURE_DIR. Kept separate from
       # the src/ mount above since it's runtime output, not source.
-      - ./webhook/captures:/app/captures
+      - ./services/webhook/captures:/app/captures
     command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     ports:
       - target: 8000
@@ -185,14 +184,15 @@ services:
       - receipt-goblin
 
   webhook-worker:
-    # Same image as webhook (build: ./webhook builds it again from the same
+    # Same image as webhook (build: ./services/webhook builds it again from the same
     # Dockerfile/layer cache, not a separate image) - only `command:` differs.
     # Drains queue_client.STREAM_KEY in batches and does the actual
-    # ClickHouse inserts - see webhook/src/worker.py.
-    build: ./webhook
+    # ClickHouse inserts - see services/webhook/src/worker.py.
+    build: ./services/webhook
     container_name: receipt-goblin-webhook-worker
     volumes:
-      - ./webhook/src:/app/src:ro
+      - ./services/webhook/src:/app/src:ro
+      - ./services/webhook/config.yml:/app/config.yml:ro
     command: ["python", "-m", "src.worker"]
     environment:
       CLICKHOUSE_HOST: *clickhouse-host
@@ -223,7 +223,7 @@ services:
       LITELLM_MASTER_KEY: *litellm-master-key
       DATABASE_URL: *litellm-db-url
     volumes:
-      - ./litellm/config.yaml:/app/config.yaml:ro
+      - ./services/litellm/config.yaml:/app/config.yaml:ro
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     mem_limit: 2g
     healthcheck:

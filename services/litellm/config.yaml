@@ -1,34 +1,10 @@
 model_list:
-  # --- Claude, temporary: caller's own subscription, no Anthropic key yet ---
-  # These model_name values are the STABLE, permanent names to use
-  # everywhere - ANTHROPIC_MODEL, agent/skill frontmatter `model:`, etc.
-  # (claude-haiku-4-5-20251001 is the one exception: it's not meant to be
-  # written anywhere, it's an alias so Claude Code's own internal dated
-  # snapshot id for Haiku 4.5 still resolves, see the comment on that entry).
-  # Right now, with no Anthropic API key on hand, they're backed by OAuth
-  # passthrough (no api_key here - the caller's own `claude login` token is
-  # what reaches Anthropic, see model_group_settings below).
-  #
-  # Once a real Anthropic key exists: add these SAME names in the admin
-  # UI's Models page (api_key included - see README.md), remove this whole
-  # model_list block plus the model_group_settings entry below, restart, and
-  # every ANTHROPIC_MODEL/frontmatter reference elsewhere keeps working
-  # unchanged - only the billing/auth mechanism behind the name changes.
-  # Don't do both at once: a config.yaml entry and a UI/DB entry sharing one
-  # model_name at the same time is undefined, pick one or the other per name.
   - model_name: claude-sonnet-5
     litellm_params:
       model: anthropic/claude-sonnet-5
   - model_name: claude-haiku-4-5
     litellm_params:
       model: anthropic/claude-haiku-4-5
-  # Claude Code resolves the "Haiku 4.5" family to this dated snapshot id
-  # internally (seen in its own system prompt as the canonical model id) and
-  # sends that literal string for some subagent calls, even when the
-  # agent's frontmatter says `model: claude-haiku-4-5` - not something this
-  # repo configures, just how the CLI names the model. Alias it to the same
-  # backing model so those calls don't 400 with "Invalid model name" and
-  # silently fall back to the default model instead.
   - model_name: claude-haiku-4-5-20251001
     litellm_params:
       model: anthropic/claude-haiku-4-5
@@ -38,12 +14,6 @@ model_list:
   - model_name: claude-fable-5
     litellm_params:
       model: anthropic/claude-fable-5
-
-  # --- OpenAI ---
-  # gpt-5-codex/gpt-5 have no subscription-style fallback (OpenAI has nothing
-  # like Anthropic's OAuth passthrough) - deliberately absent here until a
-  # real OPENAI_API_KEY exists, at which point add them via the admin UI's
-  # Models page the same way, under these same two names.
 
 general_settings:
   store_model_in_db: true

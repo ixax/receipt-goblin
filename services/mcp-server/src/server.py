@@ -16,8 +16,10 @@ a write/DDL statement - keep it strict rather than convenient.
 """
 import os
 import re
+from pathlib import Path
 
 import clickhouse_connect
+import yaml
 from mcp.server.fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -53,29 +55,14 @@ app.add_route("/health", health, methods=["GET"])
 
 _client = None
 
-# The tables this stack actually writes to - anything else (system.*,
-# information_schema.*, a typo'd table name) is out of scope for `query`.
-_ALLOWED_TABLES = {
-    "agent_events", "agent_usage", "agent_messages", "session_git_branch",
-}
+# Read-only SQL validation rules - see config.yml (allow/deny lists live
+# there now, since that's the file you actually edit to tune them).
+_config = yaml.safe_load((Path(__file__).resolve().parent.parent / "config.yml").read_text())
 
-# Word-boundary matched against the uppercased query - catches these
-# anywhere (subqueries, CTEs), not just as the first keyword.
-_FORBIDDEN_KEYWORDS = (
-    "INSERT", "UPDATE", "DELETE", "ALTER", "DROP", "TRUNCATE", "CREATE",
-    "GRANT", "REVOKE", "ATTACH", "DETACH", "KILL", "RENAME", "OPTIMIZE",
-    "SYSTEM", "EXCHANGE", "RESTORE", "BACKUP", "SET",
-)
-
-# ClickHouse table functions that read from outside the database itself
-# (arbitrary files/URLs/other DBs) - always forbidden regardless of the
-# keyword list above, since they're function calls, not keywords.
-_FORBIDDEN_TABLE_FUNCTIONS = (
-    "REMOTE", "REMOTESECURE", "CLUSTER", "CLUSTERALLREPLICAS", "URL",
-    "FILE", "S3", "HDFS", "MYSQL", "POSTGRESQL", "ODBC", "JDBC", "INPUT",
-)
-
-_MAX_ROWS_HARD_CAP = 1000
+_ALLOWED_TABLES = set(_config["allowed_tables"])
+_FORBIDDEN_KEYWORDS = tuple(_config["forbidden_keywords"])
+_FORBIDDEN_TABLE_FUNCTIONS = tuple(_config["forbidden_table_functions"])
+_MAX_ROWS_HARD_CAP = _config["max_rows_hard_cap"]
 
 
 def _validate_readonly_sql(sql: str) -> str:
