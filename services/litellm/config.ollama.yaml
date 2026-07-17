@@ -1,0 +1,15 @@
+# Only merged into the main config (see docker-entrypoint.sh) when
+# OLLAMA_HOST is set - kept in its own file so the local_reasoning/
+# local_embeddings model_name entries simply don't exist otherwise, rather
+# than existing but pointing at an unreachable host.
+model_list:
+  - model_name: local_reasoning
+    litellm_params:
+      model: os.environ/OLLAMA_REASONING_MODEL
+      api_base: os.environ/OLLAMA_API_BASE
+  - model_name: local_embeddings
+    litellm_params:
+      model: os.environ/OLLAMA_EMBEDDINGS_MODEL
+      api_base: os.environ/OLLAMA_API_BASE
+    model_info:
+      mode: embedding

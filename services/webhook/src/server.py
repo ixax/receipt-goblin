@@ -8,13 +8,15 @@ into ClickHouse, in batches - see AGENTS.md.
 
 import json
 import logging
+import urllib.error
+import urllib.request
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 
 from .clickhouse_ingest import get_client, ingest_git_branch
-from .config import CAPTURE_DIR, CAPTURE_ENABLED
+from .config import CAPTURE_DIR, CAPTURE_ENABLED, LITELLM_BASE_URL, LITELLM_MASTER_KEY
 from .queue_client import enqueue, get_async_redis
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -54,12 +56,41 @@ async def receive_metrics(request: Request):
     return {"status": "queued"}
 
 
+def _virtual_key_is_valid(key: str) -> bool:
+    # Checks the caller's personal LiteLLM virtual key against LiteLLM's own
+    # /key/info - reuses the trust root the proxy already uses for every LLM
+    # call, instead of inventing a separate signing scheme.
+    if not key:
+        return False
+    req = urllib.request.Request(
+        f"{LITELLM_BASE_URL}/key/info?key={key}",
+        headers={"Authorization": f"Bearer {LITELLM_MASTER_KEY}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            info = json.load(resp).get("info") or {}
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError):
+        return False
+    if info.get("blocked"):
+        return False
+    expires = info.get("expires")
+    if expires and datetime.fromisoformat(expires.replace("Z", "+00:00")) < datetime.now(timezone.utc):
+        return False
+    return True
+
+
 @app.post("/api/v1/session-git-branch")
 async def receive_git_branch(request: Request):
-    # Reported by hooks/report_git_branch.py at SessionStart - the one
-    # lifecycle hook this stack still has, since neither LiteLLM's
-    # StandardLoggingPayload nor ANTHROPIC_CUSTOM_HEADERS can carry the
-    # client's cwd/git state. See session_git_branch in clickhouse/schema.sql.
+    # Reported by hooks/report_git_branch.py at SessionStart and (Claude Code
+    # only) CwdChanged - the one lifecycle hook this stack still has, since
+    # neither LiteLLM's StandardLoggingPayload nor ANTHROPIC_CUSTOM_HEADERS
+    # can carry the client's cwd/git state. See session_git_branch in
+    # clickhouse/schema.sql.
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not _virtual_key_is_valid(token):
+        raise HTTPException(status_code=401, detail="invalid or missing virtual key")
+
     body = await request.json()
     ingest_git_branch(body.get("session_id", ""), body.get("git_branch", ""), body.get("git_repo", ""))
     return {"status": "received"}

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""SessionStart hook (Claude Code and Codex CLI, see .claude/settings.json /
-.codex/hooks.json): reports the current git branch and repo for this session
-to the webhook. This is the one lifecycle hook this stack still has - see
-session_git_branch in clickhouse/schema.sql for why. Stdlib only. Must never
-raise on git/network failures (those are swallowed and logged to stderr) -
-but AGENT_CLI_TRACKING_API_URL has no fallback, so a missing/unset value is
-a misconfiguration, not a transient failure, and is allowed to crash this
-hook (KeyError, non-zero exit) rather than silently pointing at a guessed URL.
+"""SessionStart/CwdChanged hook (Claude Code; SessionStart only for Codex
+CLI - see .claude/settings.json / .codex/hooks.json): reports the current
+git branch and repo for this session to the webhook. This is the one
+lifecycle hook this stack still has - see session_git_branch in
+clickhouse/schema.sql for why. Stdlib only. Must never raise on git/network
+failures (those are swallowed and logged to stderr) - but
+AGENT_CLI_TRACKING_API_URL/LITELLM_VIRTUAL_KEY have no fallback, so a
+missing/unset value is a misconfiguration, not a transient failure, and is
+allowed to crash this hook (KeyError, non-zero exit) rather than silently
+pointing at a guessed URL or skipping auth.
 """
 import json
 import os
@@ -16,6 +18,10 @@ import urllib.error
 import urllib.request
 
 INGEST_API_URL = os.environ["AGENT_CLI_TRACKING_API_URL"]
+# Personal LiteLLM virtual key (see `make env`) - webhook checks this
+# against LiteLLM's own /key/info before accepting the report, so this
+# isn't just a header we're adding for show.
+LITELLM_VIRTUAL_KEY = os.environ["LITELLM_VIRTUAL_KEY"]
 REQUEST_TIMEOUT = float(os.environ.get("AGENT_CLI_TRACKING_TIMEOUT", "3"))
 
 
@@ -68,7 +74,11 @@ def main() -> None:
         "session_id": session_id, "git_branch": git_branch, "git_repo": git_repo,
     }).encode("utf-8")
     req = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json"}, method="POST",
+        url, data=data, method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {LITELLM_VIRTUAL_KEY}",
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:

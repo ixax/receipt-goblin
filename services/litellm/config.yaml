@@ -14,16 +14,6 @@ model_list:
   - model_name: claude-fable-5
     litellm_params:
       model: anthropic/claude-fable-5
-  - model_name: gemma3
-    litellm_params:
-      model: ollama/gemma3:4b
-      api_base: os.environ/OLLAMA_API_BASE
-  - model_name: embeddinggemma
-    litellm_params:
-      model: ollama/embeddinggemma:300m
-      api_base: os.environ/OLLAMA_API_BASE
-    model_info:
-      mode: embedding
 
 general_settings:
   store_model_in_db: true
@@ -48,7 +38,12 @@ model_group_settings:
   # any of them moves to the admin UI (real api_key) instead, remove its name
   # from this list too, or a client's own credential could still get forwarded
   # for it depending on which definition LiteLLM picks up.
-  forward_client_headers_to_llm_api: [claude-sonnet-5, claude-haiku-4-5, claude-haiku-4-5-20251001, claude-opus-4-8, claude-fable-5]
+  forward_client_headers_to_llm_api:
+    - claude-sonnet-5
+    - claude-haiku-4-5
+    - claude-haiku-4-5-20251001
+    - claude-opus-4-8
+    - claude-fable-5
 
 litellm_settings:
   # NOTE: a bare `success_callback: ["webhook"]` fires LiteLLM's built-in

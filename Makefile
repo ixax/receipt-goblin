@@ -42,14 +42,17 @@ test:
 
 # Prints export statements to route Claude Code, Codex, and other OpenAI/
 # Anthropic-SDK-based tools through the local LiteLLM proxy, plus
-# AGENT_CLI_TRACKING_API_URL for hooks/report_git_branch.py (it has no
-# fallback - the hook crashes if this isn't exported). Not stored in .env, so the
+# AGENT_CLI_TRACKING_API_URL/LITELLM_VIRTUAL_KEY for hooks/report_git_branch.py
+# (neither has a fallback - the hook crashes if they aren't exported;
+# LITELLM_VIRTUAL_KEY also authenticates that hook's report, checked by
+# webhook against LiteLLM's own /key/info). Not stored in .env, so the
 # printed `<virtual key>` is a placeholder - copy the output, replace it
 # with your personal key, and paste the result into ~/.zshrc / ~/.bashrc
 # (see README "Routing Claude Code through it").
 env:
+	@echo 'export LITELLM_VIRTUAL_KEY="<virtual key>"'
 	@echo 'export ANTHROPIC_BASE_URL="$(URI)"'
-	@echo 'export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer <virtual key>"'
+	@echo 'export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer $$LITELLM_VIRTUAL_KEY"'
 	@echo 'export OPENAI_API_BASE="$(URI)"'
-	@echo 'export OPENAI_API_KEY="<virtual key>"'
+	@echo 'export OPENAI_API_KEY="$$LITELLM_VIRTUAL_KEY"'
 	@echo 'export AGENT_CLI_TRACKING_API_URL="$(INGEST_URI)"'

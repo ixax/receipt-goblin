@@ -18,6 +18,11 @@ CLICKHOUSE_DATABASE = os.environ["CLICKHOUSE_DATABASE"]
 REDIS_HOST = os.environ["REDIS_HOST"]
 REDIS_PORT = int(os.environ["REDIS_PORT"])
 
+# For verifying hooks/report_git_branch.py's Authorization header against
+# LiteLLM's own /key/info - see server.py receive_git_branch.
+LITELLM_MASTER_KEY = os.environ["LITELLM_MASTER_KEY"]
+LITELLM_BASE_URL = os.environ["LITELLM_BASE_URL"]
+
 CAPTURE_DIR = Path(os.environ.get("CAPTURE_DIR", "/app/captures"))
 # Off by default - raw POST bodies contain real prompt/response content and
 # writing one file per request adds disk I/O to the hot path. Set
