@@ -1,0 +1,27 @@
+# Queue mechanics for webhook (producer, queue_client.enqueue) / webhook-worker
+# (consumer, worker.run) - see AGENTS.md "Why a queue in front of ClickHouse"
+# for the sizing math behind these numbers. Loaded by src/config.py.
+stream_key: webhook:events
+consumer_group: clickhouse-ingest
+
+# Approximate cap on the stream's length, not a hard byte budget - sized so
+# that even a full stream (~100KB/event observed) stays within the redis
+# service's mem_limit. Past this, XADD trims the oldest entries: acceptable
+# for this best-effort tracking pipeline, a backlog this deep means the
+# worker or ClickHouse is already stuck.
+maxlen: 5000
+
+# Flush once this many events have accumulated in the window.
+batch_size: 500
+
+# Max time an event waits before its batch is flushed, even if batch_size
+# was never reached - XREADGROUP's own BLOCK unblocks on the *first* entry
+# it sees, so without this explicit window the worker would insert almost
+# every event on its own during normal (non-bursty) traffic instead of
+# actually batching.
+flush_interval_ms: 2000
+
+# XAUTOCLAIM threshold (ms) - reclaim entries a prior consumer XREADGROUP'd
+# but never XACK'd for this long (covers a worker crashing/restarting
+# mid-batch).
+stale_idle_ms: 300000

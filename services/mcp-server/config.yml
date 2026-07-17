@@ -1,0 +1,56 @@
+# Read-only SQL validation rules for the `query` tool - see src/server.py's
+# _validate_readonly_sql. This file is the allow/deny list; keep it strict
+# rather than convenient, since there's no separate read-only ClickHouse
+# user backing this (docker-compose.yml uses one shared user for
+# webhook/mcp-server/grafana).
+
+# The tables this stack actually writes to - anything else (system.*,
+# information_schema.*, a typo'd table name) is out of scope for `query`.
+allowed_tables:
+  - agent_events
+  - agent_usage
+  - agent_messages
+  - session_git_branch
+
+# Word-boundary matched against the uppercased query - catches these
+# anywhere (subqueries, CTEs), not just as the first keyword.
+forbidden_keywords:
+  - INSERT
+  - UPDATE
+  - DELETE
+  - ALTER
+  - DROP
+  - TRUNCATE
+  - CREATE
+  - GRANT
+  - REVOKE
+  - ATTACH
+  - DETACH
+  - KILL
+  - RENAME
+  - OPTIMIZE
+  - SYSTEM
+  - EXCHANGE
+  - RESTORE
+  - BACKUP
+  - SET
+
+# ClickHouse table functions that read from outside the database itself
+# (arbitrary files/URLs/other DBs) - always forbidden regardless of the
+# keyword list above, since they're function calls, not keywords.
+forbidden_table_functions:
+  - REMOTE
+  - REMOTESECURE
+  - CLUSTER
+  - CLUSTERALLREPLICAS
+  - URL
+  - FILE
+  - S3
+  - HDFS
+  - MYSQL
+  - POSTGRESQL
+  - ODBC
+  - JDBC
+  - INPUT
+
+max_rows_hard_cap: 1000
