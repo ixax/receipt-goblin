@@ -5547,7 +5547,7 @@
         "spec": {
           "id": 68,
           "title": "/goal usage log",
-          "description": "One row per /goal invocation (= one session, since turn_id is currently always 0): who ran it, which session, how many LLM calls it took, total wall-clock duration, and the first prompt text of that session. Click the magnifier on 'prompt' to see the full text.",
+          "description": "One row per /goal invocation (= one session, since turn_id is currently always 0): who ran it, which session, how many LLM calls it took, total wall-clock duration, total tokens, total cost, and the goal text (the argument passed to /goal, i.e. the session's first prompt). Click the magnifier on 'goal text' to see the full text.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -5566,7 +5566,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH goal_sessions AS (\n  SELECT\n    session_id,\n    min(timestamp) AS started_at,\n    max(timestamp) AS last_call_at,\n    count() AS calls,\n    any(user_id) AS session_user_id\n  FROM agent_events\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch, argMax(git_repo, captured_at) AS git_repo\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\n  WHERE command_name = 'goal'\n    AND $__timeFilter(timestamp)\n    AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], user_id))\n    AND (has([${session_id:singlequote}], '__all__') OR has([${session_id:singlequote}], session_id))\n    AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))) AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], coalesce(gb.git_repo, '')))\n  GROUP BY session_id\n),\nprompts AS (\n  SELECT session_id, argMin(prompt_text, timestamp) AS prompt_text\n  FROM agent_messages\n  WHERE command_name = 'goal'\n  GROUP BY session_id\n)\nSELECT\n  gs.started_at AS timestamp,\n  gs.session_user_id AS user,\n  gs.session_id AS session,\n  gs.calls AS \"llm calls\",\n  round(dateDiff('second', gs.started_at, gs.last_call_at) / 60.0, 2) AS \"duration (min)\",\n  p.prompt_text AS prompt\nFROM goal_sessions gs\nLEFT JOIN prompts p ON p.session_id = gs.session_id\nORDER BY gs.started_at DESC"
+                        "rawSql": "WITH goal_sessions AS (\n  SELECT\n    session_id,\n    min(timestamp) AS started_at,\n    max(timestamp) AS last_call_at,\n    count() AS calls,\n    any(user_id) AS session_user_id\n  FROM agent_events\n  LEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch, argMax(git_repo, captured_at) AS git_repo\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = session_id\n  WHERE command_name = 'goal'\n    AND $__timeFilter(timestamp)\n    AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], user_id))\n    AND (has([${session_id:singlequote}], '__all__') OR has([${session_id:singlequote}], session_id))\n    AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))) AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], coalesce(gb.git_repo, '')))\n  GROUP BY session_id\n),\nprompts AS (\n  SELECT session_id, argMin(prompt_text, timestamp) AS prompt_text\n  FROM agent_messages\n  WHERE command_name = 'goal'\n  GROUP BY session_id\n),\nusage AS (\n  SELECT session_id, sum(input_tokens + output_tokens) AS tokens, sum(cost) AS cost\n  FROM agent_usage\n  GROUP BY session_id\n)\nSELECT\n  gs.started_at AS timestamp,\n  gs.session_user_id AS user,\n  gs.session_id AS session,\n  gs.calls AS \"llm calls\",\n  round(dateDiff('second', gs.started_at, gs.last_call_at) / 60.0, 2) AS \"duration (min)\",\n  coalesce(u.tokens, 0) AS tokens,\n  coalesce(u.cost, 0) AS cost,\n  p.prompt_text AS \"goal text\"\nFROM goal_sessions gs\nLEFT JOIN prompts p ON p.session_id = gs.session_id\nLEFT JOIN usage u ON u.session_id = gs.session_id\nORDER BY gs.started_at DESC"
                       }
                     },
                     "refId": "A",
@@ -5597,12 +5597,36 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "prompt"
+                      "options": "goal text"
                     },
                     "properties": [
                       {
                         "id": "custom.inspect",
                         "value": true
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "tokens"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "locale"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "cost"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "currencyUSD"
                       }
                     ]
                   },
