@@ -1,0 +1,36 @@
+# Format spec/example for a remote model source config file - copy this to
+# services/litellm/user_configs/<name>.yaml (e.g. config.ollama.yaml,
+# config.reranker.yaml - any filename ending .yaml works, no naming
+# convention required) and replace the <PLACEHOLDER> values below with the
+# real host/port/model for that source. Plain LiteLLM model_list, nothing
+# LiteLLM doesn't already support natively - see
+# https://docs.litellm.ai/docs/proxy/config_management for the underlying
+# `include:` mechanism services/litellm/docker-entrypoint.sh uses to merge
+# every *.yaml file in this directory into config.yaml at container start
+# (this file itself is skipped - .tmpl, not .yaml).
+# A source simply doesn't exist as a model_name at all unless its .yaml
+# file exists here - delete the file to remove the source.
+
+model_list:
+  # --- Ollama (services/litellm/user_configs/config.ollama.yaml) ---
+  - model_name: ollama/reasoning
+    litellm_params:
+      model: ollama/<OLLAMA REASONING MODEL>
+      api_base: "http://<OLLAMA HOST>:<OLLAMA PORT>"
+  - model_name: ollama/embeddings
+    litellm_params:
+      model: ollama/<OLLAMA EMBEDDINGS MODEL>
+      api_base: "http://<OLLAMA HOST>:<OLLAMA PORT>"
+    model_info:
+      mode: embedding
+
+  # --- Reranker (services/litellm/user_configs/config.reranker.yaml) ---
+  # LiteLLM's huggingface/ rerank provider speaks the raw HuggingFace Text
+  # Embeddings Inference (TEI) wire protocol to api_base - request
+  # {query, texts: [...]}, response a bare JSON array [{index, score}] (no
+  # "results" wrapper, unlike Cohere-style rerank APIs) - so api_base just
+  # needs to be a TEI-compatible rerank server.
+  - model_name: reranker
+    litellm_params:
+      model: huggingface/<RERANKER MODEL>
+      api_base: "http://<RERANKER HOST>:<RERANKER PORT>"

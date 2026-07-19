@@ -25,19 +25,6 @@ x-litellm-db-url: &litellm-db-url postgresql://litellm:${LITELLM_DB_PASSWORD:?se
 # LiteLLM's /key/info when verifying hooks/report_git_branch.py's virtual key.
 x-litellm-base-url: &litellm-base-url http://litellm:4000
 
-# Ollama is on a separate machine on the LAN, not a docker-compose service.
-# Optional: unset OLLAMA_HOST just means local_reasoning/local_embeddings
-# fail with a connection error if actually called - nothing else in the
-# stack depends on Ollama being reachable, so a missing/wrong host doesn't
-# block startup.
-x-ollama-host: &ollama-host ${OLLAMA_HOST:-}
-x-ollama-api-base: &ollama-api-base http://${OLLAMA_HOST:-localhost}:${OLLAMA_PORT:-11434}
-
-# Public model_name stays "local_reasoning"/"local_embeddings" in config.yaml;
-# swap the real ollama tag here (e.g. in .env) without touching config.yaml.
-x-ollama-reasoning-model: &ollama-reasoning-model ${OLLAMA_REASONING_MODEL:?set OLLAMA_REASONING_MODEL, e.g. ollama/gemma3:4b}
-x-ollama-embeddings-model: &ollama-embeddings-model ${OLLAMA_EMBEDDINGS_MODEL:?set OLLAMA_EMBEDDINGS_MODEL, e.g. ollama/embeddinggemma:300m}
-
 services:
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
@@ -249,17 +236,15 @@ services:
       WEBHOOK_URL: *webhook-url
       LITELLM_MASTER_KEY: *litellm-master-key
       DATABASE_URL: *litellm-db-url
-      # Raw, possibly-empty passthrough (no default here) - docker-entrypoint.sh
-      # checks this to decide whether to merge in config.ollama.yaml at all.
-      OLLAMA_HOST: *ollama-host
-      OLLAMA_API_BASE: *ollama-api-base
-      OLLAMA_REASONING_MODEL: *ollama-reasoning-model
-      OLLAMA_EMBEDDINGS_MODEL: *ollama-embeddings-model
     volumes:
-      - ./services/litellm/config.yaml:/app/config.yaml:ro
-      - ./services/litellm/config.ollama.yaml:/app/config.ollama.yaml:ro
-      - ./services/litellm/docker-entrypoint.sh:/docker-entrypoint-custom.sh:ro
-    entrypoint: ["/bin/sh", "/docker-entrypoint-custom.sh"]
+      # Whole directory, not individual files - docker-entrypoint.sh merges
+      # in whatever config.<name>.yaml files it finds there (e.g.
+      # config.ollama.yaml, config.reranker.yaml - see their .tmpl
+      # counterparts and "Remote model sources" under "LiteLLM" in
+      # README.md), so adding a new remote model source is just dropping a
+      # file next to config.yaml - no docker-compose.yml edit needed.
+      - ./services/litellm:/app/litellm-config:ro
+    entrypoint: ["/bin/sh", "/app/litellm-config/docker-entrypoint.sh"]
     command: ["--port", "4000"]
     mem_limit: 2g
     healthcheck:

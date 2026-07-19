@@ -24,6 +24,9 @@ status:
 stop down:
 	docker compose down
 
+logs:
+	docker compose logs -f
+
 # Restarts running containers in place (not a rebuild) - picks up edits to
 # bind-mounted source (services/webhook/src, etc.) for services without
 # --reload, like webhook-worker. Run `make start` instead if

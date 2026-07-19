@@ -51,7 +51,8 @@ litellm_settings:
   # what you want for inspecting full request/response JSON. `generic_api`
   # is the callback type that ships the full StandardLoggingPayload
   # (messages, response, usage, cost, timing, metadata) to your endpoint.
-  callbacks: ["metrics_webhook"]
+  callbacks:
+    - metrics_webhook
 
 callback_settings:
   metrics_webhook:
