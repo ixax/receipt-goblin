@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Request
 
-from .clickhouse_ingest import get_client, ingest_git_branch
+from .clickhouse_ingest import get_client, ingest_git_branch, ingest_plan_proposal
 from .config import CAPTURE_DIR, CAPTURE_ENABLED, LITELLM_BASE_URL, LITELLM_MASTER_KEY
 from .queue_client import enqueue, get_async_redis
 
@@ -93,4 +93,21 @@ async def receive_git_branch(request: Request):
 
     body = await request.json()
     ingest_git_branch(body.get("session_id", ""), body.get("git_branch", ""), body.get("git_repo", ""))
+    return {"status": "received"}
+
+
+@app.post("/api/v1/plan-proposal")
+async def receive_plan_proposal(request: Request):
+    # Reported by hooks/report_plan_proposal.py at PreToolUse (matcher:
+    # ExitPlanMode) - LiteLLM's StandardLoggingPayload doesn't carry the
+    # plan text (its tool_calls[0].function.arguments comes back empty for
+    # ExitPlanMode), so this hook reads it straight from the tool_input
+    # Claude Code passes it. See plan_proposals in clickhouse/schema.sql.
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not _virtual_key_is_valid(token):
+        raise HTTPException(status_code=401, detail="invalid or missing virtual key")
+
+    body = await request.json()
+    ingest_plan_proposal(body.get("session_id", ""), body.get("plan_text", ""))
     return {"status": "received"}

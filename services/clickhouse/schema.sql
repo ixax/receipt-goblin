@@ -50,6 +50,29 @@ ORDER BY (session_id);
 -- runs CREATE TABLE on a fresh volume - see the reapply note up top).
 ALTER TABLE session_git_branch ADD COLUMN IF NOT EXISTS git_repo String DEFAULT '';
 
+-- One row per ExitPlanMode tool call, captured by hooks/report_plan_proposal.py
+-- at PreToolUse (Claude Code only - Codex CLI has no plan-mode equivalent).
+-- This exists because the plan text isn't recoverable from LiteLLM's
+-- StandardLoggingPayload: agent_events.raw_payload's
+-- response.choices[0].message.tool_calls[0].function.arguments comes back
+-- as an empty "{}" for every observed ExitPlanMode call (confirmed against
+-- live data - unlike every other tool, whose arguments are captured in
+-- full), so the plan has to be read straight from the hook's own tool_input
+-- instead. A session can propose more than one plan (revise-and-resubmit),
+-- so this is plain insert-only, not a ReplacingMergeTree keyed on
+-- session_id. Paired back to its triggering agent_events row (tool_name =
+-- 'ExitPlanMode') via an ASOF JOIN on session_id + nearest captured_at at
+-- or after that row's timestamp - see the "ExitPlanMode: user prompt ->
+-- proposed plan" panel in agents_overview.json.
+CREATE TABLE IF NOT EXISTS plan_proposals
+(
+    session_id  String,
+    plan_text   String CODEC(ZSTD(3)),
+    captured_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = MergeTree
+ORDER BY (session_id, captured_at);
+
 -- One row per lifecycle event (hook invocation). raw_payload keeps the full
 -- untouched JSON Claude Code sent, so any field missed by the extracted
 -- columns can still be recovered later.

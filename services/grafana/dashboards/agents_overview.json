@@ -6195,6 +6195,144 @@
             }
           }
         }
+      },
+      "panel-75": {
+        "kind": "Panel",
+        "spec": {
+          "id": 75,
+          "title": "ExitPlanMode: user prompt -> proposed plan",
+          "description": "Every ExitPlanMode tool call paired with the user prompt from the same turn (agent_events joined to agent_messages on session_id+timestamp) and the plan text reported separately by hooks/report_plan_proposal.py (a PreToolUse hook - LiteLLM's raw_payload doesn't carry ExitPlanMode's arguments, they come back empty), matched via an ASOF JOIN on session_id + nearest captured_at at or after the triggering event's timestamp. Click the magnifier on prompt_text/plan_text to see full text.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 1,
+                        "rawSql": "SELECT\n  ev.timestamp,\n  ev.user_id,\n  ev.session_id,\n  ev.turn_id,\n  ev.agent_name,\n  ev.skill_name,\n  ev.status,\n  m.prompt_text,\n  pp.plan_text\nFROM agent_events ev\nASOF LEFT JOIN plan_proposals pp\n  ON pp.session_id = ev.session_id AND pp.captured_at >= ev.timestamp\nLEFT JOIN agent_messages m\n  ON m.session_id = ev.session_id AND m.timestamp = ev.timestamp\nLEFT JOIN (\n  SELECT session_id, argMax(git_branch, captured_at) AS git_branch, argMax(git_repo, captured_at) AS git_repo\n  FROM session_git_branch GROUP BY session_id\n) gb ON gb.session_id = ev.session_id\nWHERE ev.tool_name = 'ExitPlanMode'\n  AND $__timeFilter(ev.timestamp)\n  AND (has([${session_id:singlequote}], '__all__') OR has([${session_id:singlequote}], ev.session_id))\n  AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))) AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], coalesce(gb.git_repo, '')))\n  AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], ev.user_id))\n  AND (has([${agent_name:singlequote}], '__all__') OR has([${agent_name:singlequote}], ev.agent_name))\n  AND (has([${skill_name:singlequote}], '__all__') OR has([${skill_name:singlequote}], ev.skill_name))\n  AND (has([${command_name:singlequote}], '__all__') OR has([${command_name:singlequote}], ev.command_name))\nORDER BY ev.timestamp DESC"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "",
+            "spec": {
+              "options": {
+                "sortBy": [
+                  {
+                    "displayName": "timestamp",
+                    "desc": true
+                  }
+                ]
+              },
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "prompt_text"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.inspect",
+                        "value": true
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "plan_text"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.inspect",
+                        "value": true
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "user_id"
+                    },
+                    "properties": [
+                      {
+                        "id": "links",
+                        "value": [
+                          {
+                            "title": "Filter to this user",
+                            "url": "/d/agents-overview/agents-overview?${__url_time_range}&var-user_id=${__value.text}",
+                            "targetBlank": false
+                          }
+                        ]
+                      },
+                      {
+                        "id": "custom.width",
+                        "value": 150
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "session_id"
+                    },
+                    "properties": [
+                      {
+                        "id": "links",
+                        "value": [
+                          {
+                            "title": "Filter to this session",
+                            "url": "/d/agents-overview/agents-overview?${__url_time_range}&var-session_id=${__value.text}",
+                            "targetBlank": false
+                          }
+                        ]
+                      },
+                      {
+                        "id": "custom.width",
+                        "value": 150
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "timestamp"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.width",
+                        "value": 170
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
       }
     },
     "layout": {
@@ -6947,6 +7085,19 @@
                         "element": {
                           "kind": "ElementReference",
                           "name": "panel-18"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 24,
+                        "width": 24,
+                        "height": 10,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-75"
                         }
                       }
                     }

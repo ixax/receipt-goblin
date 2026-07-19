@@ -323,6 +323,7 @@ _MESSAGE_COLUMNS = [
     "command_name", "agent_invocation_id", "prompt_text", "response_text",
 ]
 _GIT_BRANCH_COLUMNS = ["session_id", "git_branch", "git_repo", "captured_at"]
+_PLAN_PROPOSAL_COLUMNS = ["session_id", "plan_text", "captured_at"]
 
 _INVOCATION_SPAWNED_AT_IDX = _INVOCATION_COLUMNS.index("spawned_at")
 _EVENT_TIMESTAMP_IDX = _EVENT_COLUMNS.index("timestamp")
@@ -362,6 +363,10 @@ def _insert_message(client, row: list) -> None:
 
 def _insert_git_branch(client, row: list) -> None:
     client.insert("session_git_branch", [row], column_names=_GIT_BRANCH_COLUMNS)
+
+
+def _insert_plan_proposal(client, row: list) -> None:
+    client.insert("plan_proposals", [row], column_names=_PLAN_PROPOSAL_COLUMNS)
 
 
 def _event_row(
@@ -559,6 +564,18 @@ def ingest_git_branch(session_id: str, git_branch: str, git_repo: str = "") -> N
         _insert_git_branch(client, [session_id, git_branch, git_repo, datetime.now(timezone.utc)])
     except Exception:
         logger.exception("failed to ingest git branch (session_id=%s)", session_id)
+
+
+def ingest_plan_proposal(session_id: str, plan_text: str) -> None:
+    """Insert an ExitPlanMode call's plan text, reported by
+    hooks/report_plan_proposal.py at PreToolUse. Never raises - a
+    tracking-side failure must not surface as an error to the CLI session
+    that reported it."""
+    try:
+        client = get_client()
+        _insert_plan_proposal(client, [session_id, plan_text, datetime.now(timezone.utc)])
+    except Exception:
+        logger.exception("failed to ingest plan proposal (session_id=%s)", session_id)
 
 
 def ingest_webhook_body(body: Any) -> None:

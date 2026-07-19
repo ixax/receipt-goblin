@@ -10,6 +10,8 @@ os.environ.setdefault("CLICKHOUSE_PASSWORD", "test-password")
 os.environ.setdefault("CLICKHOUSE_DATABASE", "test-db")
 os.environ.setdefault("REDIS_HOST", "test-redis-host")
 os.environ.setdefault("REDIS_PORT", "6379")
+os.environ.setdefault("LITELLM_MASTER_KEY", "test-master-key")
+os.environ.setdefault("LITELLM_BASE_URL", "http://test-litellm:4000")
 
 # webhook/ (not webhook/src) so clickhouse_ingest.py's `from .config import
 # ...` resolves - it needs to be imported as part of the `src` package for
