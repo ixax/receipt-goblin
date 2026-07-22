@@ -107,27 +107,47 @@ surfaces the first of.
   the Trace panel.
 - **`panel-77`'s query** pulls every parallel tool call from a clicked row,
   with special handling for Agent spawns. When a regular (non-Agent) tool
-  call is clicked, it shows just that row's `tool_calls` (unchanged). When
-  an Agent spawn is clicked, it shows:
-  1. The `Agent` tool_use call itself (from the clicked row's own `raw_payload`).
-  2. Every tool call made by the direct child agent (via `agent_invocation_id`
-     matching the spawned agent's own `agent_id`).
-  3. One level of grandchild tool calls (any agent spawned by the child agent
-     during its execution window, resolved via the same ASOF-join heuristic
-     as panel-76's own `child_anchor` - a best-effort match to the nearest
-     preceding `Agent` tool_use row, documented as a single-level depth
-     limitation).
-  This single-level nesting is the same limit as panel-76's own rendering
-  (grandchild agents anchor to their top-level parent's spawn point, not a
-  real multi-level tree). The `'$trace_ts' != ''` guard makes the table
-  render nothing before any timestamp has been clicked - checking emptiness
-  explicitly is more reliable than `toString(timestamp) = ''` alone across
-  ClickHouse versions.
+  call is clicked, it shows just that row's `tool_calls`. When an Agent spawn
+  is clicked, it shows:
+  1. Every tool call from all descendants spawned by that agent spawn
+     (direct children, grandchildren, and beyond).
+  2. Rows are matched by timestamp proximity: all events between the spawn
+     point and the next orchestrator-level Agent spawn (if any) are included.
+  This timestamp-based matching handles the ingestion race where
+  `agent_invocation_id` is blank on some rows - instead of strict equality
+  filtering which would silently drop these rows, the query uses an execution-
+  window heuristic to include all descendants. There is no hard nesting depth
+  limit; all descendants within the spawn's execution window are included, so
+  panel-77 shows everything that panel-76 can visually display. The
+  `'$trace_ts' != ''` guard makes the table render nothing before any
+  timestamp has been clicked.
 - The `Arguments` column gets the same `custom.inspect: true` +
   `custom.cellOptions: {"type": "json-view"}` field override already used
   elsewhere in this dashboard for `raw_payload` (e.g. the "Raw" sub-tab's
   Full Trace/Call Stack panels) - that's what makes the magnifier/eye icon
   appear for viewing long arguments in full.
+- **Ingestion race handling**: If `agent_events` rows arrive out of order or
+  with a delay (ingestion race), later rows from a child agent may have
+  `agent_invocation_id` blank instead of the spawned agent's ID. Panel-77's
+  timestamp-based execution-window matching handles this: all events between
+  the spawn and the next spawn are included regardless of their
+  `agent_invocation_id` field value. This ensures panel-77 never silently
+  drops data that panel-76 displays.
+- **Failure row handling**: Rows with `status='failure'` have no `tool_calls`
+  in their `raw_payload` (the LLM request failed), so they don't appear in
+  the normal tool calls section. Such rows are surfaced separately with their
+  error message extracted from `failed_tool_error` (or `failed_tool_name` if
+  set), so failures remain visible even when they lack structured tool output.
+- **Row ordering by timestamp**: Panel-77's table is explicitly ordered
+  chronologically via `ORDER BY Ts` in the SQL, where `Ts` is a hidden column
+  (hidden via the `Organize` transformation with `excludeByName: {"Ts": true}`)
+  that carries each row's own `timestamp` from `agent_events`. This ensures
+  all tool calls (including late-stage ones like `AskUserQuestion` that may
+  otherwise sort alphabetically into the middle) appear in execution order, not
+  arbitrary/insertion order. Previously the query had no ORDER BY, causing rows
+  to appear in undefined order (one user-visible symptom: `AskUserQuestion`
+  appeared mid-table instead of near the end where it chronologically belongs).
+  The `Ts` column is necessary for sorting but not displayed to the user.
 
 ## Plugin config that must not drift
 

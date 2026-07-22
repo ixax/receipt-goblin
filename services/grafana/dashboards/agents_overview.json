@@ -6400,7 +6400,7 @@
         "spec": {
           "id": 77,
           "title": "Tool calls at $trace_ts",
-          "description": "Detail table for a single moment in the Trace panel above - click a timestamp link there to list every tool call made by that exact agent_events row or, if the clicked row is an Agent spawn (▸ marker), all tool calls from the spawned child agent and one level of its own sub-agents (single-level nesting depth limit documented in Trace panel). Key = tool name, value = full arguments - use the magnifier/inspect icon on Arguments to see it in full. A single model call can invoke more than one tool in parallel, which the Trace tree above only shows the first of - this table shows all of them. Empty until a timestamp has been clicked ($trace_ts starts blank).",
+          "description": "Detail table for a single moment in the Trace panel above - click a timestamp link there to list every tool call made by that exact agent_events row or, if the clicked row is an Agent spawn (▸ marker), all tool calls from the spawned child agent and one level of its own sub-agents (arbitrary nesting depth support (handles ingestion race where agent_invocation_id is blank on later rows)). Key = tool name, value = full arguments - use the magnifier/inspect icon on Arguments to see it in full. A single model call can invoke more than one tool in parallel, which the Trace tree above only shows the first of - this table shows all of them. Empty until a timestamp has been clicked ($trace_ts starts blank).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -6419,7 +6419,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH clicked_row AS (\n  SELECT timestamp, tool_name, agent_invocation_id, session_id\n  FROM agent_events\n  WHERE '$trace_ts' != ''\n    AND toString(timestamp) = '$trace_ts'\n    AND (has([${session_id:singlequote}], '__all__') OR has([${session_id:singlequote}], session_id))\n),\nagent_spawn_events AS (\n  SELECT session_id, timestamp FROM agent_events\n  WHERE tool_name = 'Agent' AND agent_invocation_id = ''\n    AND session_id IN (SELECT DISTINCT session_id FROM clicked_row)\n),\nchild_agents_of_clicked_spawn AS (\n  SELECT DISTINCT ai.agent_id\n  FROM agent_invocations ai\n  ASOF LEFT JOIN agent_spawn_events ase\n    ON ase.session_id = ai.session_id AND ai.spawned_at >= ase.timestamp\n  WHERE ai.session_id IN (SELECT DISTINCT session_id FROM clicked_row)\n),\ngrandchild_agents AS (\n  SELECT DISTINCT ai.agent_id AS grandchild_agent_id\n  FROM agent_invocations ai\n  INNER JOIN agent_events ae\n    ON ae.session_id = ai.session_id AND ae.agent_invocation_id = ai.agent_id\n  ASOF LEFT JOIN agent_spawn_events ase\n    ON ase.session_id = ai.session_id AND ai.spawned_at >= ase.timestamp\n  WHERE ai.session_id IN (SELECT DISTINCT session_id FROM clicked_row)\n    AND ae.tool_name = 'Agent' AND ae.agent_invocation_id != ''\n),\ndirect_tool_calls AS (\n  SELECT JSONExtractString(tc, 'function', 'name') AS Tool,\n         JSONExtractString(tc, 'function', 'arguments') AS Arguments\n  FROM (\n    SELECT arrayJoin(JSONExtractArrayRaw(raw_payload, 'response', 'choices', 1, 'message', 'tool_calls')) AS tc\n    FROM clicked_row\n  )\n  WHERE EXISTS (SELECT 1 FROM clicked_row WHERE tool_name != 'Agent')\n),\nchild_tool_calls AS (\n  SELECT JSONExtractString(tc, 'function', 'name') AS Tool,\n         JSONExtractString(tc, 'function', 'arguments') AS Arguments\n  FROM (\n    SELECT arrayJoin(JSONExtractArrayRaw(raw_payload, 'response', 'choices', 1, 'message', 'tool_calls')) AS tc\n    FROM agent_events\n    WHERE agent_invocation_id IN (SELECT agent_id FROM child_agents_of_clicked_spawn)\n      AND session_id IN (SELECT DISTINCT session_id FROM clicked_row)\n  )\n  WHERE EXISTS (SELECT 1 FROM clicked_row WHERE tool_name = 'Agent')\n),\ngrandchild_tool_calls AS (\n  SELECT JSONExtractString(tc, 'function', 'name') AS Tool,\n         JSONExtractString(tc, 'function', 'arguments') AS Arguments\n  FROM (\n    SELECT arrayJoin(JSONExtractArrayRaw(raw_payload, 'response', 'choices', 1, 'message', 'tool_calls')) AS tc\n    FROM agent_events\n    WHERE agent_invocation_id IN (SELECT grandchild_agent_id FROM grandchild_agents)\n      AND session_id IN (SELECT DISTINCT session_id FROM clicked_row)\n  )\n  WHERE EXISTS (SELECT 1 FROM clicked_row WHERE tool_name = 'Agent')\n)\nSELECT Tool, Arguments FROM direct_tool_calls\nUNION ALL\nSELECT Tool, Arguments FROM child_tool_calls\nUNION ALL\nSELECT Tool, Arguments FROM grandchild_tool_calls"
+                        "rawSql": "WITH clicked_row AS (\n  SELECT timestamp, tool_name, agent_invocation_id, session_id, raw_payload, status, failed_tool_name, failed_tool_error\n  FROM agent_events\n  WHERE '$trace_ts' != ''\n    AND toString(timestamp) = '$trace_ts'\n    AND (has([${session_id:singlequote}], '__all__') OR has([${session_id:singlequote}], session_id))\n),\nagent_spawn_events AS (\n  SELECT session_id, timestamp\n  FROM agent_events\n  WHERE tool_name = 'Agent' AND agent_invocation_id = ''\n    AND session_id IN (SELECT DISTINCT session_id FROM clicked_row)\n),\nclicked_event_info AS (\n  SELECT \n    cr.timestamp AS event_ts,\n    cr.tool_name,\n    cr.agent_invocation_id,\n    cr.session_id,\n    cr.status,\n    cr.failed_tool_name,\n    cr.failed_tool_error,\n    if(cr.tool_name = 'Agent' AND cr.agent_invocation_id = '', 'spawn', 'non_spawn') AS click_type\n  FROM clicked_row cr\n),\n-- For spawn clicks, find the next spawn's timestamp (if any) to bound the collection window\nnext_spawn_ts AS (\n  SELECT \n    cei.event_ts,\n    argMinIf(ase.timestamp, ase.timestamp, ase.timestamp > cei.event_ts) AS next_spawn\n  FROM clicked_event_info cei\n  CROSS JOIN agent_spawn_events ase\n  WHERE cei.click_type = 'spawn'\n  GROUP BY cei.event_ts\n),\n-- Direct tool calls: clicked row's own tool calls (only if non-spawn)\ndirect_tool_calls AS (\n  SELECT JSONExtractString(tc, 'function', 'name') AS Tool,\n         JSONExtractString(tc, 'function', 'arguments') AS Arguments,\n         ts AS Ts\n  FROM (\n    SELECT arrayJoin(JSONExtractArrayRaw(cr.raw_payload, 'response', 'choices', 1, 'message', 'tool_calls')) AS tc, cr.timestamp AS ts\n    FROM clicked_row cr\n    CROSS JOIN clicked_event_info cei\n    WHERE cei.click_type = 'non_spawn'\n  ) x\n),\n-- Child and descendant tool calls: all events within spawn's execution window\n-- Key fix: use timestamp-based matching instead of strict agent_invocation_id equality\n-- This handles ingestion race (blank agent_invocation_id) and arbitrary nesting depth\nchild_and_descendant_tool_calls AS (\n  SELECT JSONExtractString(tc, 'function', 'name') AS Tool,\n         JSONExtractString(tc, 'function', 'arguments') AS Arguments,\n         ts AS Ts\n  FROM (\n    SELECT arrayJoin(JSONExtractArrayRaw(ae.raw_payload, 'response', 'choices', 1, 'message', 'tool_calls')) AS tc,\n           ae.timestamp AS ts\n    FROM clicked_event_info cei\n    LEFT JOIN next_spawn_ts nst ON nst.event_ts = cei.event_ts\n    INNER JOIN agent_events ae ON ae.session_id = cei.session_id\n    WHERE cei.click_type = 'spawn'\n      AND ae.timestamp > cei.event_ts  -- After the spawn\n      AND ae.timestamp != cei.event_ts  -- Not the spawn row itself\n      -- Before next spawn (if exists; default DateTime64 is 1970-01-01)\n      AND (nst.next_spawn = '1970-01-01T00:00:00'::DateTime64(6) OR ae.timestamp < nst.next_spawn)\n  )\n),\n-- Error handling: surface failure rows separately\nerror_rows AS (\n  SELECT\n    if(cei.failed_tool_name != '', cei.failed_tool_name, 'LLM_Error') AS Tool,\n    cei.failed_tool_error AS Arguments,\n    cei.event_ts AS Ts\n  FROM clicked_event_info cei\n  WHERE cei.status = 'failure' OR cei.failed_tool_name != ''\n)\nSELECT Tool, Arguments, Ts FROM direct_tool_calls\nUNION ALL\nSELECT Tool, Arguments, Ts FROM child_and_descendant_tool_calls\nUNION ALL\nSELECT Tool, Arguments, Ts FROM error_rows\nORDER BY Ts"
                       }
                     },
                     "refId": "A",
@@ -6427,7 +6427,18 @@
                   }
                 }
               ],
-              "transformations": [],
+              "transformations": [
+                {
+                  "kind": "Organize",
+                  "options": {
+                    "excludeByName": {
+                      "Ts": true
+                    },
+                    "indexByName": {},
+                    "renameByName": {}
+                  }
+                }
+              ],
               "queryOptions": {}
             }
           },
@@ -7205,7 +7216,6 @@
               }
             }
           },
-          
           {
             "kind": "TabsLayoutTab",
             "spec": {
