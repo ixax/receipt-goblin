@@ -70,7 +70,7 @@ services:
       CLICKHOUSE_PASSWORD: *clickhouse-password
       CLICKHOUSE_DATABASE: *clickhouse-database
     entrypoint: ["/bin/sh", "/docker-entrypoint-custom.sh"]
-    mem_limit: 512m
+    mem_limit: 1g
     restart: always
     volumes:
       - grafana-data:/var/lib/grafana
