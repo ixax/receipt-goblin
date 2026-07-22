@@ -1,9 +1,10 @@
 ---
 name: dynamictext-panel-builder
 description: >
-  MUST BE USED PROACTIVELY, without waiting to be asked, any time a panel whose type/vizConfig.group is `marcusolsson-dynamictext-panel` ("Dynamic Text" / Business Text) in services/grafana/dashboards/agents_overview.json needs to be created, edited, or debugged - this covers the "Trace" panel (panel-76, "Sessions & Debugging" -> "Trace" sub-tab) and any future Dynamic Text panel in this dashboard.
+  MUST BE USED PROACTIVELY, without waiting to be asked, any time a panel whose type/vizConfig.group is `marcusolsson-dynamictext-panel` ("Dynamic Text" / Business Text) in services/grafana/dashboards/agents_overview.json needs to be created, edited, or debugged - this covers the "Trace" panel (panel-76, "Sessions & Debugging" -> "Trace" sub-tab), its tightly-coupled companion table panel-77 (see "Companion detail table" below for why that one's included too), and any future Dynamic Text panel in this dashboard.
   Building one of these correctly requires a specific, non-obvious set of ClickHouse SQL tricks (UTF8-safe padding, one-row-per-session tree aggregation, HTML escaping order, ASOF joins for best-effort agent attribution) and Grafana plugin quirks (editor.format must be "html", not "markdown", or raw tags get escaped) that took many iterations to get right - re-deriving them from scratch in the main conversation wastes turns and tends to reintroduce already-fixed bugs (byte-based substring corrupting Cyrillic, %M meaning month not minutes, silent truncation breaking span-wrapping). Delegate here instead.
   Has write access (Edit/Bash+python) to perform the actual panel JSON edit itself, plus mcp__clickhouse__query to test SQL against real data before deploying - the caller should not hand-edit the panel or test queries directly.
+  SCOPE - NOT a general dashboard editor: this agent owns Dynamic Text panels (and panel-77) only. Any other part of `agents_overview.json` - other panel types, `spec.annotations`, `spec.variables`, dashboard-level settings, tabs/layout - is out of scope and must NOT be routed here; the main conversation edits those directly (see AGENTS.md "Rules to not violate" for the read-delegation rule, which is unrelated to this agent).
 tools: Bash, Read, Edit, Write, mcp__clickhouse__query
 model: claude-haiku-4-5
 ---
@@ -406,14 +407,12 @@ its parent, since `agent_spawn_events` only looks at orchestrator-level
   space of the same width instead, to cut visual noise (there's no rigid
   time column to keep aligned anymore, see the padding note above, but the
   blank-space-instead-of-repeating-the-time convention stayed).
-- Markers: `●` real user prompt/comment, `○` harness-injected pseudo-prompt
-  (see classification above), `├─`/`└─` tool-call tree branches (`└─`
-  specifically marks a reply/leaf), `▸` agent spawn, `❯` reply text (a
-  mirrored chevron - not the back-arrow `◂` used in earlier iterations,
-  and not a `●`/`○` circle either, even for the `Web page content` case
-  below, since that's the tool's own output being echoed back, not
-  something typed - it gets `❯` like any other reply), `🚨` for any
-  error/failure (not ⚠).
+- Markers: `❯` real user prompt/comment (remap: was `●`), `●` model reply
+  text and echoed tool output like WebFetch's "Web page content" (remap: was
+  `❯`), `○` harness-injected pseudo-prompt (see classification above),
+  `├─`/`└─` tool-call tree branches (`└─` specifically marks a reply/leaf),
+  `▸` agent spawn (legacy arrow - will be removed once spawn rows gain their
+  own description text), `🚨` for any error/failure (not ⚠).
 - Prompt/reply text is capped at 1500 chars (not fully unbounded - an
   earlier fully-unbounded version was reined in), relying on
   `white-space:pre-wrap` to wrap long text across lines in the viewer.
@@ -446,15 +445,58 @@ its parent, since `agent_spawn_events` only looks at orchestrator-level
   raw `response_text`) is hard-cut to 100 chars plus a literal `...`,
   regardless of where in the pipeline it shows up. When it surfaces via
   the prompt-classification pipeline (`is_webpage`), it's marked with the
-  `❯` reply marker instead of a `●`/`○` prompt circle (`prompt_final` has
+  `●` reply marker (after remap) in grey (opacity:.6) (`prompt_final` has
   to pass `is_webpage` through to the final SELECT for this - it isn't
   only used inside the `multiIf` that builds `display`).
+- Agent spawn rows now show the spawned agent's name in bold
+  (`<b>Agent spawn: <name></b>`) followed by the spawn's own task/prompt
+  description text in grey (opacity:.6, capped at 120 chars + `...`),
+  extracted from the Agent row's own `prompt_text` field (system-reminder
+  prefix stripped). No leading arrow (`▸`) is shown with the new format;
+  the arrow remains in the code as a legacy artifact awaiting later cleanup.
+- Suggestion-mode prompts now render as a single line showing the actual
+  prompt text with the `○` marker, not a separate label line followed by
+  the prompt text nested below it - the label `[suggestion-mode prompt]`
+  is gone.
+- Failure error lines (both `status='failure'` LLM failures and
+  `failed_tool_name` non-empty tool failures) are indented one level deeper
+  than their parent row and rendered in grey (opacity:.6) to visually show
+  they're notes/side-effects rather than primary content.
+- Prompt and reply text now supports literal newlines via `\n` -> `<br>`
+  conversion (after markdown `**bold**`/`` `code` `` is converted), so
+  multi-line user prompts and multi-line model replies now render as
+  multiple visual lines instead of being flattened onto one.
 - Always filter empty strings out of any array before
   `arrayStringConcat(arr, ', ')` - e.g.
   `arrayStringConcat(arrayFilter(x -> x != '', groupUniqArray(name)), ', ')`
   - a stray `''` element (from an unfiltered source table row) renders as
   a trailing `", "` with nothing after it, which reads as a typo/bug even
   though the join logic is otherwise correct.
+
+## Known limitations and deferred improvements
+
+- **Array-valued tool arguments (e.g., AskUserQuestion's `questions` array)**: 
+  Currently shown inline as escaped JSON. A future enhancement would render
+  each array element (e.g., each question object) as its own separate nested
+  line, styled in grey (opacity:.6), with no per-line stats. This requires
+  restructuring the tool-call rendering to loop over JSON array elements,
+  which is complex in SQL and would benefit from a dedicated refactor.
+
+- **Column alignment with overflow safety**: Item 8 in the previous batch
+  proposed re-introducing fixed-width column alignment (computing
+  `total_row_width - indent_width` to keep stats columns aligned across
+  deeply nested rows) while safely handling overflow via pre-truncation.
+  This was not implemented in the current batch due to complexity; it remains
+  a candidate for future work if user feedback indicates the lack of
+  alignment is a usability issue.
+
+- **WebFetch nesting depth**: WebFetch output (`Web page content...`)
+  currently appears as a reply at the same indent level as a normal model
+  reply. Item 10 proposed nesting it one level deeper (under the WebFetch
+  tool-call row that produced it), but this requires detecting whether a
+  reply row is a WebFetch result vs. a regular reply, which isn't directly
+  available in `scoped_events`. A workaround would be to join on tool-call
+  timestamps or mark responses during ingestion.
 
 ## Editing the panel JSON
 
