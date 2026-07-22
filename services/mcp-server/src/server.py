@@ -16,6 +16,7 @@ a write/DDL statement - keep it strict rather than convenient.
 """
 import os
 import re
+import time
 from pathlib import Path
 
 import clickhouse_connect
@@ -161,18 +162,21 @@ def query(sql: str, max_rows: int = 200) -> dict:
     table functions. Results are capped at max_rows (default 200, hard cap
     1000); set truncated=True in the response means there were more rows
     than that. Prefer aggregating/filtering in the query itself over relying
-    on this cap, since rows beyond it are silently dropped, not sampled."""
+    on this cap, since rows beyond it are silently dropped, not sampled.
+    The response includes execution_time_ms, the server-side query duration."""
     validated = _validate_readonly_sql(sql)
     capped_rows = max(1, min(max_rows, _MAX_ROWS_HARD_CAP))
 
     client = get_client()
+    start = time.perf_counter()
     try:
         result = client.query(
             f"SELECT * FROM ({validated}) AS _query_result LIMIT {capped_rows + 1}",
             settings={"max_execution_time": 10},
         )
     except Exception as exc:
-        return {"error": str(exc)}
+        return {"error": str(exc), "execution_time_ms": round((time.perf_counter() - start) * 1000, 1)}
+    execution_time_ms = round((time.perf_counter() - start) * 1000, 1)
 
     rows = result.result_rows
     truncated = len(rows) > capped_rows
@@ -184,4 +188,5 @@ def query(sql: str, max_rows: int = 200) -> dict:
         "rows": rows,
         "row_count": len(rows),
         "truncated": truncated,
+        "execution_time_ms": execution_time_ms,
     }
