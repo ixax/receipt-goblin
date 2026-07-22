@@ -65,6 +65,21 @@ litellm_settings:
   # (messages, response, usage, cost, timing, metadata) to your endpoint.
   callbacks:
     - metrics_webhook
+    # Copies x-claude-code-session-id into metadata.session_id pre-call so
+    # Langfuse groups traces by CLI session - see custom_callbacks.py.
+    - custom_callbacks.session_id_handler
+
+  # "langfuse" is one of LiteLLM's native logging integrations (unlike
+  # metrics_webhook above, it needs no callback_settings block - it just
+  # reads LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY/LANGFUSE_HOST from the
+  # litellm container's environment, set in docker-compose.yml). Ships every
+  # call as a Langfuse trace: full messages/response, per-call cost/usage,
+  # latency, and groups calls into sessions via metadata.session_id - see
+  # "Langfuse" in README.md for how session_id gets set for CLI traffic.
+  success_callback:
+    - langfuse
+  failure_callback:
+    - langfuse
 
 callback_settings:
   metrics_webhook:

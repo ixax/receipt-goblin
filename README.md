@@ -324,3 +324,59 @@ Set `CAPTURE_ENABLED=true` under `webhook`'s `environment:` in `docker-compose.y
 This directory is gitignored - it's real prompt/response content, not something to commit.
 `docker-compose.yml` still `build`s `services/webhook/Dockerfile` (deps baked into the image), then bind-mounts `services/webhook/src` over the image's `/app/src` and overrides `command:` to add `--reload` - editing `src/server.py` restarts the server without a rebuild, but changing `requirements.txt` does need `docker compose build webhook`. `captures/` is mounted separately (it's runtime output, not source) so it lands on the host either way.
 Built and run standalone (no compose, no `--reload`, no bind mounts) - `docker build -t webhook . && docker run -p 8000:8000 webhook` - it's the same self-contained image `Dockerfile` describes.
+
+## Langfuse
+
+A self-hosted [Langfuse](https://langfuse.com) v3 (`langfuse-web` + `langfuse-worker` + its own `langfuse-db`/`langfuse-clickhouse`/`langfuse-redis`/`langfuse-minio` - six services, fully separate from the agent-tracking stack above so schemas/versions never collide) gives a UI for LLM tracing/observability - full request/response per call, cost, latency, and errors, browsable and searchable, which ClickHouse/Grafana above don't provide (that stack is built for aggregate metrics, not reading individual call bodies).
+
+It's fed the same way `webhook` is: `services/litellm/config.yaml`'s `litellm_settings.success_callback`/`failure_callback` include `langfuse`, one of LiteLLM's built-in logging integrations - it needs no `callback_settings` block, just `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`/`LANGFUSE_HOST` in the `litellm` container's environment (set in `docker-compose.yml` from `.env`). Both integrations run off the exact same LiteLLM calls independently - Langfuse being down doesn't affect ClickHouse ingestion or vice versa.
+
+### It's optional - the `langfuse` compose profile
+
+All six Langfuse services carry `profiles: [langfuse]` in `docker-compose.yml`, so a plain `docker compose up -d` (or `make up`, if that's what you use) **never starts them** - only the core stack (`clickhouse`, `redis`, `webhook`, `webhook-worker`, `grafana`, `litellm`, `litellm-db`, `mcp-server`) comes up by default. To bring Langfuse up too:
+
+```sh
+docker compose --profile langfuse up -d
+```
+
+`docker compose down` without `--profile langfuse` leaves Langfuse containers running (compose only tears down what a plain `up` would start); pass `--profile langfuse` there too if you want everything down together.
+
+Because of this, every `LANGFUSE_*` var - both the six-services-internal ones (`LANGFUSE_CLICKHOUSE_USER`/`PASSWORD`, `LANGFUSE_DB_PASSWORD`, `LANGFUSE_REDIS_PASSWORD`, `LANGFUSE_MINIO_ROOT_USER`/`PASSWORD`, `LANGFUSE_SALT`, `LANGFUSE_ENCRYPTION_KEY`, `LANGFUSE_NEXTAUTH_SECRET`) and the ones `litellm` itself reads (`LANGFUSE_PUBLIC_KEY`/`SECRET_KEY`) - default to empty (`${VAR:-}`) rather than the `${VAR:?...}` required-and-fail-fast pattern used everywhere else in this file. That's deliberate: unlike `CLICKHOUSE_PASSWORD` or `LITELLM_MASTER_KEY`, nothing else in the stack needs these to boot, and `docker compose` interpolates env vars for every service defined in the file regardless of which profiles are active - a `:?` here would break `docker compose up` for anyone who hasn't set up Langfuse at all, profile or not. Leaving them unset just means: Langfuse containers won't start (no profile → moot) and, if you *do* start `litellm` without ever touching Langfuse, its `langfuse` success/failure callback quietly fails per-call (logged, not fatal - LiteLLM itself still works) since it has nothing to authenticate with. Fill in `.env` (see `.env.example`) before enabling the profile for real.
+
+### Session grouping
+
+Langfuse groups traces by `metadata.session_id` on the request, which nothing sets by default - without it, every call would show up as its own disconnected trace instead of grouped per CLI session, the way ClickHouse's `session_id` already groups rows (see `_session_and_trace_id` in `AGENTS.md`). `services/litellm/custom_callbacks.py` (`SessionIdHandler`, wired in via `litellm_settings.callbacks: custom_callbacks.session_id_handler`) runs pre-call and copies the same `x-claude-code-session-id` header ClickHouse already reads into `metadata.session_id`, so Langfuse's session view lines up with the same sessions Grafana's `$session_id` variable does.
+`docker-entrypoint.sh` copies `custom_callbacks.py` next to the merged effective config in `/tmp` (not just `/app/litellm-config`) since LiteLLM resolves a bare `custom_callbacks.session_id_handler` module path relative to whichever config file it was actually started with.
+
+### First boot / provisioning
+
+`LANGFUSE_INIT_*` env vars (`LANGFUSE_INIT_ORG_ID`, `LANGFUSE_INIT_PROJECT_ID`, `LANGFUSE_INIT_PROJECT_PUBLIC_KEY`/`SECRET_KEY`, `LANGFUSE_INIT_USER_EMAIL`/`PASSWORD`, etc. - see `.env.example`) make `langfuse-web` auto-provision an org, project, admin user, and API key pair on its very first boot (empty `langfuse-db`) - no manual `/setup` wizard. `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` (what `litellm` authenticates with) **must be byte-for-byte identical** to `LANGFUSE_INIT_PROJECT_PUBLIC_KEY`/`SECRET_KEY` - the latter is what makes Langfuse create exactly that key pair, not a separately-issued credential.
+This only runs against an empty database - changing `LANGFUSE_INIT_*` after the first boot has no effect; manage the org/project/keys through the UI at that point instead.
+
+### Open Langfuse
+
+http://localhost:3001 (`LANGFUSE_PORT`, default `3001` - `3000` is already Grafana's), log in with `LANGFUSE_INIT_USER_EMAIL`/`LANGFUSE_INIT_USER_PASSWORD`.
+
+### Two known first-boot gotchas already fixed here
+
+Both were hit and fixed once already in this stack's `docker-compose.yml` - worth knowing about if you ever bump the `langfuse/langfuse` image and see the same symptoms again:
+
+- **`langfuse-web` OOM at `mem_limit: 1g`.** It's a full Next.js app, notably heavier than this stack's other services - 1g gets heap-killed partway through its init-scripts pass (right after the "MCP feature registered" log lines). Fixed by raising to `2g`.
+- **Healthcheck/`localhost` connection refused despite the app logging "Ready".** Next.js's standalone `server.js` binds to `$HOSTNAME` if it's set, and Docker auto-sets `HOSTNAME` to the container ID - so without an override it listens only on the container's actual IP, not `127.0.0.1`/`localhost`, and `wget http://localhost:3000/...` (or anything else hitting `localhost`) gets connection refused. Fixed two ways: `HOSTNAME: "0.0.0.0"` in `langfuse-web`'s `environment:` makes it bind everywhere, and the healthcheck itself targets `http://127.0.0.1:3000/...` explicitly rather than `localhost` (the container also has no IPv6 listener, and `localhost` resolves to `::1` first).
+
+### Restarting `litellm` to pick up a config change
+
+Editing `services/litellm/config.yaml`/`custom_callbacks.py` needs a `litellm` restart to take effect - **but don't do this without asking first**, even for a config-only change: `litellm` is the live proxy every CLI session on the machine currently routes through, and restarting it drops in-flight requests for anyone else using it right now (see `AGENTS.md` "Rules to not violate").
+And it has to be `docker compose up -d litellm` (recreate), not `docker compose restart litellm` - `restart` reuses the container's existing environment snapshot and does **not** pick up new/changed `environment:` entries from `docker-compose.yml` (this is how `LANGFUSE_PUBLIC_KEY`/`SECRET_KEY` ended up missing the first time Langfuse was wired in here - a `restart` after adding them to the compose file left the running container without them, so `langfuse` callback had nothing to authenticate with and produced zero traces despite looking "restarted"). `docker compose config litellm | grep -i langfuse` (or `docker exec receipt-goblin-litellm env | grep -i langfuse`) is a quick way to confirm the running container actually has them.
+
+## Known issues / follow-ups
+
+Things found during other work that are real but out of scope for whatever was being done at the time - fix or investigate later.
+
+### `session_git_branch` is empty - LiteLLM master-key auth is rejecting its own master key
+
+`hooks/report_git_branch.py` POSTs to `webhook`'s `/api/v1/session-git-branch`, which checks the caller's `LITELLM_VIRTUAL_KEY` against LiteLLM's own `/key/info` (using `LITELLM_MASTER_KEY` for that check) before accepting the report.
+Every such POST currently gets `401 Unauthorized` from `webhook` (confirmed in its logs across many historical sessions, not just recent ones), so `session_git_branch` has zero rows in ClickHouse - every session shows up with no git branch/repo anywhere this data is used (e.g. the Grafana dashboard's `git_branch`/`git_repo` filters, the Trace panel's `Git:` line).
+Setting a fresh personal `LITELLM_VIRTUAL_KEY` did not fix it, because the failure is one level deeper: `webhook`'s own call to LiteLLM's `GET /key/info` (authenticated with `LITELLM_MASTER_KEY`, currently `sk-anything-you-like` in `.env` - a real, intentional local-dev value, not a placeholder) itself gets `401 Malformed API Key passed in. Ensure Key has \`Bearer \` prefix.` from LiteLLM - reproduced by calling `/key/info` and `/models` directly from the host with `curl`, so it isn't a container-networking issue, and the `Authorization: Bearer <key>` header is being sent correctly.
+`docker-compose.yml` pins `litellm` to `ghcr.io/berriai/litellm:main-latest` - a floating dev tag, not a fixed version - which is the most likely place a subtle auth-handling regression crept in between whenever this last worked and now.
+Next steps if picked up: check LiteLLM proxy startup logs for auth-related warnings, try pinning `litellm` to a specific released tag instead of `main-latest` and see if the same master key then authenticates, and only after that retest whether the new `LITELLM_VIRTUAL_KEY` in `.zshrc` actually resolves the original `session_git_branch` gap.

@@ -23,6 +23,15 @@ EFFECTIVE_CONFIG=/tmp/litellm-config.yaml
 
 cp "$BASE_CONFIG" "$EFFECTIVE_CONFIG"
 
+# custom_callbacks.py (services/litellm/custom_callbacks.py) is referenced
+# from config.yaml as a bare `custom_callbacks.session_id_handler` module
+# path, which litellm resolves relative to the config file it was started
+# with - copy it next to EFFECTIVE_CONFIG (not just $CONFIG_DIR) so that
+# resolution works against the merged /tmp config too.
+if [ -f "$CONFIG_DIR/custom_callbacks.py" ]; then
+    cp "$CONFIG_DIR/custom_callbacks.py" "$(dirname "$EFFECTIVE_CONFIG")/custom_callbacks.py"
+fi
+
 found=""
 for f in "$USER_CONFIG_DIR"/*.yaml; do
     [ -f "$f" ] || continue

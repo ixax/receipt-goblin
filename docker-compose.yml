@@ -25,6 +25,32 @@ x-litellm-db-url: &litellm-db-url postgresql://litellm:${LITELLM_DB_PASSWORD:?se
 # LiteLLM's /key/info when verifying hooks/report_git_branch.py's virtual key.
 x-litellm-base-url: &litellm-base-url http://litellm:4000
 
+# Langfuse self-hosted (LLM tracing/observability, fed by litellm's
+# success_callback/failure_callback in services/litellm/config.yaml) - its
+# own Postgres/ClickHouse/Redis/MinIO, kept fully separate from the
+# agent-tracking stack above so schemas/versions never collide.
+x-langfuse-port: &langfuse-port ${LANGFUSE_PORT:-3001}
+x-langfuse-clickhouse-http-port: &langfuse-clickhouse-http-port ${LANGFUSE_CLICKHOUSE_HTTP_PORT:-8124}
+x-langfuse-clickhouse-native-port: &langfuse-clickhouse-native-port ${LANGFUSE_CLICKHOUSE_NATIVE_PORT:-9001}
+# Langfuse lives entirely behind the `langfuse` compose profile (opt-in -
+# `docker compose --profile langfuse up -d`, see "Langfuse" in README.md) -
+# unlike the rest of this file's required secrets, these fall back to empty
+# defaults (not `:?`) so `docker compose up` with no Langfuse setup at all
+# still works. Fill them in .env before enabling the profile.
+x-langfuse-clickhouse-user: &langfuse-clickhouse-user ${LANGFUSE_CLICKHOUSE_USER:-langfuse}
+x-langfuse-clickhouse-password: &langfuse-clickhouse-password ${LANGFUSE_CLICKHOUSE_PASSWORD:-}
+x-langfuse-db-password: &langfuse-db-password ${LANGFUSE_DB_PASSWORD:-}
+x-langfuse-db-url: &langfuse-db-url postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-}@langfuse-db:5432/langfuse
+x-langfuse-redis-password: &langfuse-redis-password ${LANGFUSE_REDIS_PASSWORD:-}
+x-langfuse-minio-user: &langfuse-minio-user ${LANGFUSE_MINIO_ROOT_USER:-minio}
+x-langfuse-minio-password: &langfuse-minio-password ${LANGFUSE_MINIO_ROOT_PASSWORD:-}
+x-langfuse-salt: &langfuse-salt ${LANGFUSE_SALT:-}
+x-langfuse-encryption-key: &langfuse-encryption-key ${LANGFUSE_ENCRYPTION_KEY:-}
+x-langfuse-nextauth-secret: &langfuse-nextauth-secret ${LANGFUSE_NEXTAUTH_SECRET:-}
+# Internal docker network address - what litellm talks to (fixed
+# container-internal port, same pattern as litellm-base-url above).
+x-langfuse-base-url: &langfuse-base-url http://langfuse-web:3000
+
 services:
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
@@ -236,6 +262,17 @@ services:
       WEBHOOK_URL: *webhook-url
       LITELLM_MASTER_KEY: *litellm-master-key
       DATABASE_URL: *litellm-db-url
+      # Read by litellm's built-in "langfuse" success_callback/failure_callback
+      # (services/litellm/config.yaml) - no callback_settings block needed,
+      # unlike metrics_webhook, since langfuse is one of litellm's native
+      # logging integrations and just reads these three env vars. Optional
+      # (not `:?`), since Langfuse itself lives behind the `langfuse` compose
+      # profile - if unset/langfuse-web isn't running, litellm just logs a
+      # per-call callback error and otherwise works fine, see "Langfuse" in
+      # README.md.
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: *langfuse-base-url
     volumes:
       # Whole directory, not individual files - docker-entrypoint.sh merges
       # in whatever config.<name>.yaml files it finds there (e.g.
@@ -279,6 +316,208 @@ services:
     networks:
       - receipt-goblin
 
+  langfuse-db:
+    image: postgres:17-alpine
+    container_name: receipt-goblin-langfuse-db
+    profiles:
+      - langfuse
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: *langfuse-db-password
+      POSTGRES_DB: langfuse
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - langfuse-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 256m
+    restart: always
+    networks:
+      - receipt-goblin
+
+  # A second, dedicated ClickHouse instance for Langfuse's own trace/
+  # observation/score tables - intentionally not shared with the `clickhouse`
+  # service above, which has its own schema.sql and is owned by webhook.
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: receipt-goblin-langfuse-clickhouse
+    profiles:
+      - langfuse
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: *langfuse-clickhouse-user
+      CLICKHOUSE_PASSWORD: *langfuse-clickhouse-password
+    mem_limit: 1g
+    ports:
+      - target: 8123
+        published: *langfuse-clickhouse-http-port
+      - target: 9000
+        published: *langfuse-clickhouse-native-port
+    volumes:
+      - langfuse-clickhouse-data:/var/lib/clickhouse
+      - langfuse-clickhouse-logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - receipt-goblin
+
+  # S3-compatible blob store Langfuse uses for ingested events/media - not
+  # published to the host, only langfuse-web/langfuse-worker talk to it.
+  langfuse-minio:
+    image: minio/minio:latest
+    container_name: receipt-goblin-langfuse-minio
+    profiles:
+      - langfuse
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: *langfuse-minio-user
+      MINIO_ROOT_PASSWORD: *langfuse-minio-password
+    mem_limit: 256m
+    volumes:
+      - langfuse-minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: always
+    networks:
+      - receipt-goblin
+
+  langfuse-redis:
+    image: redis:7-alpine
+    container_name: receipt-goblin-langfuse-redis
+    profiles:
+      - langfuse
+    command: ["redis-server", "--requirepass", *langfuse-redis-password, "--maxmemory-policy", "noeviction"]
+    mem_limit: 256m
+    restart: always
+    volumes:
+      - langfuse-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", *langfuse-redis-password, "--no-auth-warning", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - receipt-goblin
+
+  # Async ingestion worker - langfuse-web writes incoming traces straight to
+  # langfuse-minio and queues a reference on langfuse-redis; this drains that
+  # queue and does the actual langfuse-clickhouse inserts. Not published to
+  # the host, nothing calls it directly.
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    container_name: receipt-goblin-langfuse-worker
+    profiles:
+      - langfuse
+    environment: &langfuse-env
+      DATABASE_URL: *langfuse-db-url
+      SALT: *langfuse-salt
+      ENCRYPTION_KEY: *langfuse-encryption-key
+      TELEMETRY_ENABLED: "false"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: *langfuse-clickhouse-user
+      CLICKHOUSE_PASSWORD: *langfuse-clickhouse-password
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: *langfuse-redis-password
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: *langfuse-minio-user
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: *langfuse-minio-password
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: *langfuse-minio-user
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: *langfuse-minio-password
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+    mem_limit: 768m
+    restart: always
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-minio:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+    networks:
+      - receipt-goblin
+
+  langfuse-web:
+    image: langfuse/langfuse:3
+    container_name: receipt-goblin-langfuse-web
+    profiles:
+      - langfuse
+    environment:
+      <<: *langfuse-env
+      # Next.js standalone server.js binds to $HOSTNAME if set; Docker auto-sets
+      # HOSTNAME to the container ID, so without this it listens only on the
+      # container's actual IP - not localhost - and the healthcheck below
+      # (and anything hitting localhost:3000) gets connection refused even
+      # though the app is up and "Ready".
+      HOSTNAME: "0.0.0.0"
+      NEXTAUTH_URL: http://localhost:${LANGFUSE_PORT:-3001}
+      NEXTAUTH_SECRET: *langfuse-nextauth-secret
+      # Auto-provisions an org/project/admin user + the exact
+      # LANGFUSE_PUBLIC_KEY/SECRET_KEY pair litellm authenticates with (see
+      # the litellm service's environment above) on first boot only - see
+      # "Langfuse" in README.md.
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY:-}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-}
+    # 1g OOM-killed the Next.js server during its init-scripts pass
+    # (observed heap crash right after "MCP feature registered" logging) -
+    # langfuse-web is a full Next.js app, notably heavier than this stack's
+    # other services.
+    mem_limit: 2g
+    restart: always
+    ports:
+      - target: 3000
+        published: *langfuse-port
+    healthcheck:
+      # 127.0.0.1, not localhost - the container has no IPv6 listener (see
+      # HOSTNAME comment above), and "localhost" resolves to ::1 first here.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/public/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-minio:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+    networks:
+      - receipt-goblin
+
 networks:
   receipt-goblin:
     driver: bridge
@@ -288,3 +527,8 @@ volumes:
   grafana-data:
   litellm-db-data:
   redis-data:
+  langfuse-db-data:
+  langfuse-clickhouse-data:
+  langfuse-clickhouse-logs:
+  langfuse-minio-data:
+  langfuse-redis-data:
