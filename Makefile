@@ -54,8 +54,8 @@ test:
 # (see README "Routing Claude Code through it").
 env:
 	@echo 'export LITELLM_VIRTUAL_KEY="<virtual key>"'
+	@echo 'export LITELLM_AUTH_HEADER="Bearer $(URI)"'
 	@echo 'export ANTHROPIC_BASE_URL="$(URI)"'
-	@echo 'export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer $$LITELLM_VIRTUAL_KEY"'
+	@echo 'export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: $$LITELLM_AUTH_HEADER"'
 	@echo 'export OPENAI_API_BASE="$(URI)"'
-	@echo 'export OPENAI_API_KEY="$$LITELLM_VIRTUAL_KEY"'
 	@echo 'export AGENT_CLI_TRACKING_API_URL="$(INGEST_URI)"'
