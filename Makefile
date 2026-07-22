@@ -13,19 +13,41 @@ URI := $(if $(strip $(LITELLM_URI)),$(LITELLM_URI),http://localhost:$(PORT))
 WEBHOOK_PORT := $(if $(strip $(WEBHOOK_PORT)),$(WEBHOOK_PORT),8010)
 # Same override pattern as URI above, for hosts where webhook isn't on localhost.
 INGEST_URI := $(if $(strip $(AGENT_CLI_TRACKING_API_URL)),$(AGENT_CLI_TRACKING_API_URL),http://localhost:$(WEBHOOK_PORT))
-.PHONY: start stop restart env test
+.PHONY: start stop restart env test langfuse-up langfuse-down langfuse-logs
 
-start up:
+# The six langfuse-* services (see docker-compose.yml) all carry
+# `profiles: [langfuse]`, so `docker compose down` doesn't accept a bare
+# --profile filter for a scoped teardown (it tears down core services too -
+# see the langfuse-down comment below) - list them explicitly instead.
+LANGFUSE_SERVICES := langfuse-web langfuse-worker langfuse-db langfuse-clickhouse langfuse-minio langfuse-redis
+
+start up: langfuse-up
 	docker compose up -d --build
 
 status:
 	docker compose ps
 
-stop down:
+stop down: langfuse-down
 	docker compose down
 
 logs:
 	docker compose logs -f
+
+# Opt-in Langfuse stack (see README "Langfuse"). `make up`/`make down` call
+# these automatically; run them directly if you only want to bounce Langfuse
+# without touching the core stack.
+langfuse-up:
+	docker compose --profile langfuse up -d --build $(LANGFUSE_SERVICES)
+
+# `docker compose --profile langfuse down` (no service args) tears down the
+# core stack too, since --profile langfuse activates langfuse *in addition
+# to* default (no-profile) services - passing $(LANGFUSE_SERVICES) explicitly
+# scopes it to just the six Langfuse containers.
+langfuse-down:
+	docker compose --profile langfuse down $(LANGFUSE_SERVICES)
+
+langfuse-logs:
+	docker compose --profile langfuse logs -f $(LANGFUSE_SERVICES)
 
 # Restarts running containers in place (not a rebuild) - picks up edits to
 # bind-mounted source (services/webhook/src, etc.) for services without
