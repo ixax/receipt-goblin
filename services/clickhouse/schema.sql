@@ -130,6 +130,21 @@ CREATE TABLE IF NOT EXISTS agent_events
 (
     timestamp         DateTime64(3),
     user_id           LowCardinality(String),
+    -- The LiteLLM Team a virtual key belongs to, captured independently of
+    -- user_id - see _group_id/_group_alias in webhook/src/clickhouse_ingest.py
+    -- for why this is its own column rather than reusing whatever user_id
+    -- collapsed into. Empty until LiteLLM Teams are actually configured (see
+    -- README "LiteLLM" - "Once it's needed: Teams..."), which is an
+    -- operator/admin action, not something this ingestion code can do on
+    -- its own.
+    --
+    -- group_id (metadata.user_api_key_team_id) is the stable filter/join
+    -- key - a UUID that survives a team rename in the LiteLLM UI. group_alias
+    -- (metadata.user_api_key_team_alias) is the human-editable display name
+    -- and is display-only - never filter/join on it, since renaming a team
+    -- in LiteLLM changes it silently.
+    group_id          LowCardinality(String) DEFAULT '',
+    group_alias       LowCardinality(String) DEFAULT '',
     session_id        String,
     trace_id          String,
     turn_id           UInt32,
@@ -203,6 +218,7 @@ CREATE TABLE IF NOT EXISTS agent_events
     INDEX idx_skill_name skill_name TYPE set(1000) GRANULARITY 4,
     INDEX idx_command_name command_name TYPE set(1000) GRANULARITY 4,
     INDEX idx_user_id user_id TYPE set(1000) GRANULARITY 4,
+    INDEX idx_group_id group_id TYPE set(100) GRANULARITY 4,
     INDEX idx_failed_tool_name failed_tool_name TYPE set(1000) GRANULARITY 4,
     INDEX idx_calculated_type calculated_type TYPE set(100) GRANULARITY 4
 )
@@ -211,17 +227,20 @@ PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(t
 ORDER BY (timestamp, session_id, litellm_call_id);
 
 -- Tables predate command_version/litellm_call_id/calculated_type/
--- calculated_payload/ingested_at: ALTER for stacks whose ClickHouse volume
--- already existed before these columns were added. Note this does NOT
--- change the engine/ORDER BY of an already-existing table (ClickHouse has
--- no ALTER for that) - a stack that needs the ReplacingMergeTree dedup
--- semantics on old data must run the recreate+swap runbook in
+-- calculated_payload/ingested_at/group_alias/group_id: ALTER for stacks whose
+-- ClickHouse volume already existed before these columns were added. Note
+-- this does NOT change the engine/ORDER BY of an already-existing table
+-- (ClickHouse has no ALTER for that) - a stack that needs the
+-- ReplacingMergeTree dedup semantics on old data must run the
+-- recreate+swap runbook in
 -- services/clickhouse/migrations/001_replacing_mergetree.sql once instead.
 ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS command_version LowCardinality(String) DEFAULT '';
 ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS litellm_call_id String DEFAULT '';
 ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS calculated_type LowCardinality(String) DEFAULT 'unknown';
 ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS calculated_payload String DEFAULT '{}' CODEC(ZSTD(3));
 ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS ingested_at DateTime64(3) DEFAULT now64(3);
+ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS group_alias LowCardinality(String) DEFAULT '';
+ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS group_id LowCardinality(String) DEFAULT '';
 
 -- One row per model call (usage report). cost/input_cost/output_cost come
 -- straight from LiteLLM's own response_cost/cost_breakdown - no local price
@@ -240,6 +259,9 @@ CREATE TABLE IF NOT EXISTS agent_usage
 (
     timestamp            DateTime64(3),
     user_id              LowCardinality(String),
+    -- Stable team id (metadata.user_api_key_team_id) - see agent_events'
+    -- group_id comment above for why this, not the alias, is the filter key.
+    group_id             LowCardinality(String) DEFAULT '',
     session_id           String,
     trace_id             String,
     turn_id              UInt32,
@@ -286,19 +308,21 @@ CREATE TABLE IF NOT EXISTS agent_usage
     INDEX idx_command_name command_name TYPE set(1000) GRANULARITY 4,
     INDEX idx_mcp_tool_name mcp_tool_name TYPE set(1000) GRANULARITY 4,
     INDEX idx_user_id user_id TYPE set(1000) GRANULARITY 4,
+    INDEX idx_group_id group_id TYPE set(100) GRANULARITY 4,
     INDEX idx_provider provider TYPE set(10) GRANULARITY 4
 )
 ENGINE = ReplacingMergeTree(ingested_at)
 PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
 ORDER BY (timestamp, session_id, litellm_call_id);
 
--- Tables predate command_version/litellm_call_id/provider/ingested_at: see
--- the agent_events ALTER comment above - same caveat applies here (no
--- ENGINE/ORDER BY migration via ALTER; use the migrations/ runbook).
+-- Tables predate command_version/litellm_call_id/provider/ingested_at/
+-- group_id: see the agent_events ALTER comment above - same caveat applies
+-- here (no ENGINE/ORDER BY migration via ALTER; use the migrations/ runbook).
 ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS command_version LowCardinality(String) DEFAULT '';
 ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS litellm_call_id String DEFAULT '';
 ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS provider LowCardinality(String) DEFAULT '';
 ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS ingested_at DateTime64(3) DEFAULT now64(3);
+ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS group_id LowCardinality(String) DEFAULT '';
 
 -- One row per turn (main session turn or subagent turn), holding the
 -- actual prompt sent to the model and the text it replied with. Kept
@@ -318,6 +342,9 @@ CREATE TABLE IF NOT EXISTS agent_messages
 (
     timestamp     DateTime64(3),
     user_id       LowCardinality(String),
+    -- Stable team id (metadata.user_api_key_team_id) - see agent_events'
+    -- group_id comment above for why this, not the alias, is the filter key.
+    group_id      LowCardinality(String) DEFAULT '',
     session_id    String,
     trace_id      String,
     turn_id       UInt32,
@@ -343,11 +370,12 @@ ENGINE = ReplacingMergeTree(ingested_at)
 PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
 ORDER BY (session_id, litellm_call_id);
 
--- Tables predate command_version/litellm_call_id/ingested_at: see the
--- agent_events ALTER comment above - same ENGINE/ORDER BY caveat applies.
+-- Tables predate command_version/litellm_call_id/ingested_at/group_id: see
+-- the agent_events ALTER comment above - same ENGINE/ORDER BY caveat applies.
 ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS command_version LowCardinality(String) DEFAULT '';
 ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS litellm_call_id String DEFAULT '';
 ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS ingested_at DateTime64(3) DEFAULT now64(3);
+ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS group_id LowCardinality(String) DEFAULT '';
 
 -- Full, untouched original StandardLoggingPayload per call (messages
 -- included - the one place in this schema that keeps that field), written

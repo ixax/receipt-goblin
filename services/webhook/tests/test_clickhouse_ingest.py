@@ -171,6 +171,30 @@ def test_user_id_unsuccess_falls_back_to_unknown():
 
 
 # ---------------------------------------------------------------------------
+# _group_id / _group_alias
+# ---------------------------------------------------------------------------
+
+def test_group_id_success_reads_stable_team_id():
+    payload = {"metadata": {"user_api_key_team_id": "cc4f422e-f253-40b2-9dcb-749f9d5e7976", "user_api_key_team_alias": "team-a"}}
+    assert ci._group_id(payload) == "cc4f422e-f253-40b2-9dcb-749f9d5e7976"
+
+
+def test_group_id_unsuccess_no_team_falls_back_to_empty():
+    payload = {"metadata": {"user_api_key_alias": "someone"}}
+    assert ci._group_id(payload) == ""
+
+
+def test_group_alias_success_reads_team_alias():
+    payload = {"metadata": {"user_api_key_team_alias": "team-a"}}
+    assert ci._group_alias(payload) == "team-a"
+
+
+def test_group_alias_unsuccess_no_team_falls_back_to_empty():
+    payload = {"metadata": {"user_api_key_alias": "someone"}}
+    assert ci._group_alias(payload) == ""
+
+
+# ---------------------------------------------------------------------------
 # _agent_invocations_from_messages / _agent_id_from_tool_result
 # ---------------------------------------------------------------------------
 
@@ -311,6 +335,8 @@ def test_event_row_success_reports_status_and_latency():
     assert values["session_id"] == "session-1"
     assert values["latency_ms"] is not None and values["latency_ms"] >= 0
     assert values["calculated_type"] == "title_gen"  # prompt starts with "<session>"
+    assert values["group_id"] == "206ec527-2402-4c8b-b5b5-8bd65b8bca0f"  # capture's user_api_key_team_id
+    assert values["group_alias"] == "Test"  # capture's user_api_key_team_alias
 
 
 def test_event_row_unsuccess_failure_payload_has_no_tool_name_or_latency():
@@ -332,6 +358,7 @@ def test_usage_row_success_extracts_token_counts():
     values = dict(zip(ci._USAGE_COLUMNS, row))
     assert values["input_tokens"] == 723
     assert values["output_tokens"] == 16
+    assert values["group_id"] == "206ec527-2402-4c8b-b5b5-8bd65b8bca0f"
 
 
 def test_usage_row_unsuccess_no_billable_tokens_returns_none():
@@ -350,6 +377,7 @@ def test_message_row_success_captures_prompt_and_response_text():
     values = dict(zip(ci._MESSAGE_COLUMNS, row))
     assert "test-summarizer skill" in values["prompt_text"]
     assert values["response_text"]
+    assert values["group_id"] == "206ec527-2402-4c8b-b5b5-8bd65b8bca0f"
 
 
 def test_message_row_unsuccess_no_prompt_or_response_text_returns_none():

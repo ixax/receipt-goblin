@@ -256,6 +256,28 @@ def _user_id(payload: dict) -> str:
     )
 
 
+def _group_id(payload: dict) -> str:
+    """The LiteLLM Team a virtual key belongs to, as its *stable* UUID
+    (empty until Teams are actually configured in services/litellm/config.yaml
+    - see README "LiteLLM" "Once it's needed: Teams..."). Deliberately reads
+    user_api_key_team_id rather than user_api_key_team_alias: the alias is a
+    human-editable display name that can be renamed in the LiteLLM UI at any
+    time, which would silently break any dashboard filter keyed on it. The
+    dashboard's Group filter and any group_id column are keyed on this value;
+    _group_alias below carries the renamable display name separately, purely
+    for showing a readable label."""
+    metadata = payload.get("metadata") or {}
+    return metadata.get("user_api_key_team_id") or ""
+
+
+def _group_alias(payload: dict) -> str:
+    """Human-readable label for the group identified by _group_id above -
+    display only, never used as a filter/join key (see _group_id's
+    docstring for why the id, not this, is the stable key)."""
+    metadata = payload.get("metadata") or {}
+    return metadata.get("user_api_key_team_alias") or ""
+
+
 def _agent_invocations_from_messages(messages: Any) -> list[tuple[str, str, str, str]]:
     """Scan messages for Agent tool_use blocks paired with the tool_result
     that immediately follows, and pull the spawned subagent's agent_id out
@@ -471,7 +493,7 @@ def _agent_name_and_version_for_invocation(client, agent_invocation_id: str) -> 
 
 _INVOCATION_COLUMNS = ["agent_id", "session_id", "subagent_type", "agent_version", "description", "spawned_at"]
 _EVENT_COLUMNS = [
-    "timestamp", "user_id", "session_id", "trace_id",
+    "timestamp", "user_id", "group_id", "group_alias", "session_id", "trace_id",
     "turn_id", "event_type", "tool_name", "agent_name",
     "agent_version", "skill_name", "skill_version", "command_name",
     "command_version", "agent_invocation_id", "status", "latency_ms",
@@ -479,7 +501,7 @@ _EVENT_COLUMNS = [
     "litellm_call_id", "calculated_type", "calculated_payload", "ingested_at",
 ]
 _USAGE_COLUMNS = [
-    "timestamp", "user_id", "session_id", "trace_id", "turn_id", "model",
+    "timestamp", "user_id", "group_id", "session_id", "trace_id", "turn_id", "model",
     "agent_name", "agent_version", "skill_name", "skill_version",
     "command_name", "command_version", "agent_invocation_id", "mcp_tool_name",
     "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens",
@@ -489,7 +511,7 @@ _USAGE_COLUMNS = [
     "litellm_call_id", "provider", "ingested_at",
 ]
 _MESSAGE_COLUMNS = [
-    "timestamp", "user_id", "session_id", "trace_id", "turn_id",
+    "timestamp", "user_id", "group_id", "session_id", "trace_id", "turn_id",
     "agent_name", "agent_version", "skill_name", "skill_version",
     "command_name", "command_version", "agent_invocation_id", "prompt_text", "response_text",
     "litellm_call_id", "ingested_at",
@@ -580,6 +602,8 @@ def _event_row(
     return [
         _to_dt(payload.get("endTime") or payload.get("startTime")),
         _user_id(payload),
+        _group_id(payload),
+        _group_alias(payload),
         session_id,
         trace_id,
         0,  # turn_id: unknown from this source
@@ -638,6 +662,7 @@ def _usage_row(
     return [
         _to_dt(payload.get("endTime") or payload.get("startTime")),
         _user_id(payload),
+        _group_id(payload),
         session_id,
         trace_id,
         0,  # turn_id: unknown from this source
@@ -684,6 +709,7 @@ def _message_row(
     return [
         _to_dt(payload.get("endTime") or payload.get("startTime")),
         _user_id(payload),
+        _group_id(payload),
         session_id,
         trace_id,
         0,  # turn_id: unknown from this source
