@@ -25,6 +25,23 @@ _AGENT_ID_RE = re.compile(r"agentId:\s*([0-9a-f]+)")
 _COMMAND_NAME_RE = re.compile(r"<command-name>/?(.*?)</command-name>")
 _COMMAND_VERSION_RE = re.compile(r"<command_version>(.*?)</command_version>")
 
+# calculated_type prompt-prefix classifiers (category B in the schema-sql-
+# capture plan) - checked in this order only when the response made no tool
+# call at all (category A, handled separately in _classify_event via
+# _response_tool_calls).
+_JUDGE_CALL_PREFIX = "Based on the conversation transcript above"
+_SYSTEM_NOTIFICATION_PREFIX = "[SYSTEM NOTIFICATION"
+_SUGGESTION_MODE_PREFIX = "[SUGGESTION MODE"
+_TRANSCRIPT_HANDOFF_PREFIX = "<transcript>"
+_TITLE_GEN_PREFIX = "<session>"
+_INTERRUPTED_PREFIX = "[Request interrupted by user]"
+_WEBPAGE_CONTENT_PREFIX = "Web page content"
+
+# provider classification for agent_usage.provider - the same 3-way regex
+# that used to be duplicated across ~30 Grafana panels, now computed once
+# at ingest time instead.
+_PROVIDER_OPENAI_RE = re.compile(r"^(gpt-|chatgpt-|o[0-9]|text-embedding-|dall-e-|whisper|tts-)")
+
 logger = logging.getLogger("webhook.clickhouse_ingest")
 
 _client = None
@@ -184,8 +201,11 @@ def _split_name_version(value: str) -> tuple[str, str]:
     "test-researcher_v1.0.0"). Superseded for new writes by
     _version_marker_for_name (version now lives in a marker inside
     description:/body instead, so the identifier itself never needs to
-    change) - kept only so historical agent_invocations rows written under
-    the old convention still read back correctly."""
+    change) - kept as a fallback in _agent_invocations_from_messages for
+    subagent_type values still carrying the old suffix (no marker found),
+    and for reading historical agent_invocations rows written under the old
+    convention. Skills have no equivalent suffix convention (confirmed via
+    AGENTS.md), so this fallback only applies to agents."""
     idx = value.rfind("_v")
     if idx == -1 or idx + 2 >= len(value):
         return value, ""
@@ -240,13 +260,17 @@ def _agent_invocations_from_messages(messages: Any) -> list[tuple[str, str, str,
     """Scan messages for Agent tool_use blocks paired with the tool_result
     that immediately follows, and pull the spawned subagent's agent_id out
     of that result's text (e.g. "agentId: a04bd3c594bf74fb9"). subagent_type
-    is the bare name as-is (identifiers never carry a "_v<version>" suffix
-    under the current convention - see AGENTS.md); agent_version instead
-    comes from a "<agent_version>...</agent_version>" marker inside that
-    agent's entry in the "Available agent types" listing, which Claude Code
-    re-injects into messages on every call. Returns (agent_id, subagent_type,
-    agent_version, description) tuples - usually empty, since most calls
-    never spawn a subagent."""
+    is the bare name as-is under the current convention (see AGENTS.md);
+    agent_version comes from a "<agent_version>...</agent_version>" marker
+    inside that agent's entry in the "Available agent types" listing, which
+    Claude Code re-injects into messages on every call - falling back, when
+    no marker is found, to splitting a "_v<version>" suffix baked directly
+    into subagent_type itself (the *old* convention - see
+    _split_name_version), so agent_invocations always holds a clean
+    (subagent_type, agent_version) pair regardless of which convention the
+    wire value used. Returns (agent_id, subagent_type, agent_version,
+    description) tuples - usually empty, since most calls never spawn a
+    subagent."""
     if not isinstance(messages, list):
         return []
     listing_text = _flatten_messages_text(messages)
@@ -266,6 +290,10 @@ def _agent_invocations_from_messages(messages: Any) -> list[tuple[str, str, str,
             if agent_id:
                 subagent_type = input_.get("subagent_type", "")
                 agent_version = _version_marker_for_name(listing_text, subagent_type, "agent_version")
+                if not agent_version:
+                    bare_name, suffix_version = _split_name_version(subagent_type)
+                    if suffix_version:
+                        subagent_type, agent_version = bare_name, suffix_version
                 results.append((agent_id, subagent_type, agent_version, input_.get("description", "")))
     return results
 
@@ -332,6 +360,80 @@ def _skill_name_and_version(payload: dict) -> tuple[str, str]:
     return "", ""
 
 
+def _provider_for_model(model: str) -> str:
+    if model.startswith("claude-"):
+        return "claude"
+    if _PROVIDER_OPENAI_RE.match(model):
+        return "openai"
+    return "other"
+
+
+def _classify_event(payload: dict) -> tuple[str, dict]:
+    """The calculated_type/calculated_payload dispatcher - see the
+    schema-sql-capture plan for the full category list and rationale for
+    keeping this a single unified classification rather than spread across
+    fields/tables. Priority order: did this call's own response invoke a
+    tool (category A), and if not, what does the prompt that led to a plain
+    text reply look like (category B, a port of panel-76's startsWith
+    chain). 'unknown' is a real, searchable bucket for iterative extension,
+    not an error - `_response_tool_calls`/`_last_user_text` are reused
+    as-is rather than re-parsing payload["response"]/["messages"] again."""
+    tool_calls = _response_tool_calls(payload)
+    if tool_calls:
+        first_name, first_args = tool_calls[0]
+        if first_name == "Agent":
+            listing_text = _flatten_messages_text(payload.get("messages"))
+            subagent_type = first_args.get("subagent_type", "")
+            return "agent_spawn", {
+                "subagent_type": subagent_type,
+                "agent_version": _version_marker_for_name(listing_text, subagent_type, "agent_version"),
+                "description": first_args.get("description", ""),
+            }
+        if first_name == "Skill":
+            return "skill_call", {"skill": first_args.get("skill", ""), "args": first_args.get("args", "")}
+        if first_name == "AskUserQuestion":
+            return "ask_user_question", {"questions": first_args.get("questions", [])}
+        return "tool_call", {"tools": [{"tool": name, "args": args} for name, args in tool_calls]}
+
+    prompt_text = _last_user_text(payload.get("messages"))
+    if prompt_text.startswith(_JUDGE_CALL_PREFIX):
+        # Structured confidence/reasoning extraction from the judge's
+        # free-text response is a later classifier refinement (once real
+        # examples are visible via reparse) - excerpt only for now.
+        return "judge_call", {"prompt_excerpt": prompt_text[:500]}
+    if prompt_text.startswith(_SYSTEM_NOTIFICATION_PREFIX):
+        return "system_notification", {}
+    if prompt_text.startswith(_SUGGESTION_MODE_PREFIX):
+        return "suggestion_mode", {}
+    if prompt_text.startswith(_TRANSCRIPT_HANDOFF_PREFIX):
+        return "transcript_handoff", {}
+    if prompt_text.startswith(_TITLE_GEN_PREFIX):
+        return "title_gen", {}
+    if prompt_text.startswith(_INTERRUPTED_PREFIX):
+        return "interrupted", {}
+    if prompt_text.startswith(_WEBPAGE_CONTENT_PREFIX):
+        return "webpage_content", {}
+    if prompt_text:
+        # The text itself already lives in agent_messages.response_text -
+        # calculated_payload stays empty rather than duplicating it.
+        return "llm_answer", {}
+    return "unknown", {}
+
+
+def _source_row(payload: dict, session_id: str, now: datetime) -> list:
+    """The event_sources row - the full, untouched original payload
+    (messages included), written once per call so a later reparse
+    (webhook/src/reparse.py) can recompute calculated_type/calculated_payload/
+    provider without needing .capture/*.json, which is out of scope as a
+    parsing source (see event_sources's comment in schema.sql)."""
+    return [
+        payload.get("litellm_call_id", ""),
+        session_id,
+        now,
+        json.dumps(payload, default=str),
+    ]
+
+
 def _first_tool_call_name(payload: dict) -> str:
     """The actual tool the model invoked this turn (e.g. "Agent", "Skill",
     "mcp__clickhouse__whatsup", "Read", "Bash", ...) - falls back to the
@@ -373,7 +475,8 @@ _EVENT_COLUMNS = [
     "turn_id", "event_type", "tool_name", "agent_name",
     "agent_version", "skill_name", "skill_version", "command_name",
     "command_version", "agent_invocation_id", "status", "latency_ms",
-    "failed_tool_name", "failed_tool_args", "failed_tool_error", "raw_payload",
+    "failed_tool_name", "failed_tool_args", "failed_tool_error",
+    "litellm_call_id", "calculated_type", "calculated_payload", "ingested_at",
 ]
 _USAGE_COLUMNS = [
     "timestamp", "user_id", "session_id", "trace_id", "turn_id", "model",
@@ -383,12 +486,15 @@ _USAGE_COLUMNS = [
     "stop_reason",
     "cache_creation_1h_tokens", "cache_creation_5m_tokens",
     "cost", "input_cost", "output_cost", "cache_hit", "ttft_ms",
+    "litellm_call_id", "provider", "ingested_at",
 ]
 _MESSAGE_COLUMNS = [
     "timestamp", "user_id", "session_id", "trace_id", "turn_id",
     "agent_name", "agent_version", "skill_name", "skill_version",
     "command_name", "command_version", "agent_invocation_id", "prompt_text", "response_text",
+    "litellm_call_id", "ingested_at",
 ]
+_SOURCE_COLUMNS = ["litellm_call_id", "session_id", "ingested_at", "raw_payload_full"]
 _GIT_BRANCH_COLUMNS = ["session_id", "git_branch", "git_repo", "captured_at"]
 _PLAN_PROPOSAL_COLUMNS = ["session_id", "plan_text", "captured_at"]
 
@@ -402,6 +508,10 @@ _USAGE_AGENT_VERSION_IDX = _USAGE_COLUMNS.index("agent_version")
 _MESSAGE_TIMESTAMP_IDX = _MESSAGE_COLUMNS.index("timestamp")
 _MESSAGE_AGENT_NAME_IDX = _MESSAGE_COLUMNS.index("agent_name")
 _MESSAGE_AGENT_VERSION_IDX = _MESSAGE_COLUMNS.index("agent_version")
+_SOURCE_INGESTED_AT_IDX = _SOURCE_COLUMNS.index("ingested_at")
+_EVENT_INGESTED_AT_IDX = _EVENT_COLUMNS.index("ingested_at")
+_USAGE_INGESTED_AT_IDX = _USAGE_COLUMNS.index("ingested_at")
+_MESSAGE_INGESTED_AT_IDX = _MESSAGE_COLUMNS.index("ingested_at")
 
 
 def _agent_invocation_rows(session_id: str, messages: Any, now: Optional[datetime] = None) -> list[list]:
@@ -431,6 +541,10 @@ def _insert_message(client, row: list) -> None:
     client.insert("agent_messages", [row], column_names=_MESSAGE_COLUMNS)
 
 
+def _insert_source(client, row: list) -> None:
+    client.insert("event_sources", [row], column_names=_SOURCE_COLUMNS)
+
+
 def _insert_git_branch(client, row: list) -> None:
     client.insert("session_git_branch", [row], column_names=_GIT_BRANCH_COLUMNS)
 
@@ -443,6 +557,7 @@ def _event_row(
     payload: dict, session_id: str, trace_id: str,
     agent_name: str, agent_version: str, skill_name: str, skill_version: str,
     command_name: str, command_version: str, agent_invocation_id: str,
+    now: Optional[datetime] = None,
 ) -> list:
     start_time = payload.get("startTime")
     end_time = payload.get("endTime")
@@ -454,11 +569,6 @@ def _event_row(
         if isinstance(start_time, (int, float)) and isinstance(end_time, (int, float))
         else None
     )
-    # "messages" is the full, ever-growing conversation history resent on
-    # every call (hundreds of entries once a session runs a while) - already
-    # on disk verbatim in webhook/captures/*.json, so drop it here to keep
-    # agent_events rows a reasonable size. Everything else is kept.
-    trimmed = {k: v for k, v in payload.items() if k != "messages"}
     # Blank, not LiteLLM's call_type, when the turn made no tool call at all
     # (a plain text reply) - callers that care about "was this a tool call"
     # (Top 10 slowest tool calls, error rate/latency by tool_name) already
@@ -466,6 +576,7 @@ def _event_row(
     # exactly the noise that filter was meant to exclude.
     tool_name = _first_tool_call_name(payload)
     failed_tool_name, failed_tool_args, failed_tool_error = _failed_tool_call(payload.get("messages"))
+    calculated_type, calculated_payload = _classify_event(payload)
     return [
         _to_dt(payload.get("endTime") or payload.get("startTime")),
         _user_id(payload),
@@ -486,7 +597,10 @@ def _event_row(
         failed_tool_name,
         failed_tool_args,
         failed_tool_error,
-        json.dumps(trimmed, default=str),
+        payload.get("litellm_call_id", ""),
+        calculated_type,
+        json.dumps(calculated_payload, default=str),
+        now or datetime.now(timezone.utc),
     ]
 
 
@@ -494,6 +608,7 @@ def _usage_row(
     payload: dict, session_id: str, trace_id: str,
     agent_name: str, agent_version: str, skill_name: str, skill_version: str,
     command_name: str, command_version: str, agent_invocation_id: str,
+    now: Optional[datetime] = None,
 ) -> Optional[list]:
     response = payload.get("response") or {}
     usage = response.get("usage") or (payload.get("metadata") or {}).get("usage_object") or {}
@@ -518,6 +633,7 @@ def _usage_row(
     called_tool = _first_tool_call_name(payload)
     mcp_tool_name = called_tool if called_tool.startswith("mcp__") else ""
     cost_breakdown = payload.get("cost_breakdown") or {}
+    model = payload.get("model_group") or payload.get("model", "")
 
     return [
         _to_dt(payload.get("endTime") or payload.get("startTime")),
@@ -525,7 +641,7 @@ def _usage_row(
         session_id,
         trace_id,
         0,  # turn_id: unknown from this source
-        payload.get("model_group") or payload.get("model", ""),
+        model,
         agent_name,
         agent_version,
         skill_name,
@@ -546,6 +662,9 @@ def _usage_row(
         cost_breakdown.get("output_cost") or 0,
         1 if payload.get("cache_hit") else 0,
         ttft_ms,
+        payload.get("litellm_call_id", ""),
+        _provider_for_model(model),
+        now or datetime.now(timezone.utc),
     ]
 
 
@@ -553,6 +672,7 @@ def _message_row(
     payload: dict, session_id: str, trace_id: str,
     agent_name: str, agent_version: str, skill_name: str, skill_version: str,
     command_name: str, command_version: str, agent_invocation_id: str,
+    now: Optional[datetime] = None,
 ) -> Optional[list]:
     response = payload.get("response") or {}
     choices = response.get("choices") or []
@@ -576,6 +696,8 @@ def _message_row(
         agent_invocation_id,
         prompt_text,
         response_text,
+        payload.get("litellm_call_id", ""),
+        now or datetime.now(timezone.utc),
     ]
 
 
@@ -587,26 +709,29 @@ def ingest_standard_logging_payload(payload: dict) -> None:
     try:
         session_id, trace_id = _session_and_trace_id(payload)
         client = get_client()
+        now = datetime.now(timezone.utc)
 
         messages = payload.get("messages")
-        _insert_agent_invocations(client, _agent_invocation_rows(session_id, messages))
+        _insert_agent_invocations(client, _agent_invocation_rows(session_id, messages, now=now))
 
         agent_invocation_id = _agent_invocation_id(payload)
         agent_name, agent_version = _agent_name_and_version_for_invocation(client, agent_invocation_id)
         skill_name, skill_version = _skill_name_and_version(payload)
         command_name, command_version = _active_command_name_and_version(messages)
 
+        _insert_source(client, _source_row(payload, session_id, now))
+
         _insert_event(client, _event_row(
             payload, session_id, trace_id,
             agent_name, agent_version, skill_name, skill_version,
-            command_name, command_version, agent_invocation_id,
+            command_name, command_version, agent_invocation_id, now,
         ))
 
         if payload.get("status") == "success":
             usage_row = _usage_row(
                 payload, session_id, trace_id,
                 agent_name, agent_version, skill_name, skill_version,
-                command_name, command_version, agent_invocation_id,
+                command_name, command_version, agent_invocation_id, now,
             )
             if usage_row is not None:
                 _insert_usage(client, usage_row)
@@ -614,7 +739,7 @@ def ingest_standard_logging_payload(payload: dict) -> None:
             message_row = _message_row(
                 payload, session_id, trace_id,
                 agent_name, agent_version, skill_name, skill_version,
-                command_name, command_version, agent_invocation_id,
+                command_name, command_version, agent_invocation_id, now,
             )
             if message_row is not None:
                 _insert_message(client, message_row)
@@ -669,6 +794,17 @@ def _serialize_row(row: Optional[list], timestamp_idx: int) -> Optional[list]:
     return row
 
 
+def _serialize_row_multi(row: Optional[list], *timestamp_indices: int) -> Optional[list]:
+    """Serialize multiple datetime fields in a row by index."""
+    if row is None:
+        return None
+    row = list(row)
+    for idx in timestamp_indices:
+        if idx < len(row) and isinstance(row[idx], datetime):
+            row[idx] = row[idx].isoformat()
+    return row
+
+
 def _deserialize_row(row: Optional[list], timestamp_idx: int) -> Optional[list]:
     if row is None:
         return None
@@ -677,14 +813,33 @@ def _deserialize_row(row: Optional[list], timestamp_idx: int) -> Optional[list]:
     return row
 
 
+def _deserialize_row_multi(row: Optional[list], *timestamp_indices: int) -> Optional[list]:
+    """Deserialize multiple datetime fields in a row by index."""
+    if row is None:
+        return None
+    row = list(row)
+    for idx in timestamp_indices:
+        if idx < len(row) and isinstance(row[idx], str):
+            row[idx] = datetime.fromisoformat(row[idx])
+    return row
+
+
 def build_event(payload: dict) -> dict:
     """The messages-dependent, DB-free half of ingesting one
     StandardLoggingPayload - everything that can be computed with pure
     functions, no ClickHouse round-trip. Called synchronously in the
-    webhook's request handler (see server.py) so the only thing that goes
-    onto the Redis queue is this compact, JSON-safe dict - never the raw
-    payload, never "messages" (StandardLoggingPayload's full, ever-growing
-    conversation history - see AGENTS.md on webhook/captures size).
+    webhook's request handler (see server.py) so ClickHouse itself is never
+    touched in the request path - webhook only ever produces onto Redis,
+    webhook-worker is the only thing that inserts.
+
+    Includes source_row - the untouched original payload (messages
+    included), destined for event_sources - alongside the compact
+    per-table rows. This is the one field NOT stripped down, since
+    event_sources is exactly where the full payload is supposed to land
+    (see schema.sql's event_sources comment); MAXLEN/the redis service's
+    mem_limit are sized around this larger per-event footprint (see
+    config.yml), not the ~100KB stripped-messages figure from before
+    event_sources existed.
 
     agent_name/agent_version can't be resolved here - that needs a SELECT
     against agent_invocations, which only makes sense once this batch's own
@@ -697,15 +852,18 @@ def build_event(payload: dict) -> dict:
     """
     session_id, trace_id = _session_and_trace_id(payload)
     messages = payload.get("messages")
-    invocation_rows = _agent_invocation_rows(session_id, messages)
+    now = datetime.now(timezone.utc)
+    invocation_rows = _agent_invocation_rows(session_id, messages, now=now)
     agent_invocation_id = _agent_invocation_id(payload)
     skill_name, skill_version = _skill_name_and_version(payload)
     command_name, command_version = _active_command_name_and_version(messages)
 
+    source_row = _source_row(payload, session_id, now)
+
     event_row = _event_row(
         payload, session_id, trace_id,
         "", "", skill_name, skill_version,
-        command_name, command_version, agent_invocation_id,
+        command_name, command_version, agent_invocation_id, now,
     )
 
     usage_row = None
@@ -714,12 +872,12 @@ def build_event(payload: dict) -> dict:
         usage_row = _usage_row(
             payload, session_id, trace_id,
             "", "", skill_name, skill_version,
-            command_name, command_version, agent_invocation_id,
+            command_name, command_version, agent_invocation_id, now,
         )
         message_row = _message_row(
             payload, session_id, trace_id,
             "", "", skill_name, skill_version,
-            command_name, command_version, agent_invocation_id,
+            command_name, command_version, agent_invocation_id, now,
         )
 
     return {
@@ -727,9 +885,10 @@ def build_event(payload: dict) -> dict:
         "invocation_rows": [
             _serialize_row(row, _INVOCATION_SPAWNED_AT_IDX) for row in invocation_rows
         ],
-        "event_row": _serialize_row(event_row, _EVENT_TIMESTAMP_IDX),
-        "usage_row": _serialize_row(usage_row, _USAGE_TIMESTAMP_IDX),
-        "message_row": _serialize_row(message_row, _MESSAGE_TIMESTAMP_IDX),
+        "source_row": _serialize_row(source_row, _SOURCE_INGESTED_AT_IDX),
+        "event_row": _serialize_row_multi(event_row, _EVENT_TIMESTAMP_IDX, _EVENT_INGESTED_AT_IDX),
+        "usage_row": _serialize_row_multi(usage_row, _USAGE_TIMESTAMP_IDX, _USAGE_INGESTED_AT_IDX),
+        "message_row": _serialize_row_multi(message_row, _MESSAGE_TIMESTAMP_IDX, _MESSAGE_INGESTED_AT_IDX),
     }
 
 
@@ -756,6 +915,13 @@ def ingest_events_batch(events: list[dict]) -> None:
         ]
         _insert_agent_invocations(client, invocation_rows)
 
+        source_rows = [
+            row for event in events
+            if (row := _deserialize_row(event.get("source_row"), _SOURCE_INGESTED_AT_IDX)) is not None
+        ]
+        if source_rows:
+            client.insert("event_sources", source_rows, column_names=_SOURCE_COLUMNS)
+
         agent_fields_cache: dict[str, tuple[str, str]] = {}
         event_rows, usage_rows, message_rows = [], [], []
 
@@ -770,19 +936,19 @@ def ingest_events_batch(events: list[dict]) -> None:
             else:
                 agent_name, agent_version = "", ""
 
-            event_row = _deserialize_row(event.get("event_row"), _EVENT_TIMESTAMP_IDX)
+            event_row = _deserialize_row_multi(event.get("event_row"), _EVENT_TIMESTAMP_IDX, _EVENT_INGESTED_AT_IDX)
             if event_row is not None:
                 event_row[_EVENT_AGENT_NAME_IDX] = agent_name
                 event_row[_EVENT_AGENT_VERSION_IDX] = agent_version
                 event_rows.append(event_row)
 
-            usage_row = _deserialize_row(event.get("usage_row"), _USAGE_TIMESTAMP_IDX)
+            usage_row = _deserialize_row_multi(event.get("usage_row"), _USAGE_TIMESTAMP_IDX, _USAGE_INGESTED_AT_IDX)
             if usage_row is not None:
                 usage_row[_USAGE_AGENT_NAME_IDX] = agent_name
                 usage_row[_USAGE_AGENT_VERSION_IDX] = agent_version
                 usage_rows.append(usage_row)
 
-            message_row = _deserialize_row(event.get("message_row"), _MESSAGE_TIMESTAMP_IDX)
+            message_row = _deserialize_row_multi(event.get("message_row"), _MESSAGE_TIMESTAMP_IDX, _MESSAGE_INGESTED_AT_IDX)
             if message_row is not None:
                 message_row[_MESSAGE_AGENT_NAME_IDX] = agent_name
                 message_row[_MESSAGE_AGENT_VERSION_IDX] = agent_version

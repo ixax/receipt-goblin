@@ -47,7 +47,39 @@ ClickHouse handles a few large inserts far better than many small per-request on
 `XREADGROUP ... BLOCK` unblocks as soon as it sees a single entry, not once `COUNT` is filled, so a naive `XREADGROUP COUNT 500 BLOCK 2000` loop would insert almost every event as its own batch of one under normal (non-bursty) traffic - the actual cause of ClickHouse taking constant tiny inserts instead of real batches.
 `worker.py` fixes this by accumulating decoded events across repeated `XREADGROUP` calls into a buffer, only flushing (one `client.insert()` per table for the whole batch) once `config.BATCH_SIZE` is reached or `config.FLUSH_INTERVAL_MS` has elapsed since the window opened, whichever comes first.
 
-`build_event()` deliberately strips `messages` (the full, ever-growing conversation history resent on every LiteLLM call) before anything reaches Redis - measured against real payloads in `services/webhook/captures/*.json`, full `StandardLoggingPayload` averages 360KB (max ~1.5MB) but drops to ~100KB (max ~140KB) once `messages` is excluded. Queueing the raw payload would make `redis`'s memory footprint effectively unbounded under any backlog; `config.MAXLEN` (`~5000`) and the `redis` service's `--maxmemory 700mb --maxmemory-policy noeviction` are both sized around that ~100KB/event figure, not the raw one. `agent_name`/`agent_version` can't be resolved at `build_event()` time (needs a `SELECT` against `agent_invocations`, which only makes sense once that batch's own invocation rows are actually committed) - they're left blank and patched in by `ingest_events_batch()`, batch-side, with a per-batch cache so repeated `agent_invocation_id`s only trigger one `SELECT` each.
+`build_event()` computes both the compact per-table rows (`event_row`/`usage_row`/`message_row`) and a `source_row` carrying the full, untouched original payload (`messages` included) - destined for `event_sources` (see `clickhouse/schema.sql`), the one place the full payload is meant to be preserved for later reparsing (`webhook/src/reparse.py`). Redis is the buffer in front of that write, same as for the compact rows - it does not make the queue's memory footprint unbounded, since `config.MAXLEN` and the `redis` service's `maxmemory` are sized around the real per-event footprint this implies: measured against real payloads in `services/webhook/captures/*.json`, full `StandardLoggingPayload` averages 360KB (max ~1.5MB). `agent_name`/`agent_version` can't be resolved at `build_event()` time (needs a `SELECT` against `agent_invocations`, which only makes sense once that batch's own invocation rows are actually committed) - they're left blank and patched in by `ingest_events_batch()`, batch-side, with a per-batch cache so repeated `agent_invocation_id`s only trigger one `SELECT` each.
+
+## ClickHouse schema migrations (`services/clickhouse/migrations/`)
+
+`mcp-server`'s `query` tool is read-only by validation (SELECT/WITH only,
+DDL keywords rejected server-side - see "Rules to not violate" below), so no
+agent can run a schema change through it. Any change to `agent_events`,
+`agent_usage`, `agent_messages`, or `event_sources` (new column, engine
+change, new table) happens in the main conversation with Bash, the same way
+`services/clickhouse/migrations/001_replacing_mergetree.sql` was applied:
+
+- One `.sql` file per migration in `services/clickhouse/migrations/`,
+  numbered in order (`002_...`, `003_...`, ...) with a short, descriptive
+  name.
+- Start the file with a comment block explaining *why* the migration is
+  needed (what's broken/missing without it), not just what it does.
+- Write every migration so a second run is a no-op: `CREATE TABLE IF NOT
+  EXISTS`, guard `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, check current
+  state before a rename/swap rather than assuming a clean starting point.
+- If the migration includes a BACKFILL (populating a new/changed column
+  from existing data), make the backfill itself idempotent/run-once too -
+  e.g. gate it on the column still being at its default, or use `INSERT ...
+  SELECT` into a dedup-by-engine target rather than an unconditional
+  `UPDATE`-style rewrite. Re-running the file must not double-apply the
+  backfill.
+- Test the migration's queries (the `SELECT` parts, and any query that will
+  read the changed schema afterward) via the ClickHouse MCP tool before
+  considering the migration done, same as any other query - see
+  `clickhouse-analyst`.
+- docker-entrypoint-initdb.d only applies `services/clickhouse/schema.sql`
+  to a brand-new empty volume, so also update `schema.sql` to match the new
+  end state - migrations are for existing stacks, `schema.sql` is what a
+  fresh stack gets.
 
 ## Running tests
 
@@ -83,7 +115,7 @@ Always run tests through the `webhook-test-runner` agent (`.claude/agents/webhoo
   - A self-named/ad-hoc agent (`general-purpose`, `Explore`, `Plan`, ...) has no backing file and no marker - version comes back blank, same as an entry never edited since creation.
 - **When creating a brand-new Subagent/Skill/Command, don't add a version marker at all** - start unmarked, not `<agent_version>1.0.0</agent_version>`. Only add the marker once it has actually shipped and you're editing its behavior later, per the rule above.
 - **`webhook`/`webhook-worker` stay write-only for external/interactive reads.** All human/agent investigation goes through `mcp-server`, never `docker exec`-ing into ClickHouse directly. The one exception is internal to `clickhouse_ingest.py` itself: resolving `agent_invocation_id` → `subagent_type` needs a `SELECT` against `agent_invocations` before the write it's completing - that's part of the ingestion path, not a general read API, so it doesn't count against this rule.
-- **Never queue the raw payload / `messages` onto Redis.** `build_event()` must keep stripping `messages` before anything reaches `queue_client.enqueue()` - see "Why a queue in front of ClickHouse" above for the measured size difference (100KB vs 360KB+ average) this exists to bound. If a future field needs to travel from `webhook` to `webhook-worker`, add it to `build_event()`'s returned dict deliberately, don't pass the payload through wholesale.
+- **`build_event()`'s `source_row` carries the full, untouched payload (`messages` included) - that's deliberate, not a leak.** It's the one field that isn't stripped down, since `event_sources` (see `clickhouse/schema.sql`) exists precisely to hold the full payload for later reparsing (`webhook/src/reparse.py`) - Redis is just the buffer in front of that ClickHouse write, same as it is for the compact per-table rows. `config.MAXLEN`/the `redis` service's `maxmemory` are sized around this larger (~360KB avg, ~1.5MB max) per-event footprint (see `services/webhook/config.yml`) - don't add a new field to `build_event()`'s dict without checking it against that budget.
 - **`clickhouse-analyst`'s tools stay limited to `mcp__clickhouse__query`/`whatsup`.** Never add it Bash or any other direct ClickHouse access - all reads must go through `mcp-server`, per the rule above.
 - **Any read of `services/grafana/dashboards/agents_overview.json` - listing panels, finding one by id/title, dumping a query, checking current `queryOptions`/`fieldConfig`/etc. - goes through the `dashboard-parser` agent, never inline `python3`/`jq`/`Read` in the main conversation.** This includes quick one-off checks and post-edit verification, not just the initial investigation - the file is large (v2beta1 schema) and re-reading it inline defeats the point of delegating. Writes (the actual JSON edit) still happen in the main conversation via `Edit`/`Write`/Bash-python, since `dashboard-parser` has no write tools - only the reading step is delegated.
 - **`dynamictext-panel-builder` is scoped to Dynamic Text panels only (panel-76 "Trace" and its companion panel-77), not the whole dashboard.** Don't route edits to other panel types, `spec.annotations`, `spec.variables`, or any other part of `agents_overview.json` through it - those are plain `Edit`/`Write`/Bash-python in the main conversation, same as any other panel edit not involving the Dynamic Text plugin.

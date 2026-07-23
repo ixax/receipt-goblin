@@ -5,11 +5,16 @@ stream_key: webhook:events
 consumer_group: clickhouse-ingest
 
 # Approximate cap on the stream's length, not a hard byte budget - sized so
-# that even a full stream (~100KB/event observed) stays within the redis
-# service's mem_limit. Past this, XADD trims the oldest entries: acceptable
-# for this best-effort tracking pipeline, a backlog this deep means the
-# worker or ClickHouse is already stuck.
-maxlen: 5000
+# that even a full stream stays within the redis service's mem_limit. Each
+# queued event now carries build_event()'s source_row (the full original
+# payload, messages included, ~360KB avg / ~1.5MB max observed - see
+# AGENTS.md "Why a queue in front of ClickHouse"), not just the compact
+# per-table rows, so this is sized around that larger figure (1500 * 360KB
+# avg =~ 540MB, comfortably under redis's maxmemory - see
+# services/redis/redis.conf). Past this, XADD trims the oldest entries:
+# acceptable for this best-effort tracking pipeline, a backlog this deep
+# means the worker or ClickHouse is already stuck.
+maxlen: 1500
 
 # Flush once this many events have accumulated in the window.
 batch_size: 500

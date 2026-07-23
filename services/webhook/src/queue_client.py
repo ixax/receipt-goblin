@@ -1,9 +1,11 @@
 """Redis Streams queue between webhook (producer) and webhook-worker
 (consumer) - see AGENTS.md. webhook stays a thin, fast producer: it turns
-each StandardLoggingPayload into a compact build_event() dict (pure CPU, no
-ClickHouse round-trip - see clickhouse_ingest.py) and XADDs it, instead of
-inserting into ClickHouse directly in the request path. webhook-worker
-drains the stream in batches and does the actual inserts.
+each StandardLoggingPayload into a build_event() dict (pure CPU, no
+ClickHouse round-trip - see clickhouse_ingest.py; includes both the compact
+per-table rows and source_row, the full original payload for event_sources)
+and XADDs it, instead of inserting into ClickHouse directly in the request
+path. webhook-worker drains the stream in batches and does the actual
+inserts.
 """
 import json
 import logging

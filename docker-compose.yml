@@ -83,6 +83,45 @@ services:
     networks:
       - receipt-goblin
 
+  clickhouse-migrate:
+    # Runs services/webhook/src/migrate.py once per `docker compose up` and
+    # exits - applies every services/clickhouse/migrations/*.sql file that
+    # isn't already recorded in schema_migrations, then exits 0. Safe to run
+    # on every startup (idempotent - see migrate.py's docstring): a brand-new
+    # volume already has the final shape from schema.sql and each migration
+    # self-skips via a structural check, an existing volume actually gets
+    # migrated the first time this runs, and every subsequent run is a no-op
+    # once schema_migrations has the version recorded. webhook/webhook-worker
+    # both wait on this completing successfully so they never race a
+    # migration with live inserts.
+    build: ./services/webhook
+    container_name: receipt-goblin-clickhouse-migrate
+    volumes:
+      - ./services/webhook/src:/app/src:ro
+      - ./services/webhook/config.yml:/app/config.yml:ro
+      - ./services/clickhouse/migrations:/app/migrations:ro
+    command: ["python", "-m", "src.migrate"]
+    restart: "no"
+    environment:
+      CLICKHOUSE_HOST: *clickhouse-host
+      CLICKHOUSE_PORT: *clickhouse-port
+      CLICKHOUSE_USER: *clickhouse-user
+      CLICKHOUSE_PASSWORD: *clickhouse-password
+      CLICKHOUSE_DATABASE: *clickhouse-database
+      LITELLM_MASTER_KEY: *litellm-master-key
+      LITELLM_BASE_URL: *litellm-base-url
+      # Never used (migrate.py has no Redis path), but config.py is shared
+      # with webhook and reads these with no fallback - unset would crash on
+      # import.
+      REDIS_HOST: *redis-host
+      REDIS_PORT: *redis-port
+    mem_limit: 256m
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - receipt-goblin
+
   grafana:
     image: grafana/grafana:13.1.0
     container_name: receipt-goblin-grafana
@@ -113,6 +152,8 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
+      clickhouse-migrate:
+        condition: service_completed_successfully
     networks:
       - receipt-goblin
 
@@ -148,6 +189,8 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
+      clickhouse-migrate:
+        condition: service_completed_successfully
     networks:
       - receipt-goblin
 
@@ -158,7 +201,9 @@ services:
     image: redis:7-alpine
     container_name: receipt-goblin-redis
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
-    mem_limit: 768m
+    # Above redis.conf's maxmemory (1024mb) - leaves headroom for Redis's
+    # own overhead beyond the dataset itself.
+    mem_limit: 1200m
     restart: always
     volumes:
       - redis-data:/data
@@ -214,6 +259,8 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
+      clickhouse-migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     networks:
@@ -253,8 +300,50 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
+      clickhouse-migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
+    networks:
+      - receipt-goblin
+
+  webhook-reparse:
+    # Same image as webhook/webhook-worker - CLI-only, no HTTP API. Recomputes
+    # calculated_type/calculated_payload etc. for events already in
+    # event_sources - see services/webhook/src/reparse.py. Never starts with
+    # `docker compose up` (profiles: ["tools"]) - only via
+    # `make reparse`/`make reparse-all` (docker compose run --rm).
+    build: ./services/webhook
+    container_name: receipt-goblin-webhook-reparse
+    profiles:
+      - tools
+    volumes:
+      - ./services/webhook/src:/app/src:ro
+      - ./services/webhook/config.yml:/app/config.yml:ro
+    command: ["python", "-m", "src.reparse"]
+    environment:
+      CLICKHOUSE_HOST: *clickhouse-host
+      CLICKHOUSE_PORT: *clickhouse-port
+      CLICKHOUSE_USER: *clickhouse-user
+      CLICKHOUSE_PASSWORD: *clickhouse-password
+      CLICKHOUSE_DATABASE: *clickhouse-database
+      # worker.py/reparse.py never call /key/info themselves, but config.py is
+      # shared with webhook (see AGENTS.md "every tunable lives in
+      # config.py") and reads these with no fallback.
+      LITELLM_MASTER_KEY: *litellm-master-key
+      LITELLM_BASE_URL: *litellm-base-url
+      # Never used (reparse.py has no Redis path), but config.py is shared
+      # with webhook and reads these with no fallback - unset would crash on
+      # import.
+      REDIS_HOST: *redis-host
+      REDIS_PORT: *redis-port
+      SESSION_ID: ${SESSION_ID:-}
+    mem_limit: 256m
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      clickhouse-migrate:
+        condition: service_completed_successfully
     networks:
       - receipt-goblin
 

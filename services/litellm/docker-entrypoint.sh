@@ -48,4 +48,24 @@ else
     echo "docker-entrypoint.sh: no user_configs/*.yaml found - no remote models merged" >&2
 fi
 
+# Seed a dummy, non-functional auth.json for litellm's built-in `chatgpt`
+# provider (llms/chatgpt/authenticator.py). Without any auth.json, a request
+# with no forwarded Codex/ChatGPT token (see custom_callbacks.py's
+# ChatGPTAuthForwardHandler) would make the Authenticator fall through to its
+# interactive device-code login flow and hang the request instead of failing
+# cleanly. This container runs as root ($HOME=/root) and the litellm-config
+# mount is read-only, so this can't just be a committed file under
+# services/litellm/ - it's written fresh on every start instead. It is never
+# a real credential (only per-caller forwarded tokens are), so an
+# unauthenticated call just gets a real 401/403 from chatgpt.com.
+CHATGPT_AUTH_DIR="${CHATGPT_TOKEN_DIR:-$HOME/.config/litellm/chatgpt}"
+mkdir -p "$CHATGPT_AUTH_DIR"
+cat > "$CHATGPT_AUTH_DIR/${CHATGPT_AUTH_FILE:-auth.json}" <<'EOF'
+{
+  "access_token": "dummy-no-op-token-not-a-real-credential",
+  "account_id": "dummy-account-id",
+  "expires_at": 4102444800
+}
+EOF
+
 exec docker/prod_entrypoint.sh --config "$EFFECTIVE_CONFIG" "$@"

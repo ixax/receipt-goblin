@@ -178,11 +178,10 @@ def test_agent_invocations_from_messages_success_finds_spawned_subagent():
     payload = load_capture("success_with_agent_and_skill")
     invocations = ci._agent_invocations_from_messages(payload["messages"])
     # this capture predates the <agent_version> marker convention, so the
-    # listing carries no marker for this name - version comes back blank,
-    # and subagent_type is kept as-is (whatever the harness matched on,
-    # including a stale "_v<version>" suffix from before the convention
-    # changed - this function no longer splits it).
-    assert invocations == [("aac9d05f148e9ae4a", "test-researcher_v1.0.0", "", "Summarize Makefile contents")]
+    # listing carries no marker for this name - falls back to splitting the
+    # "_v<version>" suffix baked into subagent_type itself (the old
+    # convention, via _split_name_version).
+    assert invocations == [("aac9d05f148e9ae4a", "test-researcher", "1.0.0", "Summarize Makefile contents")]
 
 
 def test_agent_invocations_from_messages_success_recovers_version_marker():
@@ -291,7 +290,7 @@ def test_agent_invocation_rows_success_builds_one_row_per_spawn():
     payload = load_capture("success_with_agent_and_skill")
     now = datetime(2026, 7, 12, tzinfo=timezone.utc)
     rows = ci._agent_invocation_rows("session-1", payload["messages"], now=now)
-    assert rows == [["aac9d05f148e9ae4a", "session-1", "test-researcher_v1.0.0", "", "Summarize Makefile contents", now]]
+    assert rows == [["aac9d05f148e9ae4a", "session-1", "test-researcher", "1.0.0", "Summarize Makefile contents", now]]
 
 
 def test_agent_invocation_rows_unsuccess_no_spawns_returns_empty_list():
@@ -311,7 +310,7 @@ def test_event_row_success_reports_status_and_latency():
     assert values["status"] == "success"
     assert values["session_id"] == "session-1"
     assert values["latency_ms"] is not None and values["latency_ms"] >= 0
-    assert '"messages":' not in row[-1]  # raw_payload has the full message history stripped out
+    assert values["calculated_type"] == "title_gen"  # prompt starts with "<session>"
 
 
 def test_event_row_unsuccess_failure_payload_has_no_tool_name_or_latency():
@@ -360,21 +359,27 @@ def test_message_row_unsuccess_no_prompt_or_response_text_returns_none():
 
 # ---------------------------------------------------------------------------
 # build_event - the queue-facing, DB-free half of ingestion (see
-# queue_client.enqueue). Must never serialize "messages" onto the wire.
+# queue_client.enqueue). source_row deliberately DOES carry the full
+# payload (messages included) - that's what event_sources is for; only the
+# per-table rows are stripped down.
 # ---------------------------------------------------------------------------
 
-def test_build_event_success_returns_json_safe_dict_without_messages():
+def test_build_event_success_returns_json_safe_dict_with_source_row():
     payload = load_capture("success_plain")
     event = ci.build_event(payload)
 
-    encoded = json.dumps(event)
-    assert '"messages":' not in encoded
+    encoded = json.dumps(event)  # must not raise - safe to XADD onto Redis
+    assert event["source_row"] is not None
     assert event["event_row"] is not None
     assert event["usage_row"] is not None
     assert event["message_row"] is not None
     # timestamps are serialized to ISO strings, not raw datetime objects,
     # so the dict is safe to json.dumps() straight onto the Redis stream.
     assert isinstance(event["event_row"][ci._EVENT_TIMESTAMP_IDX], str)
+    assert isinstance(event["source_row"][ci._SOURCE_INGESTED_AT_IDX], str)
+    # the full original payload really is in there, untouched
+    source_payload = json.loads(event["source_row"][ci._SOURCE_COLUMNS.index("raw_payload_full")])
+    assert "messages" in source_payload
 
 
 def test_build_event_unsuccess_failure_payload_has_no_usage_or_message_row():
@@ -415,12 +420,16 @@ def test_ingest_events_batch_success_issues_one_insert_per_table(monkeypatch):
     ci.ingest_events_batch(events)
 
     tables = [table for table, _rows, _cols in fake_client.inserts]
+    assert tables.count("event_sources") == 1
     assert tables.count("agent_events") == 1
     assert tables.count("agent_usage") == 1
     assert tables.count("agent_messages") == 1
 
     event_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_events")
     assert len(event_rows) == 2
+
+    source_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "event_sources")
+    assert len(source_rows) == 2
 
 
 def test_ingest_events_batch_unsuccess_empty_list_skips_client_entirely(monkeypatch):

@@ -315,6 +315,7 @@ The whole point of picking `model_name` values up front is that agent/skill fron
 | `claude-fable-5`              | `anthropic/claude-fable-5`   | OAuth passthrough, `services/litellm/config.yaml` (no Anthropic key yet) |
 | `gpt-5-codex`                 | `openai/gpt-5-codex`         | Not defined yet - needs a real `OPENAI_API_KEY`                          |
 | `gpt-5`                       | `openai/gpt-5`               | Not defined yet - needs a real `OPENAI_API_KEY`                          |
+| `gpt-5.6-sol`/`gpt-5.6-terra`/`gpt-5.6-luna` | `chatgpt/gpt-5.6-*`   | OAuth passthrough, `services/litellm/config.yaml` (no OpenAI key, Codex's own ChatGPT subscription) |
 
 This table is the file-based (git-tracked) half of the mapping, and it's enough on its own for Claude-only skills/agents shared across sessions - no admin UI setup required beyond issuing personal keys.
 The `anthropic/`, `openai/`, `ollama/` prefix on every "Real model" value above is mandatory, not cosmetic - LiteLLM parses `litellm_params.model` as `<provider>/<model>` to pick which provider adapter handles the call, so a bare `gemma3:4b` or `claude-sonnet-5` (no prefix) fails to route rather than falling back to a sensible default.
@@ -342,7 +343,8 @@ Ollama must also be listening on `0.0.0.0`, not just `localhost`, on its own hos
 ### Right now: no Anthropic/OpenAI key yet
 
 `claude-sonnet-5`/`claude-haiku-4-5`/`claude-opus-4-8`/`claude-fable-5` are defined in `services/litellm/config.yaml`'s `model_list` with no `api_key` - `model_group_settings.forward_client_headers_to_llm_api` forwards the caller's own `claude login` subscription token straight to Anthropic instead.
-`gpt-5-codex`/`gpt-5` have no equivalent (OpenAI has nothing like Anthropic's OAuth passthrough), so they simply don't exist yet - add them once a real `OPENAI_API_KEY` shows up.
+`gpt-5-codex`/`gpt-5` (the plain OpenAI API models) have no equivalent (OpenAI's API has nothing like Anthropic's OAuth passthrough), so they simply don't exist yet - add them once a real `OPENAI_API_KEY` shows up.
+`gpt-5.6-sol`/`gpt-5.6-terra`/`gpt-5.6-luna` are different: they route through litellm's own `chatgpt` provider (a Codex/ChatGPT-subscription backend, not the plain OpenAI API), and *do* have OAuth passthrough today - see "Routing Codex CLI through it" below.
 
 ### Routing Claude Code through it
 
@@ -354,8 +356,27 @@ Then `claude login` (subscription OAuth, Pro/Max/Team) as usual.
 
 ### Routing Codex CLI through it
 
-Once `gpt-5-codex`/`gpt-5` exist (Codex has no subscription-passthrough option, so this can't happen before a real `OPENAI_API_KEY` is added), issue a personal virtual key the same way (**Keys** → **Create New Key**, `Models` restricted to `gpt-5-codex`/`gpt-5`).
-The same `make env` (see above) also prints `OPENAI_API_BASE`/`OPENAI_API_KEY` lines from that key - Codex (and other OpenAI-SDK-based tools) read it directly, no custom header needed on that side. Set Codex's own model setting to `gpt-5-codex` or `gpt-5`.
+For a real, billed `OPENAI_API_KEY` backing `gpt-5-codex`/`gpt-5` (the plain OpenAI API), issue a personal virtual key the same way (**Keys** → **Create New Key**, `Models` restricted to `gpt-5-codex`/`gpt-5`) once that key exists - Codex reads `OPENAI_API_BASE`/`OPENAI_API_KEY` directly, no custom header needed on that side.
+
+Without an OpenAI API key, `gpt-5.6-sol`/`gpt-5.6-terra`/`gpt-5.6-luna` give the same OAuth-passthrough deal Claude Code already has, using each caller's own ChatGPT Plus/Pro/Team subscription instead:
+
+1. `~/.codex/config.toml`: point the `litellm` model provider at the proxy and require it to always send a live subscription token as `Authorization` -
+   ```toml
+   [model_providers.litellm]
+   base_url = "http://localhost:4000"
+   wire_api = "responses"
+   requires_openai_auth = true
+   env_http_headers = { "x-litellm-api-key" = "LITELLM_AUTH_HEADER" }
+
+   [profile]
+   model_provider = "litellm"
+   model = "gpt-5.6-luna"
+   ```
+   `LITELLM_AUTH_HEADER` here is the same personal virtual key already exported for Claude Code (see "Routing Claude Code through it" above) - one key, both CLIs.
+2. `codex login` (ChatGPT subscription OAuth) as usual.
+
+Why this needs more than `forward_client_headers_to_llm_api`: unlike Anthropic, litellm has no built-in way to recognize a ChatGPT/Codex OAuth token (confirmed against litellm's own docs and two of its open GitHub issues - [BerriAI/litellm#23777](https://github.com/BerriAI/litellm/issues/23777), [#24500](https://github.com/BerriAI/litellm/issues/24500) - both ask for exactly this, unresolved upstream), so its `clean_headers()` proxy internals silently drop a Codex caller's `Authorization` header the same way they'd drop any other unrecognized bearer token. `services/litellm/custom_callbacks.py` closes this the same way the Anthropic case is special-cased in litellm itself: it broadens `is_anthropic_oauth_key()` (monkeypatched at callback-load time) to also recognize a ChatGPT JWT by its `https://api.openai.com/auth` claim, then a pre-call hook (`ChatGPTAuthForwardHandler`) reads the now-surviving header and sets it as `extra_headers` so the caller's own token (and derived `ChatGPT-Account-Id`) - not litellm's own single logged-in identity - is what actually authenticates to `chatgpt.com`, per call.
+`docker-entrypoint.sh` seeds a static, non-functional `auth.json` for litellm's built-in `chatgpt` provider on every container start, purely so a call that arrives with no forwarded token fails cleanly with a real auth error instead of hanging on an interactive device-code login.
 
 ### Inspecting captured traffic
 

@@ -107,7 +107,7 @@ ORDER BY (session_id, captured_at);
 -- (x-claude-code-session-id header, trace_id, litellm_call_id, or "" as a
 -- last resort - see _session_and_trace_id in clickhouse_ingest.py), so
 -- guaranteeing well-formed UUIDs on every path isn't free, and these are a
--- small fraction of a row's bytes next to raw_payload anyway.
+-- small fraction of a row's bytes next to calculated_payload anyway.
 --
 -- agent_name/skill_name/command_name/tool_name/etc. are LowCardinality:
 -- the actual set of distinct values is bounded (the agents/skills/tools
@@ -116,6 +116,16 @@ ORDER BY (session_id, captured_at);
 -- below replace the old bloom_filter ones for the same reason (bloom_filter
 -- is for genuinely high-cardinality columns; set is cheaper and exact for a
 -- small bounded set of values).
+--
+-- ReplacingMergeTree(ingested_at): lets a later reparse
+-- (webhook/src/reparse.py, run via `make reparse`/`make reparse-all`)
+-- rewrite calculated_type/calculated_payload for an already-ingested row by
+-- inserting a fresh copy with a newer ingested_at - the newest one wins on
+-- merge/OPTIMIZE FINAL. This is why litellm_call_id (confirmed unique per
+-- call) had to join the ORDER BY: the old (timestamp, session_id) key isn't
+-- actually unique (millisecond-truncated timestamps can collide across
+-- concurrent calls), so ReplacingMergeTree on that key alone would silently
+-- drop real rows, not just reparse duplicates.
 CREATE TABLE IF NOT EXISTS agent_events
 (
     timestamp         DateTime64(3),
@@ -123,6 +133,10 @@ CREATE TABLE IF NOT EXISTS agent_events
     session_id        String,
     trace_id          String,
     turn_id           UInt32,
+    -- Unique per LiteLLM call (confirmed) - the real identity of a row, and
+    -- the join key event_sources.litellm_call_id uses to pair a row back to
+    -- its full original payload.
+    litellm_call_id   String DEFAULT '',
     event_type        LowCardinality(String),
     tool_name         LowCardinality(String),
     agent_name        LowCardinality(String),
@@ -149,30 +163,65 @@ CREATE TABLE IF NOT EXISTS agent_events
     latency_ms        Nullable(UInt32),
     -- Set when this call's incoming "messages" ends with a tool_result
     -- marked is_error - i.e. this call is reacting to a tool that just
-    -- failed. Recovered at ingest time only (from "messages", which is
-    -- dropped from raw_payload to keep rows small) - not backfillable from
-    -- already-ingested rows the way tool_name/cost were, since the source
-    -- data is gone once ingested. Distinct from this row's own tool_name,
-    -- which is whatever tool (if any) THIS call's own response goes on to
-    -- invoke next.
+    -- failed. Recovered at ingest time only (from "messages", which never
+    -- lands in this table - see event_sources for the full original
+    -- payload) - not backfillable from already-ingested rows the way
+    -- tool_name/cost were, since the source data is gone once ingested.
+    -- Distinct from this row's own tool_name, which is whatever tool (if
+    -- any) THIS call's own response goes on to invoke next.
     failed_tool_name  LowCardinality(String) DEFAULT '',
     failed_tool_args  String DEFAULT '',
     failed_tool_error String DEFAULT '',
-    raw_payload       String CODEC(ZSTD(3)),
+    -- What kind of call this actually was (agent_spawn/skill_call/
+    -- ask_user_question/tool_call/judge_call/system_notification/
+    -- suggestion_mode/transcript_handoff/title_gen/interrupted/
+    -- webpage_content/llm_answer/unknown), computed once at ingest by
+    -- clickhouse_ingest.py:_classify_event and re-computable later by
+    -- webhook/src/reparse.py against event_sources.raw_payload_full -
+    -- see AGENTS.md/the schema-sql-capture plan for the full category
+    -- list. 'unknown' is a real, expected bucket meant to be searched
+    -- (`WHERE calculated_type = 'unknown'`) and iterated on, not an error.
+    -- Rows ingested before this column existed keep the 'unknown' default
+    -- permanently - they predate event_sources, so there's nothing left to
+    -- reparse them from (see event_sources below for why .capture/*.json
+    -- is never a substitute).
+    calculated_type    LowCardinality(String) DEFAULT 'unknown',
+    -- Structured, classifier-specific detail (e.g. {"subagent_type":...}
+    -- for agent_spawn, {"tools":[...]} for tool_call - always a list even
+    -- for one parallel call, so this single column also replaces the old
+    -- multi-tool-call arrayJoin gymnastics the "Full trace" companion table
+    -- used to need). '{}' when the type carries no extra detail of its own
+    -- (e.g. llm_answer, unknown).
+    calculated_payload String DEFAULT '{}' CODEC(ZSTD(3)),
+    -- Set once per row at ingest/reparse time - the ReplacingMergeTree
+    -- version column. A reparse always writes now() here while keeping the
+    -- row's own historical `timestamp`, so the newest reparse wins on
+    -- merge without corrupting time-range queries.
+    ingested_at       DateTime64(3) DEFAULT now64(3),
     INDEX idx_tool_name tool_name TYPE set(1000) GRANULARITY 4,
     INDEX idx_agent_name agent_name TYPE set(1000) GRANULARITY 4,
     INDEX idx_skill_name skill_name TYPE set(1000) GRANULARITY 4,
     INDEX idx_command_name command_name TYPE set(1000) GRANULARITY 4,
     INDEX idx_user_id user_id TYPE set(1000) GRANULARITY 4,
-    INDEX idx_failed_tool_name failed_tool_name TYPE set(1000) GRANULARITY 4
+    INDEX idx_failed_tool_name failed_tool_name TYPE set(1000) GRANULARITY 4,
+    INDEX idx_calculated_type calculated_type TYPE set(100) GRANULARITY 4
 )
-ENGINE = MergeTree
+ENGINE = ReplacingMergeTree(ingested_at)
 PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
-ORDER BY (timestamp, session_id);
+ORDER BY (timestamp, session_id, litellm_call_id);
 
--- Table predates command_version: ALTER for stacks whose ClickHouse volume
--- already existed before this column was added.
+-- Tables predate command_version/litellm_call_id/calculated_type/
+-- calculated_payload/ingested_at: ALTER for stacks whose ClickHouse volume
+-- already existed before these columns were added. Note this does NOT
+-- change the engine/ORDER BY of an already-existing table (ClickHouse has
+-- no ALTER for that) - a stack that needs the ReplacingMergeTree dedup
+-- semantics on old data must run the recreate+swap runbook in
+-- services/clickhouse/migrations/001_replacing_mergetree.sql once instead.
 ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS command_version LowCardinality(String) DEFAULT '';
+ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS litellm_call_id String DEFAULT '';
+ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS calculated_type LowCardinality(String) DEFAULT 'unknown';
+ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS calculated_payload String DEFAULT '{}' CODEC(ZSTD(3));
+ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS ingested_at DateTime64(3) DEFAULT now64(3);
 
 -- One row per model call (usage report). cost/input_cost/output_cost come
 -- straight from LiteLLM's own response_cost/cost_breakdown - no local price
@@ -184,6 +233,9 @@ ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS command_version LowCardinality
 --
 -- Same PARTITION BY/ORDER BY reasoning as agent_events above - every
 -- token/cost panel filters by time range first, never by session_id alone.
+-- Same ReplacingMergeTree(ingested_at)/litellm_call_id reasoning as
+-- agent_events above too - a reparse can rewrite `provider` for an
+-- already-ingested row the same way it rewrites calculated_type there.
 CREATE TABLE IF NOT EXISTS agent_usage
 (
     timestamp            DateTime64(3),
@@ -191,7 +243,12 @@ CREATE TABLE IF NOT EXISTS agent_usage
     session_id           String,
     trace_id             String,
     turn_id              UInt32,
+    litellm_call_id      String DEFAULT '',
     model                LowCardinality(String),
+    -- claude/openai/other, classified once from `model` at ingest time (the
+    -- same 3-way regex that used to be duplicated across ~30 dashboard
+    -- panels) - see clickhouse_ingest.py's provider classifier.
+    provider             LowCardinality(String) DEFAULT '',
     agent_name           LowCardinality(String),
     agent_version        LowCardinality(String),
     skill_name           LowCardinality(String),
@@ -223,19 +280,25 @@ CREATE TABLE IF NOT EXISTS agent_usage
     -- completionStartTime - startTime, in ms: time to first token, distinct
     -- from the total call latency in agent_events.latency_ms.
     ttft_ms               UInt32 DEFAULT 0,
+    ingested_at           DateTime64(3) DEFAULT now64(3),
     INDEX idx_agent_name agent_name TYPE set(1000) GRANULARITY 4,
     INDEX idx_skill_name skill_name TYPE set(1000) GRANULARITY 4,
     INDEX idx_command_name command_name TYPE set(1000) GRANULARITY 4,
     INDEX idx_mcp_tool_name mcp_tool_name TYPE set(1000) GRANULARITY 4,
-    INDEX idx_user_id user_id TYPE set(1000) GRANULARITY 4
+    INDEX idx_user_id user_id TYPE set(1000) GRANULARITY 4,
+    INDEX idx_provider provider TYPE set(10) GRANULARITY 4
 )
-ENGINE = MergeTree
+ENGINE = ReplacingMergeTree(ingested_at)
 PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
-ORDER BY (timestamp, session_id);
+ORDER BY (timestamp, session_id, litellm_call_id);
 
--- Table predates command_version: ALTER for stacks whose ClickHouse volume
--- already existed before this column was added.
+-- Tables predate command_version/litellm_call_id/provider/ingested_at: see
+-- the agent_events ALTER comment above - same caveat applies here (no
+-- ENGINE/ORDER BY migration via ALTER; use the migrations/ runbook).
 ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS command_version LowCardinality(String) DEFAULT '';
+ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS litellm_call_id String DEFAULT '';
+ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS provider LowCardinality(String) DEFAULT '';
+ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS ingested_at DateTime64(3) DEFAULT now64(3);
 
 -- One row per turn (main session turn or subagent turn), holding the
 -- actual prompt sent to the model and the text it replied with. Kept
@@ -245,6 +308,12 @@ ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS command_version LowCardinality(
 -- (session_id, turn_id) from a specific agent_events row via a Grafana
 -- data link - see "Full trace" panel and the message/tool-detail panels
 -- in the Grafana dashboard section below.
+-- ReplacingMergeTree(ingested_at)/litellm_call_id: same reparse-rewrite
+-- reasoning as agent_events above. turn_id is dropped from the sort key
+-- entirely here (kept as a column - it's just hardcoded to 0 by
+-- clickhouse_ingest.py today, not a real per-session sequence number, so it
+-- was never a safe uniqueness key to begin with; every row sharing
+-- (session_id, 0) would have collapsed to one under ReplacingMergeTree).
 CREATE TABLE IF NOT EXISTS agent_messages
 (
     timestamp     DateTime64(3),
@@ -252,6 +321,7 @@ CREATE TABLE IF NOT EXISTS agent_messages
     session_id    String,
     trace_id      String,
     turn_id       UInt32,
+    litellm_call_id String DEFAULT '',
     agent_name    LowCardinality(String),
     agent_version LowCardinality(String),
     skill_name    LowCardinality(String),
@@ -260,9 +330,10 @@ CREATE TABLE IF NOT EXISTS agent_messages
     command_version LowCardinality(String) DEFAULT '',
     agent_invocation_id String DEFAULT '',
     prompt_text   String CODEC(ZSTD(3)),
-    response_text String CODEC(ZSTD(3))
+    response_text String CODEC(ZSTD(3)),
+    ingested_at   DateTime64(3) DEFAULT now64(3)
 )
-ENGINE = MergeTree
+ENGINE = ReplacingMergeTree(ingested_at)
 -- Unlike agent_events/agent_usage, this table is always looked up by a
 -- specific session_id (joined from an agent_events row) rather than
 -- scanned by time range, so session_id stays the lead sort key. Half-year
@@ -270,8 +341,47 @@ ENGINE = MergeTree
 -- reason as agent_events above, even though it doesn't change how these
 -- particular queries are pruned.
 PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
-ORDER BY (session_id, turn_id);
+ORDER BY (session_id, litellm_call_id);
 
--- Table predates command_version: ALTER for stacks whose ClickHouse volume
--- already existed before this column was added.
+-- Tables predate command_version/litellm_call_id/ingested_at: see the
+-- agent_events ALTER comment above - same ENGINE/ORDER BY caveat applies.
 ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS command_version LowCardinality(String) DEFAULT '';
+ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS litellm_call_id String DEFAULT '';
+ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS ingested_at DateTime64(3) DEFAULT now64(3);
+
+-- Full, untouched original StandardLoggingPayload per call (messages
+-- included - the one place in this schema that keeps that field), written
+-- exactly once at ingest time by clickhouse_ingest.py's _source_row,
+-- compressed hard (ZSTD(19), near-max - this column is write-once and read
+-- only by webhook/src/reparse.py, never by a live dashboard query, so we
+-- optimize purely for size over CPU). This is what makes reparsing
+-- possible: calculated_type/calculated_payload/provider classifiers can be
+-- rewritten and rerun later against real historical payloads without
+-- needing the original webhook call again.
+--
+-- Deliberately separate from .capture/*.json: that's a CAPTURE_ENABLED-
+-- gated, off-by-default debug aid with no retention policy and no place in
+-- the actual data model - no ingest or reparse code path may ever read from
+-- it, now or in the future, including as a one-time historical backfill
+-- source. This table is the only source of truth for "the full payload
+-- behind row X."
+--
+-- PARTITION BY the same half-year convention as the other tables above -
+-- not for query pruning (this table is read rarely, by litellm_call_id or
+-- session_id, never by time range scan) but so that whenever old data
+-- starts moving to MinIO, whole half-year partitions are the natural,
+-- already-proven unit to detach and ship off (see the half-year comment on
+-- agent_events above for the existing DETACH PARTITION pattern) - not
+-- building that MinIO move now, just not painting this table's layout into
+-- a corner that would need reshaping later to support it.
+CREATE TABLE IF NOT EXISTS event_sources
+(
+    litellm_call_id  String,
+    session_id       String,
+    ingested_at      DateTime64(3) DEFAULT now64(3),
+    raw_payload_full String CODEC(ZSTD(19)),
+    INDEX idx_session_id session_id TYPE set(1000) GRANULARITY 4
+)
+ENGINE = ReplacingMergeTree(ingested_at)
+PARTITION BY concat(toString(toYear(ingested_at)), '-H', toString(intDiv(toMonth(ingested_at) - 1, 6) + 1))
+ORDER BY (litellm_call_id);
