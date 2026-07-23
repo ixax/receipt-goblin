@@ -1,7 +1,7 @@
 ---
-name: webhook-test-runner_v1.0.0
+name: webhook-test-runner
 description: >
-  MUST BE USED PROACTIVELY, without waiting to be asked, any time the services/webhook/clickhouse_ingest.py pytest suite (`make test`) needs to run - after every change to services/webhook/src/clickhouse_ingest.py or services/webhook/tests/, and whenever the user asks to run/verify the tests.
+  <agent_version>1.0.0</agent_version> MUST BE USED PROACTIVELY, without waiting to be asked, any time the services/webhook/clickhouse_ingest.py pytest suite (`make test`) needs to run - after every change to services/webhook/src/clickhouse_ingest.py or services/webhook/tests/, and whenever the user asks to run/verify the tests.
   Never run `make test`/`pytest services/webhook/tests` directly in the main conversation - always delegate here instead, so raw pytest output (including warnings) never fills the main conversation's context. Runs on a cheap model.
 tools: Bash, Read
 model: claude-haiku-4-5

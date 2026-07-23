@@ -1,7 +1,7 @@
 ---
-name: test-summarizer_v1.0.0
+name: test-summarizer
 description: >
-  Minimal test skill that summarizes the given text.
+  <skill_version>1.0.0</skill_version> Minimal test skill that summarizes the given text.
   Use to verify the tracking stack end to end.
 ---
 

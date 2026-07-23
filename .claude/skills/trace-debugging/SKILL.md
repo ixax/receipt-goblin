@@ -1,7 +1,7 @@
 ---
-name: trace-debugging_v1.0.1
+name: trace-debugging
 description: >
-  Troubleshooting the chain of agent calls via session_id/trace_id/turn_id.
+  <skill_version>1.0.1</skill_version> Troubleshooting the chain of agent calls via session_id/trace_id/turn_id.
   Use this when investigating the latency of a specific step, the order of events in a session, or when debugging a specific trace in agent_events/agent_usage.
 ---
 

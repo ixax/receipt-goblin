@@ -3,6 +3,6 @@
 # Docker image is driven by env vars (GF_INSTALL_PLUGINS in particular is
 # an entrypoint-time plugin-install step, not a grafana.ini value at all),
 # so this file - not docker-compose.yml - is the source of truth for them.
-install_plugins: grafana-clickhouse-datasource
+install_plugins: grafana-clickhouse-datasource,marcusolsson-dynamictext-panel
 auth_anonymous_enabled: "true"
 auth_anonymous_org_role: Viewer

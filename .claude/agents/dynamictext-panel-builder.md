@@ -6,7 +6,7 @@ description: >
   Has write access (Edit/Bash+python) to perform the actual panel JSON edit itself, plus mcp__clickhouse__query to test SQL against real data before deploying - the caller should not hand-edit the panel or test queries directly.
   SCOPE - NOT a general dashboard editor: this agent owns Dynamic Text panels (and panel-77) only. Any other part of `agents_overview.json` - other panel types, `spec.annotations`, `spec.variables`, dashboard-level settings, tabs/layout - is out of scope and must NOT be routed here; the main conversation edits those directly (see AGENTS.md "Rules to not violate" for the read-delegation rule, which is unrelated to this agent).
 tools: Bash, Read, Edit, Write, mcp__clickhouse__query
-model: claude-haiku-4-5
+model: claude-sonnet-5
 ---
 
 You build and maintain Dynamic Text (`marcusolsson-dynamictext-panel`)
@@ -274,25 +274,20 @@ its parent, since `agent_spawn_events` only looks at orchestrator-level
   means the full month name, not minutes - use `%i` for minutes
   (`formatDateTime(ts, '%H:%i:%S')`). Getting this wrong silently produces
   times like `14:July:16` instead of `14:37:16`.
-- **A wide `rightPadUTF8(..., N, ' ')` fixed-width column was tried and
-  abandoned** - the idea was to right-align the ms/tokens/cost stats into
-  a column after the tool-call text, then `replaceOne(padded,
-  plain_substring, concat('<span...>', plain_substring, '</span>'))` to
-  colorize just the args after the fact (necessary because injecting the
-  `<span>` tag *before* padding would count the tag's own characters
-  toward the padded width). Two problems killed it: (1) if the
-  concatenated string (prefix + tool_name + args) ran *longer* than the
-  pad width, `rightPadUTF8` silently truncated it, the later `replaceOne`
-  then failed to find the now-partially-cut substring, and the span
-  silently never applied (no error, just quietly unstyled text); (2) a
-  wide fixed width left a huge visual gap after short content (e.g. `Bash
-  cat Makefile` padded out to 120 characters before the stats appeared).
-  The current design instead **appends a short fixed gap** (10 literal
-  spaces, `'          '`) after the content instead of padding to a fixed
-  width - stats no longer align into a rigid column across rows (a
-  deliberate tradeoff the user chose explicitly), but nothing gets
-  truncated or silently un-styled anymore. If asked to reintroduce
-  fixed-width alignment, remember why it was reverted before doing so.
+- **`rightPadUTF8` fixed-width columns: now safe via pre-truncation** - the
+  initial approach was abandoned because `rightPadUTF8(content, N, ' ')`
+  silently truncates at byte boundaries if content runs longer than N chars,
+  breaking the later `replaceOne(padded, plain_substring, span_wrapped)`
+  substring match and leaving arguments unstyled. The fix (now implemented):
+  pre-truncate arguments to a safe cap (~55 chars, with `…` suffix if longer)
+  *before* padding, so the content can never overflow the pad width, ensuring
+  `replaceOne()` always finds its target substring intact. This allows
+  re-introducing fixed-width alignment (rightPadUTF8 to 100 chars for
+  tool-call lines) so stats columns line up vertically across all nesting
+  depths, without the silent-failure risk. The gap problem (huge space after
+  short args) is avoided because the 100-char budget is per-row (not per
+  nesting level) - deeply nested rows still get 100 chars total, not 100 +
+  indent_size.
 - **Per-field truncation caps don't need to match anymore.** Since there's
   no shared fixed-width column to protect, each `tool_render` preference
   branch has its own cap sized to what that field actually needs: paths
@@ -309,6 +304,17 @@ its parent, since `agent_spawn_events` only looks at orchestrator-level
   `<command-name>/goal</command-name>` (which appears verbatim in real
   prompts) must never be trusted as real markup - it has to go through the
   same escaping as everything else.
+- **JSON serialization must not double-escape the rawSql field**: When
+  editing the dashboard JSON, always load via `json.load()` and write back
+  via `json.dump()` on the modified in-memory object, never do string-level
+  replacements on the raw file text or pass the SQL through a JSON
+  encoder/decoder outside the main dump. A tooling bug that re-serializes
+  the string value can introduce stray backslashes before quotes in the SQL
+  (e.g., `style=\"opacity:.6\"` instead of `style="opacity:.6"`), which
+  accumulates across edits and eventually breaks quote-parity in ClickHouse's
+  string-literal lexer. If the corruption is ever spotted, fix by loading
+  the JSON properly, doing `.replace('\\"', '"')` on the **parsed string
+  value** (not the raw file bytes), and writing back via `json.dump()`.
 - **`agent_invocations` isn't in the `mcp__clickhouse__query` table
   whitelist** (only `agent_events`/`agent_usage`/`agent_messages`/
   `session_git_branch` are, per `_ALLOWED_TABLES` in
@@ -466,6 +472,12 @@ its parent, since `agent_spawn_events` only looks at orchestrator-level
   conversion (after markdown `**bold**`/`` `code` `` is converted), so
   multi-line user prompts and multi-line model replies now render as
   multiple visual lines instead of being flattened onto one.
+- **WebFetch nesting**: WebFetch output (`Web page content:...` response rows)
+  now render one level deeper than the WebFetch tool-call row that produced
+  them, using extra indent (3 additional spaces) to visually show it's a child
+  output of that specific tool call, not a general model reply. Detection is
+  via `startsWith(response_text, 'Web page content')` check, which is reliable
+  since WebFetch echoes its content under this specific prefix.
 - Always filter empty strings out of any array before
   `arrayStringConcat(arr, ', ')` - e.g.
   `arrayStringConcat(arrayFilter(x -> x != '', groupUniqArray(name)), ', ')`
@@ -473,30 +485,31 @@ its parent, since `agent_spawn_events` only looks at orchestrator-level
   a trailing `", "` with nothing after it, which reads as a typo/bug even
   though the join logic is otherwise correct.
 
-## Known limitations and deferred improvements
+## New general convention for array-valued tool arguments
 
-- **Array-valued tool arguments (e.g., AskUserQuestion's `questions` array)**: 
-  Currently shown inline as escaped JSON. A future enhancement would render
-  each array element (e.g., each question object) as its own separate nested
-  line, styled in grey (opacity:.6), with no per-line stats. This requires
-  restructuring the tool-call rendering to loop over JSON array elements,
-  which is complex in SQL and would benefit from a dedicated refactor.
+When a tool call's argument JSON contains an array field (e.g., AskUserQuestion's
+`questions`), keep the tool-call row itself as ONE line (tool name + stats:
+duration/tokens/cost at the end, same as any other tool call), but render each
+array element as its own separate nested line underneath, styled in dimmed grey
+(opacity:.6) used for arguments, with no per-line stats. Implementation:
+array elements are joined with newlines (`arrayStringConcat(..., '\n')`) and
+displayed as a single grey multi-line block under the tool call. Currently
+implemented for: `AskUserQuestion` (questions array); same pattern applies to
+any future tools with array-valued arguments.
 
-- **Column alignment with overflow safety**: Item 8 in the previous batch
-  proposed re-introducing fixed-width column alignment (computing
-  `total_row_width - indent_width` to keep stats columns aligned across
-  deeply nested rows) while safely handling overflow via pre-truncation.
-  This was not implemented in the current batch due to complexity; it remains
-  a candidate for future work if user feedback indicates the lack of
-  alignment is a usability issue.
+## Column alignment with overflow safety: fixed-width safe truncation
 
-- **WebFetch nesting depth**: WebFetch output (`Web page content...`)
-  currently appears as a reply at the same indent level as a normal model
-  reply. Item 10 proposed nesting it one level deeper (under the WebFetch
-  tool-call row that produced it), but this requires detecting whether a
-  reply row is a WebFetch result vs. a regular reply, which isn't directly
-  available in `scoped_events`. A workaround would be to join on tool-call
-  timestamps or mark responses during ingestion.
+Fixed-width column alignment (rightPadUTF8 to 100 chars for tool-call content,
+so stats columns line up vertically) has been re-introduced, but now safely:
+tool-call arguments are pre-truncated to a safe cap (~55 chars, with ellipsis
+`…` suffix if longer) before being padded. This prevents the silent failure
+mode of the previous attempt: if content overflows, it's already been shortened,
+so the later `replaceOne()` substring match for span-wrapping always succeeds
+(in the old code, rightPadUTF8 would silently truncate at a byte boundary,
+breaking the regex match and leaving arguments unstyled). Total width budget
+is 100 chars for the padded content line, leaving room for the right-hand stats
+(duration/tokens/cost) to appear in a consistent column across all nested
+indentation levels.
 
 ## Editing the panel JSON
 

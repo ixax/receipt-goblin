@@ -186,7 +186,7 @@ services:
       # Captured payloads land here on the host, not just inside the
       # container - see services/webhook/src/server.py CAPTURE_DIR. Kept separate from
       # the src/ mount above since it's runtime output, not source.
-      - ./services/webhook/captures:/app/captures
+      - ./.capture:/app/captures
     command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     ports:
       - target: 8000
@@ -197,6 +197,7 @@ services:
       CLICKHOUSE_USER: *clickhouse-user
       CLICKHOUSE_PASSWORD: *clickhouse-password
       CLICKHOUSE_DATABASE: *clickhouse-database
+      CAPTURE_ENABLED: "true"
       REDIS_HOST: *redis-host
       REDIS_PORT: *redis-port
       # For /key/info lookups when verifying hooks/report_git_branch.py's
@@ -244,6 +245,11 @@ services:
       LITELLM_BASE_URL: *litellm-base-url
     mem_limit: 256m
     restart: always
+    healthcheck:
+      test: ["CMD", "python", "-c", "from src.queue_client import get_redis; get_redis().ping()"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     depends_on:
       clickhouse:
         condition: service_healthy

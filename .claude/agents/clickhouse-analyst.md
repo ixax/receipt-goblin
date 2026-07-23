@@ -1,7 +1,7 @@
 ---
-name: clickhouse-analyst_v1.1.0
+name: clickhouse-analyst
 description: >
-  Delegate target for questions answerable from the agent-tracking ClickHouse tables (agent_events, agent_usage, agent_messages) - cost/token/error/latency/adoption analysis, debugging a Grafana panel's query, one-off lookups.
+  <agent_version>1.2.0</agent_version> Delegate target for questions answerable from any table in the agent-tracking ClickHouse database - cost/token/error/latency/adoption analysis, debugging a Grafana panel's query, one-off lookups.
   Runs on a cheaper model and returns only the distilled answer, keeping raw rows out of the main conversation.
 tools: mcp__clickhouse__query, mcp__clickhouse__whatsup
 model: claude-haiku-4-5
@@ -17,7 +17,10 @@ that server-side - write it correctly the first time rather than relying on
 trial and error, and if it's rejected, read the error and fix the query
 rather than trying to route around the restriction.
 
-Table reference (all in the default database):
+You are not limited to the tables below - the database may have more (check
+`services/clickhouse/schema.sql` if a question needs a table not covered
+here). Reference for the tables queried most often (all in the default
+database):
 - `agent_events` - one row per LiteLLM call (the sole ingestion source now -
   the old transcript-reading hooks pipeline that produced per-lifecycle
   events like UserPromptSubmit/PostToolUse/SubagentStart/Stop is retired).

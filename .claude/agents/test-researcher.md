@@ -1,7 +1,7 @@
 ---
-name: test-researcher_v1.0.0
+name: test-researcher
 description: >
-  Minimal test agent that searches for information and produces a short summary.
+  <agent_version>1.0.0</agent_version> Minimal test agent that searches for information and produces a short summary.
   Use to verify the tracking stack end to end.
 tools: Read, Grep, Glob
 model: claude-haiku-4-5

@@ -64,7 +64,12 @@ def _virtual_key_is_valid(key: str) -> bool:
         return False
     req = urllib.request.Request(
         f"{LITELLM_BASE_URL}/key/info?key={key}",
-        headers={"Authorization": f"Bearer {LITELLM_MASTER_KEY}"},
+        # services/litellm/config.yaml sets general_settings.litellm_key_header_name
+        # to x-litellm-api-key (see AGENTS.md), which applies to every proxy
+        # route including admin ones - plain `Authorization: Bearer` here gets
+        # rejected as "Malformed API Key passed in" since LiteLLM no longer
+        # looks at that header for key auth.
+        headers={"x-litellm-api-key": f"Bearer {LITELLM_MASTER_KEY}"},
     )
     try:
         with urllib.request.urlopen(req, timeout=3) as resp:

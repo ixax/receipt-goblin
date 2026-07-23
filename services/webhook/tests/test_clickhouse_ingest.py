@@ -68,17 +68,27 @@ def test_last_user_text_unsuccess_skips_pure_tool_result_continuation():
 
 
 # ---------------------------------------------------------------------------
-# _active_command_name
+# _active_command_name_and_version
 # ---------------------------------------------------------------------------
 
-def test_active_command_name_success_recovers_slash_command():
+def test_active_command_name_and_version_success_recovers_slash_command():
     payload = load_capture("success_with_command", index=1)
-    assert ci._active_command_name(payload["messages"]) == "mcp"
+    # this capture predates the <command_version> marker convention, so the
+    # command's body carries no marker - version comes back blank, same as
+    # any command never edited since creation.
+    assert ci._active_command_name_and_version(payload["messages"]) == ("mcp", "")
 
 
-def test_active_command_name_unsuccess_freeform_prompt_returns_empty():
+def test_active_command_name_and_version_success_recovers_version_marker():
+    messages = [
+        {"role": "user", "content": "<command-name>whatsup</command-name>\n<command_version>1.2.3</command_version>\n# whatsup\n..."},
+    ]
+    assert ci._active_command_name_and_version(messages) == ("whatsup", "1.2.3")
+
+
+def test_active_command_name_and_version_unsuccess_freeform_prompt_returns_empty():
     payload = load_capture("success_with_command", index=0)
-    assert ci._active_command_name(payload["messages"]) == ""
+    assert ci._active_command_name_and_version(payload["messages"]) == ("", "")
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +139,25 @@ def test_split_name_version_unsuccess_no_version_suffix():
 
 
 # ---------------------------------------------------------------------------
+# _version_marker_for_name / _flatten_messages_text
+# ---------------------------------------------------------------------------
+
+def test_version_marker_for_name_success_finds_marker_in_listing_line():
+    text = (
+        "Available agent types for the Agent tool:\n"
+        "- clickhouse-analyst: <agent_version>1.1.0</agent_version> Delegate target for...\n"
+        "- general-purpose: General-purpose agent for researching...\n"
+    )
+    assert ci._version_marker_for_name(text, "clickhouse-analyst", "agent_version") == "1.1.0"
+
+
+def test_version_marker_for_name_unsuccess_name_has_no_marker_returns_empty():
+    text = "- general-purpose: General-purpose agent for researching...\n"
+    assert ci._version_marker_for_name(text, "general-purpose", "agent_version") == ""
+    assert ci._version_marker_for_name(text, "", "agent_version") == ""
+
+
+# ---------------------------------------------------------------------------
 # _user_id
 # ---------------------------------------------------------------------------
 
@@ -148,7 +177,28 @@ def test_user_id_unsuccess_falls_back_to_unknown():
 def test_agent_invocations_from_messages_success_finds_spawned_subagent():
     payload = load_capture("success_with_agent_and_skill")
     invocations = ci._agent_invocations_from_messages(payload["messages"])
-    assert invocations == [("aac9d05f148e9ae4a", "test-researcher_v1.0.0", "Summarize Makefile contents")]
+    # this capture predates the <agent_version> marker convention, so the
+    # listing carries no marker for this name - version comes back blank,
+    # and subagent_type is kept as-is (whatever the harness matched on,
+    # including a stale "_v<version>" suffix from before the convention
+    # changed - this function no longer splits it).
+    assert invocations == [("aac9d05f148e9ae4a", "test-researcher_v1.0.0", "", "Summarize Makefile contents")]
+
+
+def test_agent_invocations_from_messages_success_recovers_version_marker():
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Available agent types for the Agent tool:\n"
+                "- clickhouse-analyst: <agent_version>1.1.0</agent_version> Delegate target for...\n"
+            ),
+        },
+        {"role": "assistant", "content": [{"type": "tool_use", "name": "Agent", "id": "toolu_1", "input": {"subagent_type": "clickhouse-analyst", "description": "look up cost"}}]},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "agentId: deadbeef"}]},
+    ]
+    invocations = ci._agent_invocations_from_messages(messages)
+    assert invocations == [("deadbeef", "clickhouse-analyst", "1.1.0", "look up cost")]
 
 
 def test_agent_invocations_from_messages_unsuccess_no_agent_calls_returns_empty():
@@ -191,7 +241,27 @@ def test_first_tool_call_name_unsuccess_plain_text_reply_returns_empty():
 
 def test_skill_name_and_version_success_splits_skill_argument():
     payload = load_capture("success_with_agent_and_skill")
+    # this capture predates the <skill_version> marker convention, so the
+    # listing carries no marker for this name - version comes back blank.
     assert ci._skill_name_and_version(payload) == ("test-summarizer", "")
+
+
+def test_skill_name_and_version_success_recovers_version_marker():
+    payload = {
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "available skills for the Skill tool:\n"
+                    "- test-linter: <skill_version>2.0.0</skill_version> Minimal test skill...\n"
+                ),
+            },
+        ],
+        "response": {"choices": [{"message": {"tool_calls": [
+            {"function": {"name": "Skill", "arguments": json.dumps({"skill": "test-linter", "args": "check foo.py"})}}
+        ]}}]},
+    }
+    assert ci._skill_name_and_version(payload) == ("test-linter", "2.0.0")
 
 
 def test_skill_name_and_version_unsuccess_no_skill_call():
@@ -221,7 +291,7 @@ def test_agent_invocation_rows_success_builds_one_row_per_spawn():
     payload = load_capture("success_with_agent_and_skill")
     now = datetime(2026, 7, 12, tzinfo=timezone.utc)
     rows = ci._agent_invocation_rows("session-1", payload["messages"], now=now)
-    assert rows == [["aac9d05f148e9ae4a", "session-1", "test-researcher_v1.0.0", "Summarize Makefile contents", now]]
+    assert rows == [["aac9d05f148e9ae4a", "session-1", "test-researcher_v1.0.0", "", "Summarize Makefile contents", now]]
 
 
 def test_agent_invocation_rows_unsuccess_no_spawns_returns_empty_list():
@@ -235,7 +305,7 @@ def test_agent_invocation_rows_unsuccess_no_spawns_returns_empty_list():
 
 def test_event_row_success_reports_status_and_latency():
     payload = load_capture("success_plain")
-    row = ci._event_row(payload, "session-1", "trace-1", "", "", "", "", "", "")
+    row = ci._event_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "")
     columns = ci._EVENT_COLUMNS
     values = dict(zip(columns, row))
     assert values["status"] == "success"
@@ -246,7 +316,7 @@ def test_event_row_success_reports_status_and_latency():
 
 def test_event_row_unsuccess_failure_payload_has_no_tool_name_or_latency():
     payload = load_capture("failure")
-    row = ci._event_row(payload, "session-1", "trace-1", "", "", "", "", "", "")
+    row = ci._event_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "")
     values = dict(zip(ci._EVENT_COLUMNS, row))
     assert values["status"] == "failure"
     assert values["tool_name"] == ""
@@ -258,7 +328,7 @@ def test_event_row_unsuccess_failure_payload_has_no_tool_name_or_latency():
 
 def test_usage_row_success_extracts_token_counts():
     payload = load_capture("success_plain")
-    row = ci._usage_row(payload, "session-1", "trace-1", "", "", "", "", "", "")
+    row = ci._usage_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "")
     assert row is not None
     values = dict(zip(ci._USAGE_COLUMNS, row))
     assert values["input_tokens"] == 723
@@ -267,7 +337,7 @@ def test_usage_row_success_extracts_token_counts():
 
 def test_usage_row_unsuccess_no_billable_tokens_returns_none():
     payload = load_capture("failure")
-    assert ci._usage_row(payload, "session-1", "trace-1", "", "", "", "", "", "") is None
+    assert ci._usage_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "") is None
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +346,7 @@ def test_usage_row_unsuccess_no_billable_tokens_returns_none():
 
 def test_message_row_success_captures_prompt_and_response_text():
     payload = load_capture("success_plain")
-    row = ci._message_row(payload, "session-1", "trace-1", "", "", "", "", "", "")
+    row = ci._message_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "")
     assert row is not None
     values = dict(zip(ci._MESSAGE_COLUMNS, row))
     assert "test-summarizer skill" in values["prompt_text"]
@@ -285,7 +355,7 @@ def test_message_row_success_captures_prompt_and_response_text():
 
 def test_message_row_unsuccess_no_prompt_or_response_text_returns_none():
     payload = {"messages": [], "response": {"choices": []}}
-    assert ci._message_row(payload, "session-1", "trace-1", "", "", "", "", "", "") is None
+    assert ci._message_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "") is None
 
 
 # ---------------------------------------------------------------------------

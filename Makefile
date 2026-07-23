@@ -21,7 +21,7 @@ INGEST_URI := $(if $(strip $(AGENT_CLI_TRACKING_API_URL)),$(AGENT_CLI_TRACKING_A
 # see the langfuse-down comment below) - list them explicitly instead.
 LANGFUSE_SERVICES := langfuse-web langfuse-worker langfuse-db langfuse-clickhouse langfuse-minio langfuse-redis
 
-start up: langfuse-up
+start up:
 	docker compose up -d --build
 
 status:

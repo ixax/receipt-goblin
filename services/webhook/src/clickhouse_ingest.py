@@ -23,6 +23,7 @@ from .config import (
 
 _AGENT_ID_RE = re.compile(r"agentId:\s*([0-9a-f]+)")
 _COMMAND_NAME_RE = re.compile(r"<command-name>/?(.*?)</command-name>")
+_COMMAND_VERSION_RE = re.compile(r"<command_version>(.*?)</command_version>")
 
 logger = logging.getLogger("webhook.clickhouse_ingest")
 
@@ -94,17 +95,23 @@ def _last_user_text(messages: Any) -> str:
     return ""
 
 
-def _active_command_name(messages: Any) -> str:
+def _active_command_name_and_version(messages: Any) -> tuple[str, str]:
     """Walks backward from the most recent message, skipping over messages
     that are pure tool_result continuations (automatic, not new human
     input), to find the human-originated turn that started the current
     chain of calls. Claude Code injects a "<command-name>/foo</command-name>"
     tag into that turn's text when it was a slash-command invocation - if
     found, this whole chain (tool calls, follow-up turns) is attributed to
-    command "foo". Returns "" for a freeform prompt (not a command), or once
-    the user has moved on to unrelated freeform text in a later turn."""
+    command "foo". A command's own body may carry a
+    "<command_version>1.2.3</command_version>" marker (a command file never
+    needs a version-suffixed filename - see AGENTS.md); since that body is
+    expanded into this same message, look for it right here rather than via
+    a separate lookup. Returns ("", "") for a freeform prompt (not a
+    command), or once the user has moved on to unrelated freeform text in a
+    later turn. A never-edited command has no marker - version comes back
+    "" (same graceful blank as an unversioned agent/skill)."""
     if not isinstance(messages, list):
-        return ""
+        return "", ""
     for message in reversed(messages):
         if not isinstance(message, dict) or message.get("role") != "user":
             continue
@@ -114,8 +121,11 @@ def _active_command_name(messages: Any) -> str:
                 continue  # automatic continuation - keep walking back
         text = _flatten_content(content) if not isinstance(content, str) else content
         match = _COMMAND_NAME_RE.search(text)
-        return match.group(1) if match else ""
-    return ""
+        if not match:
+            return "", ""
+        version_match = _COMMAND_VERSION_RE.search(text)
+        return match.group(1), (version_match.group(1) if version_match else "")
+    return "", ""
 
 
 def _failed_tool_call(messages: Any) -> tuple[str, str, str]:
@@ -169,14 +179,52 @@ def _session_and_trace_id(payload: dict) -> tuple[str, str]:
 
 
 def _split_name_version(value: str) -> tuple[str, str]:
-    """Splits on the last "_v" - agents/skills are named "<name>_v<version>"
-    (e.g. "test-researcher_v1.0.0"), version deliberately freeform (not
-    required to be semver) since it's whatever the .md frontmatter author
-    wrote. No "_v" in the name means no version was declared."""
+    """Splits on the last "_v" - the *old* convention, where an agent/skill's
+    invocation identifier itself carried "<name>_v<version>" (e.g.
+    "test-researcher_v1.0.0"). Superseded for new writes by
+    _version_marker_for_name (version now lives in a marker inside
+    description:/body instead, so the identifier itself never needs to
+    change) - kept only so historical agent_invocations rows written under
+    the old convention still read back correctly."""
     idx = value.rfind("_v")
     if idx == -1 or idx + 2 >= len(value):
         return value, ""
     return value[:idx], value[idx + 2:]
+
+
+def _flatten_messages_text(messages: Any) -> str:
+    """Every message's text, joined - used to search for the "Available
+    agent types"/"available skills" system-reminder listings Claude Code
+    injects into the conversation, which is where an <agent_version>/
+    <skill_version> marker (embedded in that entry's description:) actually
+    surfaces. Not restricted to a single message since the listing can sit
+    several turns back from the tool call it informed."""
+    if not isinstance(messages, list):
+        return ""
+    parts = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        parts.append(_flatten_content(content) if not isinstance(content, str) else content)
+    return "\n".join(parts)
+
+
+def _version_marker_for_name(text: str, name: str, tag: str) -> str:
+    """Finds "- <name>: <tag>version</tag>..." - the shape of one entry in
+    the "Available agent types"/"available skills" listing once its
+    description: is authored with the marker as the very first thing in the
+    text (see AGENTS.md), which keeps the marker on the same line as the
+    entry's own name so it can be looked up by name rather than position.
+    Takes the last match so a listing that gets refreshed mid-session
+    ("New agent types are now available...") always wins over a stale one.
+    Returns "" when the name has no marker (self-named/ad-hoc agent, or an
+    entry never edited since creation)."""
+    if not name:
+        return ""
+    pattern = re.compile(rf"^- {re.escape(name)}: <{tag}>([^<]*)</{tag}>", re.MULTILINE)
+    matches = pattern.findall(text)
+    return matches[-1] if matches else ""
 
 
 def _user_id(payload: dict) -> str:
@@ -188,14 +236,20 @@ def _user_id(payload: dict) -> str:
     )
 
 
-def _agent_invocations_from_messages(messages: Any) -> list[tuple[str, str, str]]:
+def _agent_invocations_from_messages(messages: Any) -> list[tuple[str, str, str, str]]:
     """Scan messages for Agent tool_use blocks paired with the tool_result
     that immediately follows, and pull the spawned subagent's agent_id out
-    of that result's text (e.g. "agentId: a04bd3c594bf74fb9"). Returns
-    (agent_id, subagent_type, description) tuples - usually empty, since
-    most calls never spawn a subagent."""
+    of that result's text (e.g. "agentId: a04bd3c594bf74fb9"). subagent_type
+    is the bare name as-is (identifiers never carry a "_v<version>" suffix
+    under the current convention - see AGENTS.md); agent_version instead
+    comes from a "<agent_version>...</agent_version>" marker inside that
+    agent's entry in the "Available agent types" listing, which Claude Code
+    re-injects into messages on every call. Returns (agent_id, subagent_type,
+    agent_version, description) tuples - usually empty, since most calls
+    never spawn a subagent."""
     if not isinstance(messages, list):
         return []
+    listing_text = _flatten_messages_text(messages)
     results = []
     for i, message in enumerate(messages):
         if not isinstance(message, dict):
@@ -210,7 +264,9 @@ def _agent_invocations_from_messages(messages: Any) -> list[tuple[str, str, str]
             input_ = block.get("input") or {}
             agent_id = _agent_id_from_tool_result(messages, i, tool_use_id)
             if agent_id:
-                results.append((agent_id, input_.get("subagent_type", ""), input_.get("description", "")))
+                subagent_type = input_.get("subagent_type", "")
+                agent_version = _version_marker_for_name(listing_text, subagent_type, "agent_version")
+                results.append((agent_id, subagent_type, agent_version, input_.get("description", "")))
     return results
 
 
@@ -260,9 +316,19 @@ def _response_tool_calls(payload: dict) -> list[tuple[str, dict]]:
 
 
 def _skill_name_and_version(payload: dict) -> tuple[str, str]:
+    """skill_name is the bare skill name as-is (a skill's directory name
+    never carries a "_v<version>" suffix - see AGENTS.md). skill_version
+    comes from a "<skill_version>...</skill_version>" marker inside that
+    skill's own entry in the "available skills" listing, which sits in this
+    same payload's messages alongside the Skill tool_use - no cross-call
+    lookup needed."""
     for name, arguments in _response_tool_calls(payload):
         if name == "Skill" and arguments.get("skill"):
-            return _split_name_version(arguments["skill"])
+            skill_name = arguments["skill"]
+            skill_version = _version_marker_for_name(
+                _flatten_messages_text(payload.get("messages")), skill_name, "skill_version"
+            )
+            return skill_name, skill_version
     return "", ""
 
 
@@ -282,36 +348,37 @@ def _agent_invocation_id(payload: dict) -> str:
 def _agent_name_and_version_for_invocation(client, agent_invocation_id: str) -> tuple[str, str]:
     """Best-effort lookup - blank if the parent's Agent tool_use/tool_result
     hasn't been ingested yet (e.g. the subagent's own first call raced
-    ahead of it). subagent_type is stored raw ("<name>_v<version>") and
-    split here rather than at insert time, so agent_invocations keeps the
-    exact string the harness matched on."""
+    ahead of it). agent_version is its own column now (extracted once, at
+    the parent's insert time, from the "Available agent types" listing -
+    see _agent_invocations_from_messages) rather than split out of
+    subagent_type here."""
     if not agent_invocation_id:
         return "", ""
     try:
         result = client.query(
-            "SELECT subagent_type FROM agent_invocations WHERE agent_id = {agent_id:String} "
+            "SELECT subagent_type, agent_version FROM agent_invocations WHERE agent_id = {agent_id:String} "
             "ORDER BY spawned_at DESC LIMIT 1",
             parameters={"agent_id": agent_invocation_id},
         )
         rows = result.result_rows
-        return _split_name_version(rows[0][0]) if rows else ("", "")
+        return (rows[0][0], rows[0][1]) if rows else ("", "")
     except Exception:
         logger.exception("failed to resolve agent_invocation_id=%s", agent_invocation_id)
         return "", ""
 
 
-_INVOCATION_COLUMNS = ["agent_id", "session_id", "subagent_type", "description", "spawned_at"]
+_INVOCATION_COLUMNS = ["agent_id", "session_id", "subagent_type", "agent_version", "description", "spawned_at"]
 _EVENT_COLUMNS = [
     "timestamp", "user_id", "session_id", "trace_id",
     "turn_id", "event_type", "tool_name", "agent_name",
     "agent_version", "skill_name", "skill_version", "command_name",
-    "agent_invocation_id", "status", "latency_ms",
+    "command_version", "agent_invocation_id", "status", "latency_ms",
     "failed_tool_name", "failed_tool_args", "failed_tool_error", "raw_payload",
 ]
 _USAGE_COLUMNS = [
     "timestamp", "user_id", "session_id", "trace_id", "turn_id", "model",
     "agent_name", "agent_version", "skill_name", "skill_version",
-    "command_name", "agent_invocation_id", "mcp_tool_name",
+    "command_name", "command_version", "agent_invocation_id", "mcp_tool_name",
     "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens",
     "stop_reason",
     "cache_creation_1h_tokens", "cache_creation_5m_tokens",
@@ -320,7 +387,7 @@ _USAGE_COLUMNS = [
 _MESSAGE_COLUMNS = [
     "timestamp", "user_id", "session_id", "trace_id", "turn_id",
     "agent_name", "agent_version", "skill_name", "skill_version",
-    "command_name", "agent_invocation_id", "prompt_text", "response_text",
+    "command_name", "command_version", "agent_invocation_id", "prompt_text", "response_text",
 ]
 _GIT_BRANCH_COLUMNS = ["session_id", "git_branch", "git_repo", "captured_at"]
 _PLAN_PROPOSAL_COLUMNS = ["session_id", "plan_text", "captured_at"]
@@ -340,7 +407,10 @@ _MESSAGE_AGENT_VERSION_IDX = _MESSAGE_COLUMNS.index("agent_version")
 def _agent_invocation_rows(session_id: str, messages: Any, now: Optional[datetime] = None) -> list[list]:
     now = now or datetime.now(timezone.utc)
     invocations = _agent_invocations_from_messages(messages)
-    return [[agent_id, session_id, subagent_type, description, now] for agent_id, subagent_type, description in invocations]
+    return [
+        [agent_id, session_id, subagent_type, agent_version, description, now]
+        for agent_id, subagent_type, agent_version, description in invocations
+    ]
 
 
 def _insert_agent_invocations(client, rows: list[list]) -> None:
@@ -372,7 +442,7 @@ def _insert_plan_proposal(client, row: list) -> None:
 def _event_row(
     payload: dict, session_id: str, trace_id: str,
     agent_name: str, agent_version: str, skill_name: str, skill_version: str,
-    command_name: str, agent_invocation_id: str,
+    command_name: str, command_version: str, agent_invocation_id: str,
 ) -> list:
     start_time = payload.get("startTime")
     end_time = payload.get("endTime")
@@ -409,6 +479,7 @@ def _event_row(
         skill_name,
         skill_version,
         command_name,
+        command_version,
         agent_invocation_id,
         payload.get("status", ""),
         latency_ms,
@@ -422,7 +493,7 @@ def _event_row(
 def _usage_row(
     payload: dict, session_id: str, trace_id: str,
     agent_name: str, agent_version: str, skill_name: str, skill_version: str,
-    command_name: str, agent_invocation_id: str,
+    command_name: str, command_version: str, agent_invocation_id: str,
 ) -> Optional[list]:
     response = payload.get("response") or {}
     usage = response.get("usage") or (payload.get("metadata") or {}).get("usage_object") or {}
@@ -460,6 +531,7 @@ def _usage_row(
         skill_name,
         skill_version,
         command_name,
+        command_version,
         agent_invocation_id,
         mcp_tool_name,
         prompt_tokens,
@@ -480,7 +552,7 @@ def _usage_row(
 def _message_row(
     payload: dict, session_id: str, trace_id: str,
     agent_name: str, agent_version: str, skill_name: str, skill_version: str,
-    command_name: str, agent_invocation_id: str,
+    command_name: str, command_version: str, agent_invocation_id: str,
 ) -> Optional[list]:
     response = payload.get("response") or {}
     choices = response.get("choices") or []
@@ -500,6 +572,7 @@ def _message_row(
         skill_name,
         skill_version,
         command_name,
+        command_version,
         agent_invocation_id,
         prompt_text,
         response_text,
@@ -521,19 +594,19 @@ def ingest_standard_logging_payload(payload: dict) -> None:
         agent_invocation_id = _agent_invocation_id(payload)
         agent_name, agent_version = _agent_name_and_version_for_invocation(client, agent_invocation_id)
         skill_name, skill_version = _skill_name_and_version(payload)
-        command_name = _active_command_name(messages)
+        command_name, command_version = _active_command_name_and_version(messages)
 
         _insert_event(client, _event_row(
             payload, session_id, trace_id,
             agent_name, agent_version, skill_name, skill_version,
-            command_name, agent_invocation_id,
+            command_name, command_version, agent_invocation_id,
         ))
 
         if payload.get("status") == "success":
             usage_row = _usage_row(
                 payload, session_id, trace_id,
                 agent_name, agent_version, skill_name, skill_version,
-                command_name, agent_invocation_id,
+                command_name, command_version, agent_invocation_id,
             )
             if usage_row is not None:
                 _insert_usage(client, usage_row)
@@ -541,7 +614,7 @@ def ingest_standard_logging_payload(payload: dict) -> None:
             message_row = _message_row(
                 payload, session_id, trace_id,
                 agent_name, agent_version, skill_name, skill_version,
-                command_name, agent_invocation_id,
+                command_name, command_version, agent_invocation_id,
             )
             if message_row is not None:
                 _insert_message(client, message_row)
@@ -627,12 +700,12 @@ def build_event(payload: dict) -> dict:
     invocation_rows = _agent_invocation_rows(session_id, messages)
     agent_invocation_id = _agent_invocation_id(payload)
     skill_name, skill_version = _skill_name_and_version(payload)
-    command_name = _active_command_name(messages)
+    command_name, command_version = _active_command_name_and_version(messages)
 
     event_row = _event_row(
         payload, session_id, trace_id,
         "", "", skill_name, skill_version,
-        command_name, agent_invocation_id,
+        command_name, command_version, agent_invocation_id,
     )
 
     usage_row = None
@@ -641,12 +714,12 @@ def build_event(payload: dict) -> dict:
         usage_row = _usage_row(
             payload, session_id, trace_id,
             "", "", skill_name, skill_version,
-            command_name, agent_invocation_id,
+            command_name, command_version, agent_invocation_id,
         )
         message_row = _message_row(
             payload, session_id, trace_id,
             "", "", skill_name, skill_version,
-            command_name, agent_invocation_id,
+            command_name, command_version, agent_invocation_id,
         )
 
     return {

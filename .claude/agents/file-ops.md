@@ -1,7 +1,7 @@
 ---
-name: file-ops_v1.1.0
+name: file-ops
 description: >
-  Delegate target for mechanical, fully-specified filesystem operations - reading, searching, and writing/editing files where the content or exact change is already known.
+  <agent_version>1.1.0</agent_version> Delegate target for mechanical, fully-specified filesystem operations - reading, searching, and writing/editing files where the content or exact change is already known.
   Not for Bash, git, or anything requiring judgment about what to change or whether an action is safe.
   Not worth delegating for a single trivial one-off read/edit - the win is on repeated/bulk mechanical work.
 tools: Read, Write, Edit, Glob, Grep

@@ -16,11 +16,22 @@ CREATE TABLE IF NOT EXISTS agent_invocations
     agent_id      String,
     session_id    String,
     subagent_type LowCardinality(String),
+    -- From a "<agent_version>...</agent_version>" marker as the first thing
+    -- in the agent's own description: frontmatter, which Claude Code
+    -- re-injects into every call's messages via the "Available agent types"
+    -- listing - see clickhouse_ingest.py:_agent_invocations_from_messages.
+    -- Blank for a self-named/ad-hoc agent (no backing .md file, no marker)
+    -- or an agent never edited since creation.
+    agent_version LowCardinality(String) DEFAULT '',
     description   String,
     spawned_at    DateTime64(3) DEFAULT now64(3)
 )
 ENGINE = ReplacingMergeTree(spawned_at)
 ORDER BY (agent_id);
+
+-- Table predates agent_version: ALTER for stacks whose ClickHouse volume
+-- already existed before this column was added.
+ALTER TABLE agent_invocations ADD COLUMN IF NOT EXISTS agent_version LowCardinality(String) DEFAULT '';
 
 -- session_id -> git branch/repo, captured once at SessionStart by
 -- hooks/report_git_branch.py (Claude Code and Codex CLI both run it - see
@@ -121,11 +132,16 @@ CREATE TABLE IF NOT EXISTS agent_events
     -- Slash command that kicked off the current chain of calls (e.g.
     -- "whatsup"), recovered from the "<command-name>" tag Claude Code
     -- injects into the triggering user message - see
-    -- webhook/src/clickhouse_ingest.py:_active_command_name. Deliberately
-    -- has no version column: commands are meant to stay a stable,
-    -- version-independent entry point even when the skill/logic behind
-    -- them is renamed on every version bump.
+    -- webhook/src/clickhouse_ingest.py:_active_command_name_and_version.
+    -- The command's filename itself never changes (no "_v<version>"
+    -- suffix, no rename) - command_version below instead comes from a
+    -- "<command_version>...</command_version>" marker placed in the
+    -- command file's own body, which gets expanded into that same
+    -- triggering message.
     command_name      LowCardinality(String) DEFAULT '',
+    -- Blank for a command never edited since creation - same graceful
+    -- fallback as agent_version/skill_version.
+    command_version   LowCardinality(String) DEFAULT '',
     -- x-claude-code-agent-id when this row is a subagent's own call, blank
     -- for the orchestrator's own turns. See agent_invocations above.
     agent_invocation_id String DEFAULT '',
@@ -154,6 +170,10 @@ ENGINE = MergeTree
 PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
 ORDER BY (timestamp, session_id);
 
+-- Table predates command_version: ALTER for stacks whose ClickHouse volume
+-- already existed before this column was added.
+ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS command_version LowCardinality(String) DEFAULT '';
+
 -- One row per model call (usage report). cost/input_cost/output_cost come
 -- straight from LiteLLM's own response_cost/cost_breakdown - no local price
 -- table needed or wanted: a manually-maintained model_pricing table used to
@@ -177,6 +197,7 @@ CREATE TABLE IF NOT EXISTS agent_usage
     skill_name           LowCardinality(String),
     skill_version        LowCardinality(String),
     command_name         LowCardinality(String) DEFAULT '',
+    command_version      LowCardinality(String) DEFAULT '',
     agent_invocation_id  String DEFAULT '',
     mcp_tool_name        LowCardinality(String),
     input_tokens         UInt32,
@@ -212,6 +233,10 @@ ENGINE = MergeTree
 PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
 ORDER BY (timestamp, session_id);
 
+-- Table predates command_version: ALTER for stacks whose ClickHouse volume
+-- already existed before this column was added.
+ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS command_version LowCardinality(String) DEFAULT '';
+
 -- One row per turn (main session turn or subagent turn), holding the
 -- actual prompt sent to the model and the text it replied with. Kept
 -- separate from agent_usage/agent_events - this is arbitrary-length free
@@ -232,6 +257,7 @@ CREATE TABLE IF NOT EXISTS agent_messages
     skill_name    LowCardinality(String),
     skill_version LowCardinality(String),
     command_name  LowCardinality(String) DEFAULT '',
+    command_version LowCardinality(String) DEFAULT '',
     agent_invocation_id String DEFAULT '',
     prompt_text   String CODEC(ZSTD(3)),
     response_text String CODEC(ZSTD(3))
@@ -245,3 +271,7 @@ ENGINE = MergeTree
 -- particular queries are pruned.
 PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
 ORDER BY (session_id, turn_id);
+
+-- Table predates command_version: ALTER for stacks whose ClickHouse volume
+-- already existed before this column was added.
+ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS command_version LowCardinality(String) DEFAULT '';

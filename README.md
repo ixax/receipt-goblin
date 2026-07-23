@@ -123,6 +123,7 @@ To also delete the ClickHouse data volume (next `up` re-applies `schema.sql` fro
 | No `agent_name`/`skill_name` on events                                        | Recovered from the LiteLLM payload itself, not a CLI-side hook - see `AGENTS.md` (`_agent_invocations_from_messages`/`_skill_name_from_last_turn` in `clickhouse_ingest.py`). A subagent's own rows only resolve `agent_name` once the orchestrator's `Agent` tool_use/tool_result pair has itself been ingested and upserted into `agent_invocations` - a subagent call that reaches `webhook` before that happens will have `agent_invocation_id` set but blank `agent_name`.                                                                                                                                                                                       |
 | Grafana panel shows a query error                                             | The `grafana-clickhouse-datasource` plugin's query JSON shape has changed across versions; open the panel in edit mode - the SQL in `rawSql` is otherwise plain, portable ClickHouse SQL.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | Claude Code via the LiteLLM proxy fails with `x-api-key header is required`   | Missing `ANTHROPIC_CUSTOM_HEADERS`, or `LITELLM_MASTER_KEY` isn't set - see "Routing Claude Code through it" under "LiteLLM" below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `git_branch`/`git_repo` never show up (`session_git_branch` empty), or any direct `Authorization: Bearer <key>` call to LiteLLM's admin API (`/key/info`, `/models`, ...) gets `401 Malformed API Key passed in. Ensure Key has \`Bearer \` prefix.` | `services/litellm/config.yaml`'s `general_settings.litellm_key_header_name: x-litellm-api-key` (see "Routing Claude Code through it" below) repoints key auth at that custom header for **every** proxy route, not just the LLM ones it was added for - plain `Authorization` no longer works anywhere, including admin endpoints. `services/webhook/src/server.py`'s `_virtual_key_is_valid()` (used by `hooks/report_git_branch.py`'s `/api/v1/session-git-branch` and `hooks/report_plan_proposal.py`'s `/api/v1/plan-proposal`) sends `x-litellm-api-key: Bearer <key>` for this reason - if you're calling LiteLLM's admin API by hand, do the same.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ## Reference
 
@@ -229,25 +230,48 @@ Same dev/prod split as `webhook` below: `docker-compose.yml` still `build`s `ser
 
 ### Frontmatter format
 
-Subagents and Skills are identified differently by Claude Code (frontmatter `name:` vs. directory name - confirmed against actual Claude Code behavior, not assumed), so their version convention differs too:
+Subagents and Skills are identified differently by Claude Code (frontmatter `name:` vs. directory name - confirmed against actual Claude Code behavior, not assumed).
+Both used to bake the version into that identifier itself (`<name>_v<version>`) - abandoned because a Skill's directory name *is* its invocation identifier, so bumping the version meant renaming the directory, which could break an in-flight session still referencing the old name.
+The current convention instead keeps every identifier bare and permanent, and carries the version in a marker placed wherever Claude Code actually re-injects that file's content into the conversation - see `AGENTS.md` for why each location was chosen.
 
-**Subagents** (`.claude/agents/*.md`) - frontmatter `name:` is the actual invocation identifier (the filename doesn't have to match), so it doubles as the version tag: `<name>_v<version>`, no separate `version:` field.
-
-```
----
-name: test-researcher_v1.0.0
-description: ...
----
-```
-
-**Skills** (`.claude/skills/<dirname>/SKILL.md`) - the *directory name* is the invocation identifier (`/<dirname>`); frontmatter `name:` is purely a cosmetic display label and does not affect invocation. In practice `name:` is kept versioned and identical to the directory name (`<name>_v<version>`), same convention as Subagents, and there's no separate `version:` field:
+**Subagents** (`.claude/agents/*.md`) - frontmatter `name:` is the actual invocation identifier (the filename doesn't have to match) and stays bare forever.
+The version goes in a `<agent_version>X.Y.Z</agent_version>` marker as the very first thing in `description:` - that text is injected verbatim into every call's `messages` via the "Available agent types" system-reminder listing, confirmed against a real captured payload (the agent's own body/system-prompt is *not* logged).
 
 ```
 ---
-name: test-linter_v2.0.0
-description: ...
+name: test-researcher
+description: >
+  <agent_version>1.0.0</agent_version> Minimal test agent that searches for information and produces a short summary.
 ---
 ```
+
+**Skills** (`.claude/skills/<dirname>/SKILL.md`) - the *directory name* is the invocation identifier (`/<dirname>`) and stays bare forever; frontmatter `name:` is purely a cosmetic display label and does not affect invocation.
+Same marker convention as Subagents, `<skill_version>X.Y.Z</skill_version>` as the first thing in `description:`, surfaced the same way via the "available skills" listing:
+
+```
+---
+name: test-linter
+description: >
+  <skill_version>2.0.0</skill_version> Minimal test skill that checks a file for obvious style issues.
+---
+```
+
+**Commands** (`.claude/commands/*.md`) - the filename is the invocation identifier (`/foo` for `foo.md`) and stays bare forever.
+There's no persistent "available commands" listing the way agents/skills have, so the marker instead lives in the command file's own body (after the frontmatter) as `<command_version>X.Y.Z</command_version>` - that body text is what gets expanded into the triggering message alongside the `<command-name>` tag Claude Code already injects:
+
+```
+---
+description: Report token/cost spend and top spenders from the last 24h, from ClickHouse
+---
+
+<command_version>1.0.0</command_version>
+
+# whatsup
+...
+```
+
+A newly-created Subagent/Skill/Command starts with no version marker at all - only added once it has shipped and is being edited again.
+A self-named/ad-hoc agent (`general-purpose`, `Explore`, `Plan`, ...) has no backing file and no marker either; version comes back blank in both cases.
 
 `agent_registry`/`skill_registry` were dropped (`DROP TABLE`, not just left empty) - they were only ever populated by the retired transcript-reading hooks pipeline and had been sitting empty since.
 
@@ -387,15 +411,3 @@ Both were hit and fixed once already in this stack's `docker-compose.yml` - wort
 
 Editing `services/litellm/config.yaml`/`custom_callbacks.py` needs a `litellm` restart to take effect - **but don't do this without asking first**, even for a config-only change: `litellm` is the live proxy every CLI session on the machine currently routes through, and restarting it drops in-flight requests for anyone else using it right now (see `AGENTS.md` "Rules to not violate").
 And it has to be `docker compose up -d litellm` (recreate), not `docker compose restart litellm` - `restart` reuses the container's existing environment snapshot and does **not** pick up new/changed `environment:` entries from `docker-compose.yml` (this is how `LANGFUSE_PUBLIC_KEY`/`SECRET_KEY` ended up missing the first time Langfuse was wired in here - a `restart` after adding them to the compose file left the running container without them, so `langfuse` callback had nothing to authenticate with and produced zero traces despite looking "restarted"). `docker compose config litellm | grep -i langfuse` (or `docker exec receipt-goblin-litellm env | grep -i langfuse`) is a quick way to confirm the running container actually has them.
-
-## Known issues / follow-ups
-
-Things found during other work that are real but out of scope for whatever was being done at the time - fix or investigate later.
-
-### `session_git_branch` is empty - LiteLLM master-key auth is rejecting its own master key
-
-`hooks/report_git_branch.py` POSTs to `webhook`'s `/api/v1/session-git-branch`, which checks the caller's `LITELLM_VIRTUAL_KEY` against LiteLLM's own `/key/info` (using `LITELLM_MASTER_KEY` for that check) before accepting the report.
-Every such POST currently gets `401 Unauthorized` from `webhook` (confirmed in its logs across many historical sessions, not just recent ones), so `session_git_branch` has zero rows in ClickHouse - every session shows up with no git branch/repo anywhere this data is used (e.g. the Grafana dashboard's `git_branch`/`git_repo` filters, the Trace panel's `Git:` line).
-Setting a fresh personal `LITELLM_VIRTUAL_KEY` did not fix it, because the failure is one level deeper: `webhook`'s own call to LiteLLM's `GET /key/info` (authenticated with `LITELLM_MASTER_KEY`, currently `sk-anything-you-like` in `.env` - a real, intentional local-dev value, not a placeholder) itself gets `401 Malformed API Key passed in. Ensure Key has \`Bearer \` prefix.` from LiteLLM - reproduced by calling `/key/info` and `/models` directly from the host with `curl`, so it isn't a container-networking issue, and the `Authorization: Bearer <key>` header is being sent correctly.
-`docker-compose.yml` pins `litellm` to `ghcr.io/berriai/litellm:main-latest` - a floating dev tag, not a fixed version - which is the most likely place a subtle auth-handling regression crept in between whenever this last worked and now.
-Next steps if picked up: check LiteLLM proxy startup logs for auth-related warnings, try pinning `litellm` to a specific released tag instead of `main-latest` and see if the same master key then authenticates, and only after that retest whether the new `LITELLM_VIRTUAL_KEY` in `.zshrc` actually resolves the original `session_git_branch` gap.

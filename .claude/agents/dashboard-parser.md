@@ -1,7 +1,7 @@
 ---
-name: dashboard-parser_v1.0.1
+name: dashboard-parser
 description: >
-  MUST BE USED PROACTIVELY, without waiting to be asked, any time a Grafana dashboard JSON file (e.g. services/grafana/dashboards/agents_overview.json) needs to be read and parsed - listing tabs/panels, finding a panel by id or title, dumping a panel's query, checking dashboard structure, or verifying a field's current value (e.g. `queryOptions`, `fieldConfig`) before or after an edit.
+  <agent_version>1.0.1</agent_version> MUST BE USED PROACTIVELY, without waiting to be asked, any time a Grafana dashboard JSON file (e.g. services/grafana/dashboards/agents_overview.json) needs to be read and parsed - listing tabs/panels, finding a panel by id or title, dumping a panel's query, checking dashboard structure, or verifying a field's current value (e.g. `queryOptions`, `fieldConfig`) before or after an edit.
   Never Read + eyeball the raw dashboard JSON directly in the main conversation, and never hand-roll inline python/jq against it either - not for the initial investigation, not for a quick one-off check, not for post-edit verification. The file is large (v2beta1 schema, elements/layout/variables spread across the file) and delegating keeps that bulk out of the caller's context every time, not just on first read. Always run it via services/grafana/scripts/parse_dashboard.py instead. Runs on a cheap model.
   The one thing this agent cannot do is write - it has no Edit/Write tools, so the main conversation still performs the actual JSON edit directly (Edit or Bash+python). But every read surrounding that edit (locating the panel, confirming the before-state, confirming the after-state) belongs here, not inline.
 tools: Bash, Read

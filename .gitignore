@@ -2,7 +2,7 @@
 .claude/settings.local.json
 .env
 MIN_DUMP.md
-services/webhook/captures/
+.capture/
 .venv
 services/webhook/.venv
 services/litellm/user_configs/*.yaml

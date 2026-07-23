@@ -1,7 +1,7 @@
 ---
-name: script-ops_v1.0.0
+name: script-ops
 description: >
-  Delegate target for mechanical, fully-specified data/file transformations that need a script (Python/jq/etc.) rather than a plain Read/Edit - inspecting or rewriting structured files (JSON/YAML), running one-off python snippets to check or transform them.
+  <agent_version>1.0.0</agent_version> Delegate target for mechanical, fully-specified data/file transformations that need a script (Python/jq/etc.) rather than a plain Read/Edit - inspecting or rewriting structured files (JSON/YAML), running one-off python snippets to check or transform them.
   Keeps verbose script output (printed JSON, dumped rows, diffs) out of the main conversation's context.
   Not for Bash/git operations requiring judgment, docker, or anything destructive.
 tools: Bash, Read, Write, Edit, Glob, Grep

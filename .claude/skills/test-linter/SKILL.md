@@ -1,7 +1,7 @@
 ---
-name: test-linter_v2.0.0
+name: test-linter
 description: >
-  Minimal test skill that checks a file for obvious style issues.
+  <skill_version>2.0.0</skill_version> Minimal test skill that checks a file for obvious style issues.
   Use to verify the tracking stack end to end.
 ---
 
