@@ -14,15 +14,23 @@ model_list:
   - model_name: claude-fable-5
     litellm_params:
       model: anthropic/claude-fable-5
-#  - model_name: gpt-5.6-sol
-#    litellm_params:
-#      model: chatgpt/gpt-5.6-sol
-#  - model_name: gpt-5.6-terra
-#    litellm_params:
-#      model: chatgpt/gpt-5.6-terra
-#  - model_name: gpt-5.6-luna
-#    litellm_params:
-#      model: chatgpt/gpt-5.6-luna
+  # Codex/ChatGPT subscription passthrough - forwards the caller's own
+  # `codex login` OAuth token instead of using a single shared litellm-owned
+  # ChatGPT login, via the is_anthropic_oauth_key monkeypatch +
+  # ChatGPTAuthForwardHandler pre-call hook in custom_callbacks.py (see
+  # README.md "Routing Codex CLI through it" and the comment block at the
+  # top of custom_callbacks.py's "Codex/ChatGPT subscription passthrough"
+  # section for the full mechanism and why a plain forward_client_headers
+  # setting alone can't do this).
+  - model_name: gpt-5.6-sol
+    litellm_params:
+      model: chatgpt/gpt-5.6-sol
+  - model_name: gpt-5.6-terra
+    litellm_params:
+      model: chatgpt/gpt-5.6-terra
+  - model_name: gpt-5.6-luna
+    litellm_params:
+      model: chatgpt/gpt-5.6-luna
 
 general_settings:
   store_model_in_db: true
@@ -53,9 +61,9 @@ model_group_settings:
     - claude-haiku-4-5-20251001
     - claude-opus-4-8
     - claude-fable-5
-#    - gpt-5.6-sol
-#    - gpt-5.6-terra
-#    - gpt-5.6-luna
+    - gpt-5.6-sol
+    - gpt-5.6-terra
+    - gpt-5.6-luna
 
 litellm_settings:
   # NOTE: a bare `success_callback: ["webhook"]` fires LiteLLM's built-in
@@ -68,6 +76,10 @@ litellm_settings:
     # Copies x-claude-code-session-id into metadata.session_id pre-call so
     # Langfuse groups traces by CLI session - see custom_callbacks.py.
     - custom_callbacks.session_id_handler
+    # Forwards a Codex caller's own ChatGPT subscription token to the
+    # gpt-5.6-* models above instead of a single shared litellm-owned
+    # login - see custom_callbacks.py.
+    - custom_callbacks.chatgpt_auth_forward_handler
 
   # "langfuse" is one of LiteLLM's native logging integrations (unlike
   # metrics_webhook above, it needs no callback_settings block - it just

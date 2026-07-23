@@ -13,7 +13,7 @@ URI := $(if $(strip $(LITELLM_URI)),$(LITELLM_URI),http://localhost:$(PORT))
 WEBHOOK_PORT := $(if $(strip $(WEBHOOK_PORT)),$(WEBHOOK_PORT),8010)
 # Same override pattern as URI above, for hosts where webhook isn't on localhost.
 INGEST_URI := $(if $(strip $(AGENT_CLI_TRACKING_API_URL)),$(AGENT_CLI_TRACKING_API_URL),http://localhost:$(WEBHOOK_PORT))
-.PHONY: start stop restart env test langfuse-up langfuse-down langfuse-logs
+.PHONY: start stop restart env test langfuse-up langfuse-down langfuse-logs reparse reparse-all
 
 # The six langfuse-* services (see docker-compose.yml) all carry
 # `profiles: [langfuse]`, so `docker compose down` doesn't accept a bare
@@ -22,7 +22,7 @@ INGEST_URI := $(if $(strip $(AGENT_CLI_TRACKING_API_URL)),$(AGENT_CLI_TRACKING_A
 LANGFUSE_SERVICES := langfuse-web langfuse-worker langfuse-db langfuse-clickhouse langfuse-minio langfuse-redis
 
 start up:
-	docker compose up -d --build
+	docker compose up -d --build --force-recreate
 
 status:
 	docker compose ps
@@ -81,3 +81,15 @@ env:
 	@echo 'export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: $$LITELLM_AUTH_HEADER"'
 	@echo 'export OPENAI_API_BASE="$(URI)"'
 	@echo 'export AGENT_CLI_TRACKING_API_URL="$(INGEST_URI)"'
+
+# Reparses event_sources into agent_events/agent_usage/agent_messages/
+# agent_invocations using the current classification logic - see
+# services/webhook/src/reparse.py. ReplacingMergeTree-safe to re-run any
+# number of times. Requires SESSION=<session_id>; use `make reparse-all` to
+# reparse everything instead.
+reparse:
+	@if [ -z "$(SESSION)" ]; then echo "usage: make reparse SESSION=<session_id>"; exit 1; fi
+	docker compose run --rm -e SESSION_ID=$(SESSION) webhook-reparse
+
+reparse-all:
+	docker compose run --rm webhook-reparse
