@@ -9,7 +9,12 @@ providers:
     updateIntervalSeconds: 30
     allowUiUpdates: true
     options:
-      path: /var/lib/grafana/dashboards
+      # Not under /var/lib/grafana - that whole tree is shadowed at runtime
+      # by the grafana-data named volume (docker-compose.yml), so anything
+      # the image bakes in under it (see services/grafana/Dockerfile) would
+      # disappear the moment the volume mounts. /etc/grafana isn't part of
+      # that volume, so baked-in dashboards survive.
+      path: /etc/grafana/dashboards
 
   # Monitoring dashboards ported from metrics/ live in their own folder,
   # kept separate from the product dashboard (agents_overview.json) above -
@@ -25,4 +30,4 @@ providers:
     updateIntervalSeconds: 30
     allowUiUpdates: true
     options:
-      path: /var/lib/grafana/dashboards-health
+      path: /etc/grafana/dashboards-health

@@ -42,6 +42,13 @@ Everything else in `docker-compose.yml` (ports, ClickHouse host, etc.) has a san
 Remote model sources (Ollama, a reranker, etc.) aren't `.env` variables at all - see "Remote model sources" under "LiteLLM" below.
 Your personal LiteLLM key does **not** go in `.env` at all - see the next step.
 
+### Dev vs prod
+
+`ENVIRONMENT` in `.env` (default `development`) decides which mode `make` runs in - every `make` target prints `⚠️  ENVIRONMENT=...` first so it's always obvious which one is active.
+
+- **`development`** (default) layers `docker-compose.dev.yml` on top of `docker-compose.yml`, bind-mounting live source/config into the containers and enabling `--reload` for `webhook`/`mcp-server` - editing `services/webhook/src/*.py` or a Grafana dashboard JSON takes effect without a rebuild.
+- **`production`** (`ENVIRONMENT=production make start`, or set `ENVIRONMENT=production` in `.env`) uses `docker-compose.yml` alone - every service then runs the image built entirely from its own `Dockerfile`, with no source/config bind mounts and no `command:`/`entrypoint:` overrides; picking up a code change requires rebuilding (`ENVIRONMENT=production make start` again).
+
 ### Start the stack
 
 ```bash

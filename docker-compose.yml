@@ -43,8 +43,9 @@ x-litellm-master-key: &litellm-master-key ${LITELLM_MASTER_KEY:?set LITELLM_MAST
 x-litellm-db-password: &litellm-db-password ${LITELLM_DB_PASSWORD:?set LITELLM_DB_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 x-litellm-db-url: &litellm-db-url postgresql://litellm:${LITELLM_DB_PASSWORD:?set LITELLM_DB_PASSWORD, e.g. in a .env file next to docker-compose.yml}@litellm-db:5432/litellm
 # Internal docker network address - litellm's container-internal port is
-# fixed at 4000 (see the litellm service's `command:` below) regardless of
-# LITELLM_PORT, which only remaps the host side. Used by webhook to call
+# fixed at 4000 (baked into its image's CMD - see
+# services/litellm/Dockerfile) regardless of LITELLM_PORT, which only remaps
+# the host side. Used by webhook to call
 # LiteLLM's /key/info when verifying hooks/report_git_branch.py's virtual key.
 x-litellm-base-url: &litellm-base-url http://litellm:4000
 
@@ -137,15 +138,15 @@ services:
     # schema_migrations has the version recorded. webhook/webhook-worker
     # both wait on this completing successfully so they never race a
     # migration with live inserts.
-    build: ./services/webhook
+    # Build context is the repo root, not ./services/webhook - see
+    # services/webhook/Dockerfile's top comment for why.
+    build:
+      context: .
+      dockerfile: services/webhook/Dockerfile
     container_name: receipt-goblin-clickhouse-migrate
-    volumes:
-      - ./services/webhook/src:/app/src:ro
-      - ./services/webhook/config.yml:/app/config.yml:ro
-      - ./services/clickhouse/migrations:/app/migrations:ro
-    command: ["python", "-m", "src.migrate"]
     restart: "no"
     environment:
+      APP_ROLE: migrate
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
       # Target app user this bootstraps into existence via SQL (see above).
@@ -171,7 +172,11 @@ services:
       - receipt-goblin
 
   grafana:
-    image: grafana/grafana:13.1.0
+    # Config/provisioning/dashboards baked into the image at build time - see
+    # services/grafana/Dockerfile. A dashboard/provisioning change needs
+    # `docker compose build grafana`, not just an edit+restart, in prod;
+    # docker-compose.dev.yml bind-mounts all of it back for live editing.
+    build: ./services/grafana
     container_name: receipt-goblin-grafana
     ports:
       - target: 3000
@@ -182,25 +187,10 @@ services:
       CLICKHOUSE_USER: *clickhouse-user
       CLICKHOUSE_PASSWORD: *clickhouse-password
       CLICKHOUSE_DATABASE: *clickhouse-database
-    entrypoint: ["/bin/sh", "/docker-entrypoint-custom.sh"]
     mem_limit: 1g
     restart: always
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./services/grafana/docker-entrypoint.sh:/docker-entrypoint-custom.sh:ro
-      - ./services/grafana/config.yml:/etc/grafana/config.yml:ro
-      - ./services/grafana/provisioning/datasources:/etc/grafana/provisioning-templates/datasources:ro
-      - ./services/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
-      - ./services/grafana/provisioning/alerting:/etc/grafana/provisioning/alerting:ro
-      - ./services/grafana/dashboards:/var/lib/grafana/dashboards
-      # Health-folder dashboards live under a separate top-level mount, not
-      # nested under dashboards/ above - the file provisioner scans its
-      # `path` recursively, so nesting it there made the `default` provider
-      # (path: /var/lib/grafana/dashboards) race the `health` provider to
-      # claim these files, which Grafana rejects ("Cannot change resource
-      # manager identity"). Keeping the two mounts as siblings avoids the
-      # overlap entirely.
-      - ./services/grafana/dashboards-health:/var/lib/grafana/dashboards-health
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 5s
@@ -215,18 +205,14 @@ services:
       - receipt-goblin
 
   mcp-server:
-    # Builds the same prod image as services/mcp-server/Dockerfile (deps baked in via
-    # its own RUN pip install layer), then overlays live source on top for
-    # dev: ./src bind-mounted over the image's /app/src, and `command:`
-    # overrides the Dockerfile's CMD to add --reload. Editing
-    # services/mcp-server/src/server.py restarts uvicorn without a rebuild; changing
-    # requirements.txt does need `docker compose build mcp-server`.
+    # Self-contained prod image - src/config.yml baked in via
+    # services/mcp-server/Dockerfile. docker-compose.dev.yml overlays live
+    # source on top for dev: ./src bind-mounted over the image's /app/src,
+    # and `command:` adds --reload. Editing services/mcp-server/src/server.py
+    # then restarts uvicorn without a rebuild; changing requirements.txt does
+    # need `docker compose build mcp-server` either way.
     build: ./services/mcp-server
     container_name: receipt-goblin-mcp-server
-    volumes:
-      - ./services/mcp-server/src:/app/src:ro
-      - ./services/mcp-server/config.yml:/app/config.yml:ro
-    command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
     ports:
       - target: 8001
         published: *mcp-server-port
@@ -254,17 +240,18 @@ services:
   redis:
     # Queue between webhook (producer) and webhook-worker (consumer) - see
     # services/webhook/src/queue_client.py. Tuning lives in
-    # services/redis/redis.conf, not here.
-    image: redis:7-alpine
+    # services/redis/redis.conf, baked into the image at build time (see
+    # services/redis/Dockerfile) - a tuning change needs
+    # `docker compose build redis`, no dev override for this one (rarely
+    # edited live).
+    build: ./services/redis
     container_name: receipt-goblin-redis
-    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     # Above redis.conf's maxmemory (1024mb) - leaves headroom for Redis's
     # own overhead beyond the dataset itself.
     mem_limit: 1200m
     restart: always
     volumes:
       - redis-data:/data
-      - ./services/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -274,22 +261,22 @@ services:
       - receipt-goblin
 
   webhook:
-    # Builds the same prod image as services/webhook/Dockerfile (deps baked in via its
-    # own RUN pip install layer), then overlays live source on top for dev:
-    # ./src bind-mounted over the image's /app/src, and `command:` overrides
-    # the Dockerfile's CMD to add --reload. Editing services/webhook/src/server.py
+    # Self-contained prod image - src/config.yml baked in via
+    # services/webhook/Dockerfile (build context is the repo root - see that
+    # file's top comment). docker-compose.dev.yml overlays live source on
+    # top for dev: ./src bind-mounted over the image's /app/src, and
+    # `command:` adds --reload. Editing services/webhook/src/server.py then
     # restarts uvicorn without a rebuild; changing requirements.txt does need
-    # `docker compose build webhook`.
-    build: ./services/webhook
+    # `docker compose build webhook` either way.
+    build:
+      context: .
+      dockerfile: services/webhook/Dockerfile
     container_name: receipt-goblin-webhook
     volumes:
-      - ./services/webhook/src:/app/src:ro
-      - ./services/webhook/config.yml:/app/config.yml:ro
       # Captured payloads land here on the host, not just inside the
-      # container - see services/webhook/src/server.py CAPTURE_DIR. Kept separate from
-      # the src/ mount above since it's runtime output, not source.
+      # container - see services/webhook/src/server.py CAPTURE_DIR. Runtime
+      # output, not source/config, so this stays mounted in prod too.
       - ./.capture:/app/captures
-    command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     ports:
       - target: 8000
         published: *webhook-port
@@ -324,17 +311,17 @@ services:
       - receipt-goblin
 
   webhook-worker:
-    # Same image as webhook (build: ./services/webhook builds it again from the same
-    # Dockerfile/layer cache, not a separate image) - only `command:` differs.
-    # Drains queue_client.STREAM_KEY in batches and does the actual
-    # ClickHouse inserts - see services/webhook/src/worker.py.
-    build: ./services/webhook
+    # Same image as webhook (built again from the same Dockerfile/layer
+    # cache, not a separate image) - only the APP_ROLE env var differs (see
+    # services/webhook/docker-entrypoint.sh). Drains queue_client.STREAM_KEY
+    # in batches and does the actual ClickHouse inserts - see
+    # services/webhook/src/worker.py.
+    build:
+      context: .
+      dockerfile: services/webhook/Dockerfile
     container_name: receipt-goblin-webhook-worker
-    volumes:
-      - ./services/webhook/src:/app/src:ro
-      - ./services/webhook/config.yml:/app/config.yml:ro
-    command: ["python", "-m", "src.worker"]
     environment:
+      APP_ROLE: worker
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
       CLICKHOUSE_USER: *clickhouse-user
@@ -372,15 +359,14 @@ services:
     # event_sources - see services/webhook/src/reparse.py. Never starts with
     # `docker compose up` (profiles: ["tools"]) - only via
     # `make reparse`/`make reparse-all` (docker compose run --rm).
-    build: ./services/webhook
+    build:
+      context: .
+      dockerfile: services/webhook/Dockerfile
     container_name: receipt-goblin-webhook-reparse
     profiles:
       - tools
-    volumes:
-      - ./services/webhook/src:/app/src:ro
-      - ./services/webhook/config.yml:/app/config.yml:ro
-    command: ["python", "-m", "src.reparse"]
     environment:
+      APP_ROLE: reparse
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
       CLICKHOUSE_USER: *clickhouse-user
@@ -446,7 +432,13 @@ services:
       - receipt-goblin
 
   litellm:
-    image: ghcr.io/berriai/litellm:main-latest
+    # config.yaml/entrypoint baked into the image at build time - see
+    # services/litellm/Dockerfile. A config change needs
+    # `docker compose build litellm`, not just an edit+restart - no dev
+    # override for this one (rarely edited live). user_configs/*.yaml stays
+    # bind-mounted below even in prod (gitignored, may hold real
+    # secrets/hosts - not something to bake into a shared image layer).
+    build: ./services/litellm
     container_name: receipt-goblin-litellm
     ports:
       - target: 4000
@@ -467,15 +459,15 @@ services:
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_HOST: *langfuse-base-url
     volumes:
-      # Whole directory, not individual files - docker-entrypoint.sh merges
-      # in whatever config.<name>.yaml files it finds there (e.g.
-      # config.ollama.yaml, config.reranker.yaml - see their .tmpl
-      # counterparts and "Remote model sources" under "LiteLLM" in
-      # README.md), so adding a new remote model source is just dropping a
-      # file next to config.yaml - no docker-compose.yml edit needed.
-      - ./services/litellm:/app/litellm-config:ro
-    entrypoint: ["/bin/sh", "/app/litellm-config/docker-entrypoint.sh"]
-    command: ["--port", "4000"]
+      # docker-entrypoint.sh (baked into the image) merges in whatever
+      # config.<name>.yaml files it finds here (e.g. config.ollama.yaml,
+      # config.reranker.yaml - see user_configs/config.yaml.tmpl and "Remote
+      # model sources" under "LiteLLM" in README.md). Gitignored - may carry
+      # real remote-model hosts/keys, so unlike the rest of services/litellm
+      # this directory stays bind-mounted even in prod: adding a new remote
+      # model source is still just dropping a file here and restarting, no
+      # image rebuild needed.
+      - ./services/litellm/user_configs:/app/litellm-config/user_configs:ro
     mem_limit: 2g
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=3)"]
@@ -554,7 +546,8 @@ services:
     container_name: receipt-goblin-redis-exporter
     profiles:
       - observability
-    command: ["--redis.addr", "redis://redis:6379"]
+    environment:
+      REDIS_ADDR: redis://redis:6379
     mem_limit: 128m
     restart: unless-stopped
     expose:
@@ -619,18 +612,14 @@ services:
       - receipt-goblin
 
   node-exporter:
-    # Stock image, no custom config. Same host-mount rationale as cadvisor
-    # above - reports on the Docker Desktop Linux VM on macOS, the real host
-    # on Linux.
-    image: prom/node-exporter:v1.8.2
+    # CLI flags baked into the image at build time (see
+    # services/node-exporter/Dockerfile) - no compose `command:` override.
+    # Same host-mount rationale as cadvisor above - reports on the Docker
+    # Desktop Linux VM on macOS, the real host on Linux.
+    build: ./services/node-exporter
     container_name: receipt-goblin-node-exporter
     profiles:
       - observability
-    command:
-      - "--path.procfs=/host/proc"
-      - "--path.sysfs=/host/sys"
-      - "--path.rootfs=/host/root"
-      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
     mem_limit: 128m
     restart: unless-stopped
     expose:
@@ -739,12 +728,13 @@ services:
   # S3-compatible blob store Langfuse uses for ingested events/media - not
   # published to the host, only langfuse-web/langfuse-worker talk to it.
   langfuse-minio:
-    image: minio/minio:latest
+    # Startup logic (bucket-dir precreate + minio server invocation) baked
+    # into the image at build time - see
+    # services/langfuse-minio/Dockerfile + entrypoint.sh.
+    build: ./services/langfuse-minio
     container_name: receipt-goblin-langfuse-minio
     profiles:
       - langfuse
-    entrypoint: sh
-    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
     environment:
       MINIO_ROOT_USER: *langfuse-minio-user
       MINIO_ROOT_PASSWORD: *langfuse-minio-password
@@ -761,11 +751,17 @@ services:
       - receipt-goblin
 
   langfuse-redis:
-    image: redis:7-alpine
+    # Startup logic (reads REDIS_PASSWORD at runtime and execs redis-server)
+    # baked into the image at build time - see
+    # services/langfuse-redis/Dockerfile + entrypoint.sh. The password can't
+    # be baked into the image itself (it's a runtime secret), so it still
+    # flows in via environment: below, just not as a compose `command:` arg.
+    build: ./services/langfuse-redis
     container_name: receipt-goblin-langfuse-redis
     profiles:
       - langfuse
-    command: ["redis-server", "--requirepass", *langfuse-redis-password, "--maxmemory-policy", "noeviction"]
+    environment:
+      REDIS_PASSWORD: *langfuse-redis-password
     mem_limit: 256m
     restart: always
     volumes:

@@ -1,0 +1,51 @@
+# Dev-only override, layered on top of docker-compose.yml (the prod-default
+# file) - see Makefile's ENVIRONMENT switch. Re-adds exactly the live
+# source/config bind mounts (and, for webhook/mcp-server, the --reload
+# command) that docker-compose.yml no longer carries, so editing code under
+# services/*/src or a service's config.yml takes effect without a rebuild,
+# same as this whole stack originally worked.
+#
+# litellm and redis are intentionally NOT overridden here - both dev and
+# prod always run the baked image built by their own Dockerfile (see
+# docker-compose.yml's comments on those two services); editing
+# services/litellm/config.yaml or services/redis/redis.conf needs a rebuild
+# in dev too.
+services:
+  clickhouse-migrate:
+    volumes:
+      - ./services/webhook/src:/app/src:ro
+      - ./services/webhook/config.yml:/app/config.yml:ro
+      - ./services/clickhouse/migrations:/app/migrations:ro
+
+  webhook:
+    volumes:
+      - ./services/webhook/src:/app/src:ro
+      - ./services/webhook/config.yml:/app/config.yml:ro
+    command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  webhook-worker:
+    volumes:
+      - ./services/webhook/src:/app/src:ro
+      - ./services/webhook/config.yml:/app/config.yml:ro
+
+  webhook-reparse:
+    volumes:
+      - ./services/webhook/src:/app/src:ro
+      - ./services/webhook/config.yml:/app/config.yml:ro
+
+  mcp-server:
+    volumes:
+      - ./services/mcp-server/src:/app/src:ro
+      - ./services/mcp-server/config.yml:/app/config.yml:ro
+    command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+
+  grafana:
+    entrypoint: ["/bin/sh", "/docker-entrypoint-custom.sh"]
+    volumes:
+      - ./services/grafana/docker-entrypoint.sh:/docker-entrypoint-custom.sh:ro
+      - ./services/grafana/config.yml:/etc/grafana/config.yml:ro
+      - ./services/grafana/provisioning/datasources:/etc/grafana/provisioning-templates/datasources:ro
+      - ./services/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./services/grafana/provisioning/alerting:/etc/grafana/provisioning/alerting:ro
+      - ./services/grafana/dashboards:/etc/grafana/dashboards
+      - ./services/grafana/dashboards-health:/etc/grafana/dashboards-health
