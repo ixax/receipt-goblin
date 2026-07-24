@@ -432,9 +432,18 @@ def _prompt_kind_and_display(prompt_text: str, command_name: str, response_text:
 
     cleaned = _clean_prompt_text(prompt_text)
 
-    command_args_match = _COMMAND_ARGS_RE.search(prompt_text)
+    # _COMMAND_ARGS_RE.search is unanchored - a resent/harness-echoed blob
+    # (a <transcript>-wrapped severity check, or a compaction handoff
+    # summary) can contain an old <command-args> tag buried inside it, which
+    # would otherwise misclassify the whole echoed continuation as a fresh
+    # "command" prompt. Skip the command check for those.
+    is_harness_echo = (
+        _TRANSCRIPT_HANDOFF_PREFIX in prompt_text
+        or "This session is being continued from a previous conversation" in prompt_text
+    )
+    command_args_match = None if is_harness_echo else _COMMAND_ARGS_RE.search(prompt_text)
     command_args = command_args_match.group(1) if command_args_match else ""
-    if not command_args and command_name and "</local-command-stdout>" in prompt_text:
+    if not command_args and command_name and not is_harness_echo and "</local-command-stdout>" in prompt_text:
         command_args = _LOCAL_STDOUT_STRIP_RE.sub("", prompt_text, count=1).strip()
     if command_args:
         return "command", f"/{command_name} {_collapse_whitespace(command_args)[:_DISPLAY_TEXT_TRUNCATE]}", ""
