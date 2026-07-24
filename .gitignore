@@ -4,5 +4,6 @@
 MIN_DUMP.md
 .capture/
 .venv
+.backups/
 services/webhook/.venv
 services/litellm/user_configs/*.yaml

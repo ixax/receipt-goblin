@@ -161,13 +161,32 @@ def test_version_marker_for_name_unsuccess_name_has_no_marker_returns_empty():
 # _user_id
 # ---------------------------------------------------------------------------
 
-def test_user_id_success_reads_team_alias():
-    payload = {"metadata": {"user_api_key_team_alias": "team-a"}}
-    assert ci._user_id(payload) == "team-a"
+def test_user_id_success_reads_real_user_id():
+    payload = {"metadata": {"user_api_key_user_id": "u-123", "user_api_key_alias": "someone"}}
+    assert ci._user_id(payload) == "u-123"
+
+
+def test_user_id_falls_back_to_alias_when_no_real_id():
+    payload = {"metadata": {"user_api_key_alias": "someone"}}
+    assert ci._user_id(payload) == "someone"
 
 
 def test_user_id_unsuccess_falls_back_to_unknown():
     assert ci._user_id({}) == "unknown-user"
+
+
+def test_user_name_prefers_alias_over_real_id():
+    payload = {"metadata": {"user_api_key_user_id": "u-123", "user_api_key_alias": "someone"}}
+    assert ci._user_name(payload) == "someone"
+
+
+def test_user_name_falls_back_to_real_id_when_no_alias():
+    payload = {"metadata": {"user_api_key_user_id": "u-123"}}
+    assert ci._user_name(payload) == "u-123"
+
+
+def test_user_name_unsuccess_falls_back_to_unknown():
+    assert ci._user_name({}) == "unknown-user"
 
 
 # ---------------------------------------------------------------------------
@@ -336,7 +355,6 @@ def test_event_row_success_reports_status_and_latency():
     assert values["latency_ms"] is not None and values["latency_ms"] >= 0
     assert values["calculated_type"] == "title_gen"  # prompt starts with "<session>"
     assert values["group_id"] == "206ec527-2402-4c8b-b5b5-8bd65b8bca0f"  # capture's user_api_key_team_id
-    assert values["group_alias"] == "Test"  # capture's user_api_key_team_alias
 
 
 def test_event_row_unsuccess_failure_payload_has_no_tool_name_or_latency():
@@ -458,6 +476,26 @@ def test_ingest_events_batch_success_issues_one_insert_per_table(monkeypatch):
 
     source_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "event_sources")
     assert len(source_rows) == 2
+
+
+def test_ingest_events_batch_success_dedups_dimension_rows_by_id(monkeypatch):
+    # Both captures share the same user/team (see captures/*.json), so a
+    # batch of two events should still only insert one ai_gateway_users and
+    # one ai_gateway_groups row - not one per event.
+    events = [
+        ci.build_event(load_capture("success_plain")),
+        ci.build_event(load_capture("success_with_command")),
+    ]
+    fake_client = _FakeClient()
+    monkeypatch.setattr(ci, "get_client", lambda: fake_client)
+
+    ci.ingest_events_batch(events)
+
+    user_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "ai_gateway_users")
+    assert len(user_rows) == 1
+
+    group_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "ai_gateway_groups")
+    assert len(group_rows) == 1
 
 
 def test_ingest_events_batch_unsuccess_empty_list_skips_client_entirely(monkeypatch):

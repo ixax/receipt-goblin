@@ -1,0 +1,19 @@
+<clickhouse>
+    <!-- Backing disk for the native BACKUP/RESTORE statements used by
+         services/backup/scripts/backup_clickhouse.sh and
+         restore_clickhouse.sh. Files land under this container path, which
+         docker-compose.yml bind-mounts to $BACKUP_DIR/clickhouse on the
+         host - so backups are visible/removable without docker exec. -->
+    <storage_configuration>
+        <disks>
+            <backups>
+                <type>local</type>
+                <path>/backups/clickhouse/</path>
+            </backups>
+        </disks>
+    </storage_configuration>
+    <backups>
+        <allowed_disk>backups</allowed_disk>
+        <allowed_path>/backups/clickhouse/</allowed_path>
+    </backups>
+</clickhouse>

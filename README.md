@@ -110,6 +110,32 @@ To also delete the ClickHouse data volume (next `up` re-applies `schema.sql` fro
 
 `make stop` also calls `make langfuse-down`, so it stops Langfuse too if it's running. Use `make langfuse-down` on its own if you only want to stop Langfuse and leave the core stack up.
 
+## Backup & restore
+
+`clickhouse`, `litellm-db`, and `grafana`'s `grafana.db` all hold state
+that isn't reproducible from the repo. Full playbook (including one-time
+setup and the restore procedure per service) is in
+`services/backup/README.md`; quick reference:
+
+```bash
+make backup-all           # clickhouse + litellm-db + grafana - safe on a live stack, no downtime
+make backup-clickhouse    # just one of the three
+make backup-litellm
+make backup-grafana
+
+make restore-clickhouse FILE=clickhouse_default_20260724-030000.zip   # DESTRUCTIVE, see the playbook first
+make restore-litellm    FILE=litellm_20260724-030000.dump
+make restore-grafana    FILE=grafana_20260724-030000.db
+```
+
+Files land under `.backups/` at the repo root (override with `BACKUP_DIR`
+in `.env`), kept until removed by hand - no automatic pruning. For cron,
+point it at `make backup-all` (never at a `restore-*` target):
+
+```
+0 3 * * * cd /path/to/receipt-goblin && make backup-all >> .backups/cron.log 2>&1
+```
+
 ## Troubleshooting
 
 | Symptom                                                                       | Likely cause / fix                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |

@@ -84,6 +84,44 @@ CREATE TABLE IF NOT EXISTS plan_proposals
 ENGINE = MergeTree
 ORDER BY (session_id, captured_at);
 
+-- group_id -> group_name lookup (LiteLLM Team id -> its current display
+-- name). Exists so agent_events/agent_usage/agent_messages only ever need
+-- to carry group_id (the stable, non-renamable key) - any panel that wants
+-- a readable name joins here instead of the old group_alias column that
+-- used to be duplicated onto every agent_events row. One row per team, kept
+-- tiny with LowCardinality(String) columns, same reasoning as
+-- agent_invocations. ReplacingMergeTree(updated_at): latest name wins if a
+-- team gets renamed in the LiteLLM UI, without rewriting historical fact
+-- rows. Populated by webhook/src/clickhouse_ingest.py
+-- (_group_row/_insert_ai_gateway_dims) on every ingest, and backfilled from
+-- event_sources by webhook/src/reparse.py - see AGENTS.md.
+CREATE TABLE IF NOT EXISTS ai_gateway_groups
+(
+    group_id   LowCardinality(String),
+    group_name LowCardinality(String),
+    updated_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (group_id);
+
+-- user_id -> (group_id, user_name) lookup. user_id here is the real,
+-- stable id LiteLLM sends as metadata.user_api_key_user_id - not the
+-- renamable metadata.user_api_key_alias that agent_events/agent_usage/
+-- agent_messages.user_id used to hold before this table existed (see
+-- clickhouse_ingest.py:_user_id). group_id is carried here too so a panel
+-- can resolve "which group does this user belong to" without a second
+-- join back through agent_events. Same ReplacingMergeTree(updated_at)
+-- latest-wins semantics as ai_gateway_groups above.
+CREATE TABLE IF NOT EXISTS ai_gateway_users
+(
+    user_id    LowCardinality(String),
+    group_id   LowCardinality(String) DEFAULT '',
+    user_name  LowCardinality(String),
+    updated_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (user_id);
+
 -- One row per lifecycle event (hook invocation). raw_payload keeps the full
 -- untouched JSON Claude Code sent, so any field missed by the extracted
 -- columns can still be recovered later.
@@ -131,7 +169,7 @@ CREATE TABLE IF NOT EXISTS agent_events
     timestamp         DateTime64(3),
     user_id           LowCardinality(String),
     -- The LiteLLM Team a virtual key belongs to, captured independently of
-    -- user_id - see _group_id/_group_alias in webhook/src/clickhouse_ingest.py
+    -- user_id - see _group_id in webhook/src/clickhouse_ingest.py
     -- for why this is its own column rather than reusing whatever user_id
     -- collapsed into. Empty until LiteLLM Teams are actually configured (see
     -- README "LiteLLM" - "Once it's needed: Teams..."), which is an
@@ -139,12 +177,11 @@ CREATE TABLE IF NOT EXISTS agent_events
     -- its own.
     --
     -- group_id (metadata.user_api_key_team_id) is the stable filter/join
-    -- key - a UUID that survives a team rename in the LiteLLM UI. group_alias
-    -- (metadata.user_api_key_team_alias) is the human-editable display name
-    -- and is display-only - never filter/join on it, since renaming a team
-    -- in LiteLLM changes it silently.
+    -- key - a UUID that survives a team rename in the LiteLLM UI. The
+    -- renamable display name used to be duplicated here as group_alias;
+    -- that's gone now - join ai_gateway_groups on group_id for a name
+    -- instead (see that table's comment above).
     group_id          LowCardinality(String) DEFAULT '',
-    group_alias       LowCardinality(String) DEFAULT '',
     session_id        String,
     trace_id          String,
     turn_id           UInt32,
@@ -227,19 +264,21 @@ PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(t
 ORDER BY (timestamp, session_id, litellm_call_id);
 
 -- Tables predate command_version/litellm_call_id/calculated_type/
--- calculated_payload/ingested_at/group_alias/group_id: ALTER for stacks whose
+-- calculated_payload/ingested_at/group_id: ALTER for stacks whose
 -- ClickHouse volume already existed before these columns were added. Note
 -- this does NOT change the engine/ORDER BY of an already-existing table
 -- (ClickHouse has no ALTER for that) - a stack that needs the
 -- ReplacingMergeTree dedup semantics on old data must run the
 -- recreate+swap runbook in
 -- services/clickhouse/migrations/001_replacing_mergetree.sql once instead.
+-- group_alias itself is gone (see 002_user_group_dimensions.sql) - not
+-- re-added here even for a stack that predates it, since the migration
+-- file already drops it unconditionally.
 ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS command_version LowCardinality(String) DEFAULT '';
 ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS litellm_call_id String DEFAULT '';
 ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS calculated_type LowCardinality(String) DEFAULT 'unknown';
 ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS calculated_payload String DEFAULT '{}' CODEC(ZSTD(3));
 ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS ingested_at DateTime64(3) DEFAULT now64(3);
-ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS group_alias LowCardinality(String) DEFAULT '';
 ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS group_id LowCardinality(String) DEFAULT '';
 
 -- One row per model call (usage report). cost/input_cost/output_cost come

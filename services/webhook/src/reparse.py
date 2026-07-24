@@ -1,10 +1,11 @@
 """CLI-only reparse tool - recomputes agent_events/agent_usage/agent_messages/
-agent_invocations for events already in event_sources, using whatever the
-current classification/parsing logic in clickhouse_ingest.py knows how to do
-(reused directly, never re-derived here). Run via `make reparse-all` or
-`make reparse SESSION=<session_id>` (see Makefile/docker-compose.yml
-"webhook-reparse", profiles: ["tools"]) - no HTTP API, this only ever runs
-as a one-shot `python -m src.reparse` invocation.
+agent_invocations/ai_gateway_users/ai_gateway_groups for events already in
+event_sources, using whatever the current classification/parsing logic in
+clickhouse_ingest.py knows how to do (reused directly, never re-derived
+here). Run via `make reparse-all` or `make reparse SESSION=<session_id>`
+(see Makefile/docker-compose.yml "webhook-reparse", profiles: ["tools"]) -
+no HTTP API, this only ever runs as a one-shot `python -m src.reparse`
+invocation.
 
 event_sources is the only source this reads from - .capture/*.json is
 explicitly out of scope as a parsing/backfill input, now and always (see
@@ -25,7 +26,10 @@ from .clickhouse_ingest import (
     _agent_invocation_rows,
     _agent_name_and_version_for_invocation,
     _event_row,
+    _group_row,
     _insert_agent_invocations,
+    _insert_ai_gateway_groups,
+    _insert_ai_gateway_users,
     _insert_event,
     _insert_message,
     _insert_usage,
@@ -33,6 +37,7 @@ from .clickhouse_ingest import (
     _session_and_trace_id,
     _skill_name_and_version,
     _usage_row,
+    _user_row,
     get_client,
 )
 from datetime import datetime, timezone
@@ -55,6 +60,13 @@ def _reparse_one(client, litellm_call_id: str, source_session_id: str, raw_paylo
         messages = payload.get("messages")
 
         _insert_agent_invocations(client, _agent_invocation_rows(session_id, messages, now=now))
+
+        group_row = _group_row(payload, now=now)
+        if group_row is not None:
+            _insert_ai_gateway_groups(client, [group_row])
+        user_row = _user_row(payload, now=now)
+        if user_row is not None:
+            _insert_ai_gateway_users(client, [user_row])
 
         agent_invocation_id = _agent_invocation_id(payload)
         agent_name, agent_version = _agent_name_and_version_for_invocation(client, agent_invocation_id)
@@ -109,7 +121,8 @@ def reparse(session_id: str = "") -> int:
     if count:
         logger.info(
             "run `OPTIMIZE TABLE agent_events FINAL`, `OPTIMIZE TABLE agent_usage FINAL`, "
-            "`OPTIMIZE TABLE agent_messages FINAL`, `OPTIMIZE TABLE agent_invocations FINAL` "
+            "`OPTIMIZE TABLE agent_messages FINAL`, `OPTIMIZE TABLE agent_invocations FINAL`, "
+            "`OPTIMIZE TABLE ai_gateway_users FINAL`, `OPTIMIZE TABLE ai_gateway_groups FINAL` "
             "to force the dedup merge immediately - most dashboard queries don't use FINAL "
             "(for performance) and would otherwise see stale rows until a background merge happens."
         )

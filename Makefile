@@ -13,7 +13,9 @@ URI := $(if $(strip $(LITELLM_URI)),$(LITELLM_URI),http://localhost:$(PORT))
 WEBHOOK_PORT := $(if $(strip $(WEBHOOK_PORT)),$(WEBHOOK_PORT),8010)
 # Same override pattern as URI above, for hosts where webhook isn't on localhost.
 INGEST_URI := $(if $(strip $(AGENT_CLI_TRACKING_API_URL)),$(AGENT_CLI_TRACKING_API_URL),http://localhost:$(WEBHOOK_PORT))
-.PHONY: start stop restart env test langfuse-up langfuse-down langfuse-logs reparse reparse-all
+.PHONY: start stop restart env test langfuse-up langfuse-down langfuse-logs reparse reparse-all \
+	backup-clickhouse backup-litellm backup-grafana backup-all \
+	restore-clickhouse restore-litellm restore-grafana
 
 # The six langfuse-* services (see docker-compose.yml) all carry
 # `profiles: [langfuse]`, so `docker compose down` doesn't accept a bare
@@ -93,3 +95,37 @@ reparse:
 
 reparse-all:
 	docker compose run --rm webhook-reparse
+
+# Backup/restore for clickhouse, litellm-db, and grafana-data - see
+# services/backup/README.md for the full playbook, including why restore
+# needs the target container stopped first (not automated here - the
+# backup container never touches the Docker socket, see docker-compose.yml's
+# `backup` service comment). Files land under $BACKUP_DIR (default
+# .backups/) on the host, kept until removed by hand (no auto-pruning).
+backup-clickhouse:
+	docker compose run --rm backup ./scripts/backup_clickhouse.sh
+
+backup-litellm:
+	docker compose run --rm backup ./scripts/backup_litellm.sh
+
+backup-grafana:
+	docker compose run --rm backup ./scripts/backup_grafana.sh
+
+# Runs all three - this is the target cron should call.
+backup-all:
+	docker compose run --rm backup ./scripts/backup_all.sh
+
+# DESTRUCTIVE - see services/backup/README.md before running any of these.
+# Requires FILE=<name under $BACKUP_DIR/<service>/> and stopping the
+# relevant container first for litellm/grafana (clickhouse can stay up).
+restore-clickhouse:
+	@if [ -z "$(FILE)" ]; then echo "usage: make restore-clickhouse FILE=<file under .backups/clickhouse/>"; exit 1; fi
+	docker compose run --rm backup ./scripts/restore_clickhouse.sh "$(FILE)" --yes
+
+restore-litellm:
+	@if [ -z "$(FILE)" ]; then echo "usage: make restore-litellm FILE=<file under .backups/litellm/> (stop litellm first)"; exit 1; fi
+	docker compose run --rm backup ./scripts/restore_litellm.sh "$(FILE)" --yes
+
+restore-grafana:
+	@if [ -z "$(FILE)" ]; then echo "usage: make restore-grafana FILE=<file under .backups/grafana/> (stop grafana first)"; exit 1; fi
+	docker compose run --rm backup ./scripts/restore_grafana.sh "$(FILE)" --yes

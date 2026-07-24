@@ -248,10 +248,30 @@ def _version_marker_for_name(text: str, name: str, tag: str) -> str:
 
 
 def _user_id(payload: dict) -> str:
+    """The real, stable identity of the caller - metadata.user_api_key_user_id,
+    as sent by LiteLLM. Deliberately not user_api_key_alias/
+    user_api_key_team_alias: those are human-editable display names that can
+    be renamed at any time, which used to silently change what every fact
+    table's user_id "meant" for historical rows. The alias is still used as
+    a last-resort fallback for a virtual key with no user id configured, so
+    ingestion never has to drop a row for lack of an id - see _user_name
+    below for where the alias actually belongs (ai_gateway_users.user_name)."""
     metadata = payload.get("metadata") or {}
     return (
-        metadata.get("user_api_key_team_alias")
+        metadata.get("user_api_key_user_id")
         or metadata.get("user_api_key_alias")
+        or "unknown-user"
+    )
+
+
+def _user_name(payload: dict) -> str:
+    """Human-readable label for the user identified by _user_id above -
+    display only, stored in ai_gateway_users.user_name rather than repeated
+    onto every fact-table row (see that table's comment in schema.sql)."""
+    metadata = payload.get("metadata") or {}
+    return (
+        metadata.get("user_api_key_alias")
+        or metadata.get("user_api_key_user_id")
         or "unknown-user"
     )
 
@@ -493,13 +513,15 @@ def _agent_name_and_version_for_invocation(client, agent_invocation_id: str) -> 
 
 _INVOCATION_COLUMNS = ["agent_id", "session_id", "subagent_type", "agent_version", "description", "spawned_at"]
 _EVENT_COLUMNS = [
-    "timestamp", "user_id", "group_id", "group_alias", "session_id", "trace_id",
+    "timestamp", "user_id", "group_id", "session_id", "trace_id",
     "turn_id", "event_type", "tool_name", "agent_name",
     "agent_version", "skill_name", "skill_version", "command_name",
     "command_version", "agent_invocation_id", "status", "latency_ms",
     "failed_tool_name", "failed_tool_args", "failed_tool_error",
     "litellm_call_id", "calculated_type", "calculated_payload", "ingested_at",
 ]
+_GROUP_COLUMNS = ["group_id", "group_name", "updated_at"]
+_USER_COLUMNS = ["user_id", "group_id", "user_name", "updated_at"]
 _USAGE_COLUMNS = [
     "timestamp", "user_id", "group_id", "session_id", "trace_id", "turn_id", "model",
     "agent_name", "agent_version", "skill_name", "skill_version",
@@ -531,6 +553,8 @@ _MESSAGE_TIMESTAMP_IDX = _MESSAGE_COLUMNS.index("timestamp")
 _MESSAGE_AGENT_NAME_IDX = _MESSAGE_COLUMNS.index("agent_name")
 _MESSAGE_AGENT_VERSION_IDX = _MESSAGE_COLUMNS.index("agent_version")
 _SOURCE_INGESTED_AT_IDX = _SOURCE_COLUMNS.index("ingested_at")
+_GROUP_UPDATED_AT_IDX = _GROUP_COLUMNS.index("updated_at")
+_USER_UPDATED_AT_IDX = _USER_COLUMNS.index("updated_at")
 _EVENT_INGESTED_AT_IDX = _EVENT_COLUMNS.index("ingested_at")
 _USAGE_INGESTED_AT_IDX = _USAGE_COLUMNS.index("ingested_at")
 _MESSAGE_INGESTED_AT_IDX = _MESSAGE_COLUMNS.index("ingested_at")
@@ -575,6 +599,38 @@ def _insert_plan_proposal(client, row: list) -> None:
     client.insert("plan_proposals", [row], column_names=_PLAN_PROPOSAL_COLUMNS)
 
 
+def _group_row(payload: dict, now: Optional[datetime] = None) -> Optional[list]:
+    """ai_gateway_groups row for this payload's group, or None when the
+    call has no group_id (LiteLLM Teams not configured - see _group_id)."""
+    group_id = _group_id(payload)
+    if not group_id:
+        return None
+    return [group_id, _group_alias(payload), now or datetime.now(timezone.utc)]
+
+
+def _user_row(payload: dict, now: Optional[datetime] = None) -> Optional[list]:
+    """ai_gateway_users row for this payload's caller. user_id is never
+    empty (_user_id always falls back to "unknown-user"), so this only
+    returns None if somehow called on a payload with no metadata at all -
+    kept Optional for symmetry with _group_row."""
+    user_id = _user_id(payload)
+    if not user_id:
+        return None
+    return [user_id, _group_id(payload), _user_name(payload), now or datetime.now(timezone.utc)]
+
+
+def _insert_ai_gateway_groups(client, rows: list[list]) -> None:
+    if not rows:
+        return
+    client.insert("ai_gateway_groups", rows, column_names=_GROUP_COLUMNS)
+
+
+def _insert_ai_gateway_users(client, rows: list[list]) -> None:
+    if not rows:
+        return
+    client.insert("ai_gateway_users", rows, column_names=_USER_COLUMNS)
+
+
 def _event_row(
     payload: dict, session_id: str, trace_id: str,
     agent_name: str, agent_version: str, skill_name: str, skill_version: str,
@@ -603,7 +659,6 @@ def _event_row(
         _to_dt(payload.get("endTime") or payload.get("startTime")),
         _user_id(payload),
         _group_id(payload),
-        _group_alias(payload),
         session_id,
         trace_id,
         0,  # turn_id: unknown from this source
@@ -915,6 +970,8 @@ def build_event(payload: dict) -> dict:
         "event_row": _serialize_row_multi(event_row, _EVENT_TIMESTAMP_IDX, _EVENT_INGESTED_AT_IDX),
         "usage_row": _serialize_row_multi(usage_row, _USAGE_TIMESTAMP_IDX, _USAGE_INGESTED_AT_IDX),
         "message_row": _serialize_row_multi(message_row, _MESSAGE_TIMESTAMP_IDX, _MESSAGE_INGESTED_AT_IDX),
+        "group_row": _serialize_row(_group_row(payload, now), _GROUP_UPDATED_AT_IDX),
+        "user_row": _serialize_row(_user_row(payload, now), _USER_UPDATED_AT_IDX),
     }
 
 
@@ -947,6 +1004,24 @@ def ingest_events_batch(events: list[dict]) -> None:
         ]
         if source_rows:
             client.insert("event_sources", source_rows, column_names=_SOURCE_COLUMNS)
+
+        # Dedup by id within the batch (last one wins) before inserting -
+        # ReplacingMergeTree would collapse duplicate ids on merge anyway,
+        # this just avoids inserting redundant rows for a batch with many
+        # calls from the same user/group.
+        group_rows_by_id: dict[str, list] = {}
+        for event in events:
+            row = _deserialize_row(event.get("group_row"), _GROUP_UPDATED_AT_IDX)
+            if row is not None:
+                group_rows_by_id[row[0]] = row
+        _insert_ai_gateway_groups(client, list(group_rows_by_id.values()))
+
+        user_rows_by_id: dict[str, list] = {}
+        for event in events:
+            row = _deserialize_row(event.get("user_row"), _USER_UPDATED_AT_IDX)
+            if row is not None:
+                user_rows_by_id[row[0]] = row
+        _insert_ai_gateway_users(client, list(user_rows_by_id.values()))
 
         agent_fields_cache: dict[str, tuple[str, str]] = {}
         event_rows, usage_rows, message_rows = [], [], []
