@@ -51,15 +51,23 @@ CREATE TABLE IF NOT EXISTS session_git_branch
     session_id  String,
     git_branch  String,
     git_repo    String DEFAULT '',
+    issue_id    String DEFAULT '',
     captured_at DateTime64(3) DEFAULT now64(3)
 )
 ENGINE = ReplacingMergeTree(captured_at)
 ORDER BY (session_id);
 
--- Table predates git_repo: ALTER for stacks whose ClickHouse volume already
--- existed before this column was added (docker-entrypoint-initdb.d only
--- runs CREATE TABLE on a fresh volume - see the reapply note up top).
+-- Table predates git_repo/issue_id: ALTER for stacks whose ClickHouse volume
+-- already existed before these columns were added
+-- (docker-entrypoint-initdb.d only runs CREATE TABLE on a fresh volume - see
+-- the reapply note up top).
 ALTER TABLE session_git_branch ADD COLUMN IF NOT EXISTS git_repo String DEFAULT '';
+-- issue_id is the ticket key parsed out of git_branch (e.g. "VIEW-12345"
+-- out of "VIEW-12345-my-super-branch"), computed receiving-side by
+-- clickhouse_ingest.py's _issue_id_from_branch - see
+-- migrations/004_session_git_branch_issue_id.sql for the backfill on
+-- existing rows.
+ALTER TABLE session_git_branch ADD COLUMN IF NOT EXISTS issue_id String DEFAULT '';
 
 -- One row per ExitPlanMode tool call, captured by hooks/report_plan_proposal.py
 -- at PreToolUse (Claude Code only - Codex CLI has no plan-mode equivalent).

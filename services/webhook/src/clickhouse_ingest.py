@@ -558,7 +558,7 @@ _MESSAGE_COLUMNS = [
     "litellm_call_id", "ingested_at",
 ]
 _SOURCE_COLUMNS = ["litellm_call_id", "session_id", "ingested_at", "raw_payload_full"]
-_GIT_BRANCH_COLUMNS = ["session_id", "git_branch", "git_repo", "captured_at"]
+_GIT_BRANCH_COLUMNS = ["session_id", "git_branch", "git_repo", "issue_id", "captured_at"]
 _PLAN_PROPOSAL_COLUMNS = ["session_id", "plan_text", "captured_at"]
 
 _INVOCATION_SPAWNED_AT_IDX = _INVOCATION_COLUMNS.index("spawned_at")
@@ -866,6 +866,22 @@ def ingest_standard_logging_payload(payload: dict) -> None:
         )
 
 
+_ISSUE_ID_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9]{1,9}-\d+)(?![A-Za-z0-9])")
+
+
+def _issue_id_from_branch(git_branch: str) -> str:
+    """Ticket ID embedded in a branch name, e.g. "VIEW-12345" out of
+    "VIEW-12345-my-super-branch" or "my-super-branch-view-12345" - matched
+    case-insensitively and normalized to uppercase so both group under the
+    same issue. Empty string if the branch carries no ticket-shaped
+    substring. Trailing boundary is a negative lookahead rather than \\b:
+    branches like "VIEW-100500_my-branch" put an underscore right after the
+    number, and \\b treats digit/underscore as the same word class, so a
+    plain \\b there would never match."""
+    match = _ISSUE_ID_RE.search(git_branch or "")
+    return match.group(1).upper() if match else ""
+
+
 def ingest_git_branch(session_id: str, git_branch: str, git_repo: str = "") -> None:
     """Insert a session's git branch/repo, reported by
     hooks/report_git_branch.py at SessionStart. Never raises - a
@@ -873,7 +889,8 @@ def ingest_git_branch(session_id: str, git_branch: str, git_repo: str = "") -> N
     that reported it."""
     try:
         client = get_client()
-        _insert_git_branch(client, [session_id, git_branch, git_repo, datetime.now(timezone.utc)])
+        issue_id = _issue_id_from_branch(git_branch)
+        _insert_git_branch(client, [session_id, git_branch, git_repo, issue_id, datetime.now(timezone.utc)])
     except Exception:
         logger.exception("failed to ingest git branch (session_id=%s)", session_id)
 
