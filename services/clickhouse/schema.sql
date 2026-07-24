@@ -29,10 +29,6 @@ CREATE TABLE IF NOT EXISTS agent_invocations
 ENGINE = ReplacingMergeTree(spawned_at)
 ORDER BY (agent_id);
 
--- Table predates agent_version: ALTER for stacks whose ClickHouse volume
--- already existed before this column was added.
-ALTER TABLE agent_invocations ADD COLUMN IF NOT EXISTS agent_version LowCardinality(String) DEFAULT '';
-
 -- session_id -> git branch/repo, captured once at SessionStart by
 -- hooks/report_git_branch.py (Claude Code and Codex CLI both run it - see
 -- .claude/settings.json / .codex/hooks.json). This is the one lifecycle
@@ -51,23 +47,14 @@ CREATE TABLE IF NOT EXISTS session_git_branch
     session_id  String,
     git_branch  String,
     git_repo    String DEFAULT '',
+    -- Ticket key parsed out of git_branch (e.g. "VIEW-12345" out of
+    -- "VIEW-12345-my-super-branch"), computed receiving-side by
+    -- clickhouse_ingest.py's _issue_id_from_branch.
     issue_id    String DEFAULT '',
     captured_at DateTime64(3) DEFAULT now64(3)
 )
 ENGINE = ReplacingMergeTree(captured_at)
 ORDER BY (session_id);
-
--- Table predates git_repo/issue_id: ALTER for stacks whose ClickHouse volume
--- already existed before these columns were added
--- (docker-entrypoint-initdb.d only runs CREATE TABLE on a fresh volume - see
--- the reapply note up top).
-ALTER TABLE session_git_branch ADD COLUMN IF NOT EXISTS git_repo String DEFAULT '';
--- issue_id is the ticket key parsed out of git_branch (e.g. "VIEW-12345"
--- out of "VIEW-12345-my-super-branch"), computed receiving-side by
--- clickhouse_ingest.py's _issue_id_from_branch - see
--- migrations/004_session_git_branch_issue_id.sql for the backfill on
--- existing rows.
-ALTER TABLE session_git_branch ADD COLUMN IF NOT EXISTS issue_id String DEFAULT '';
 
 -- One row per ExitPlanMode tool call, captured by hooks/report_plan_proposal.py
 -- at PreToolUse (Claude Code only - Codex CLI has no plan-mode equivalent).
@@ -134,10 +121,6 @@ CREATE TABLE IF NOT EXISTS ai_gateway_users
 )
 ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (user_id);
-
--- Table predates user_agent: ALTER for stacks whose ClickHouse volume
--- already existed before this column was added.
-ALTER TABLE ai_gateway_users ADD COLUMN IF NOT EXISTS user_agent LowCardinality(String) DEFAULT '';
 
 -- One row per lifecycle event (hook invocation). raw_payload keeps the full
 -- untouched JSON Claude Code sent, so any field missed by the extracted
@@ -285,25 +268,6 @@ ENGINE = ReplacingMergeTree(ingested_at)
 PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
 ORDER BY (timestamp, session_id, litellm_call_id);
 
--- Tables predate command_version/litellm_call_id/calculated_type/
--- calculated_payload/ingested_at/group_id: ALTER for stacks whose
--- ClickHouse volume already existed before these columns were added. Note
--- this does NOT change the engine/ORDER BY of an already-existing table
--- (ClickHouse has no ALTER for that) - a stack that needs the
--- ReplacingMergeTree dedup semantics on old data must run the
--- recreate+swap runbook in
--- services/clickhouse/migrations/001_replacing_mergetree.sql once instead.
--- group_alias itself is gone (see 002_user_group_dimensions.sql) - not
--- re-added here even for a stack that predates it, since the migration
--- file already drops it unconditionally.
-ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS command_version LowCardinality(String) DEFAULT '';
-ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS litellm_call_id String DEFAULT '';
-ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS calculated_type LowCardinality(String) DEFAULT 'unknown';
-ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS calculated_payload String DEFAULT '{}' CODEC(ZSTD(3));
-ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS ingested_at DateTime64(3) DEFAULT now64(3);
-ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS group_id LowCardinality(String) DEFAULT '';
-ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS user_key_hash LowCardinality(String) DEFAULT '';
-
 -- One row per model call (usage report). cost/input_cost/output_cost come
 -- straight from LiteLLM's own response_cost/cost_breakdown - no local price
 -- table needed or wanted: a manually-maintained model_pricing table used to
@@ -379,16 +343,6 @@ ENGINE = ReplacingMergeTree(ingested_at)
 PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
 ORDER BY (timestamp, session_id, litellm_call_id);
 
--- Tables predate command_version/litellm_call_id/provider/ingested_at/
--- group_id: see the agent_events ALTER comment above - same caveat applies
--- here (no ENGINE/ORDER BY migration via ALTER; use the migrations/ runbook).
-ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS command_version LowCardinality(String) DEFAULT '';
-ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS litellm_call_id String DEFAULT '';
-ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS provider LowCardinality(String) DEFAULT '';
-ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS ingested_at DateTime64(3) DEFAULT now64(3);
-ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS group_id LowCardinality(String) DEFAULT '';
-ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS user_key_hash LowCardinality(String) DEFAULT '';
-
 -- One row per turn (main session turn or subagent turn), holding the
 -- actual prompt sent to the model and the text it replied with. Kept
 -- separate from agent_usage/agent_events - this is arbitrary-length free
@@ -436,14 +390,6 @@ ENGINE = ReplacingMergeTree(ingested_at)
 -- particular queries are pruned.
 PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
 ORDER BY (session_id, litellm_call_id);
-
--- Tables predate command_version/litellm_call_id/ingested_at/group_id: see
--- the agent_events ALTER comment above - same ENGINE/ORDER BY caveat applies.
-ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS command_version LowCardinality(String) DEFAULT '';
-ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS litellm_call_id String DEFAULT '';
-ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS ingested_at DateTime64(3) DEFAULT now64(3);
-ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS group_id LowCardinality(String) DEFAULT '';
-ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS user_key_hash LowCardinality(String) DEFAULT '';
 
 -- Full, untouched original StandardLoggingPayload per call (messages
 -- included - the one place in this schema that keeps that field), written
