@@ -15,7 +15,8 @@ WEBHOOK_PORT := $(if $(strip $(WEBHOOK_PORT)),$(WEBHOOK_PORT),8010)
 INGEST_URI := $(if $(strip $(AGENT_CLI_TRACKING_API_URL)),$(AGENT_CLI_TRACKING_API_URL),http://localhost:$(WEBHOOK_PORT))
 .PHONY: start stop restart env test langfuse-up langfuse-down langfuse-logs reparse reparse-all \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
-	restore-clickhouse restore-litellm restore-grafana
+	restore-clickhouse restore-litellm restore-grafana \
+	observability-up observability-down observability-logs observability-status
 
 # The six langfuse-* services (see docker-compose.yml) all carry
 # `profiles: [langfuse]`, so `docker compose down` doesn't accept a bare
@@ -23,13 +24,18 @@ INGEST_URI := $(if $(strip $(AGENT_CLI_TRACKING_API_URL)),$(AGENT_CLI_TRACKING_A
 # see the langfuse-down comment below) - list them explicitly instead.
 LANGFUSE_SERVICES := langfuse-web langfuse-worker langfuse-db langfuse-clickhouse langfuse-minio langfuse-redis
 
+# The observability-stack services (see docker-compose.yml) all carry
+# `profiles: [observability]` - same reasoning as LANGFUSE_SERVICES above,
+# list them explicitly so a scoped up/down/logs/status never touches core.
+OBSERVABILITY_SERVICES := prometheus blackbox redis-exporter loki alloy cadvisor node-exporter
+
 start up:
 	docker compose up -d --build --force-recreate
 
 status:
 	docker compose ps
 
-stop down: langfuse-down
+stop down: langfuse-down observability-down
 	docker compose down
 
 logs:
@@ -50,6 +56,26 @@ langfuse-down:
 
 langfuse-logs:
 	docker compose --profile langfuse logs -f $(LANGFUSE_SERVICES)
+
+# Opt-in observability stack (Prometheus/Blackbox/redis-exporter/Loki/Alloy -
+# see README "Observability"). `make up`/`make down` call observability-down
+# automatically on teardown; run these directly to bounce just this stack
+# without touching the core services.
+observability-up:
+	docker compose --profile observability up -d --build $(OBSERVABILITY_SERVICES)
+
+# `docker compose --profile observability down` (no service args) tears down
+# the core stack too, since --profile observability activates observability
+# *in addition to* default (no-profile) services - passing
+# $(OBSERVABILITY_SERVICES) explicitly scopes it to just those containers.
+observability-down:
+	docker compose --profile observability down $(OBSERVABILITY_SERVICES)
+
+observability-logs:
+	docker compose --profile observability logs -f $(OBSERVABILITY_SERVICES)
+
+observability-status:
+	docker compose --profile observability ps $(OBSERVABILITY_SERVICES)
 
 # Restarts running containers in place (not a rebuild) - picks up edits to
 # bind-mounted source (services/webhook/src, etc.) for services without

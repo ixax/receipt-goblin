@@ -1,0 +1,29 @@
+<clickhouse>
+    <!-- System log tables, ported from the old metrics/ project's config.xml
+         - that project only had query_log + crash_log enabled (with
+         asynchronous_metric_log/metric_log commented out); this adds those
+         two as well since the ported ClickHouse Health Grafana dashboard
+         (services/grafana/dashboards/health/clickhouse.json) expects them. -->
+    <query_log>
+        <database>system</database>
+        <table>query_log</table>
+        <partition_by>toYYYYMM(event_date)</partition_by>
+        <flush_interval_milliseconds>60000</flush_interval_milliseconds>
+    </query_log>
+    <crash_log>
+        <database>system</database>
+        <table>crash_log</table>
+        <flush_interval_milliseconds>60000</flush_interval_milliseconds>
+    </crash_log>
+    <asynchronous_metric_log>
+        <database>system</database>
+        <table>asynchronous_metric_log</table>
+        <partition_by>toYYYYMM(event_date)</partition_by>
+        <flush_interval_milliseconds>60000</flush_interval_milliseconds>
+    </asynchronous_metric_log>
+    <metric_log>
+        <database>system</database>
+        <table>metric_log</table>
+        <flush_interval_milliseconds>60000</flush_interval_milliseconds>
+    </metric_log>
+</clickhouse>

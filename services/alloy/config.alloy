@@ -1,0 +1,33 @@
+// Tails every running container's stdout/stderr via the Docker socket and
+// ships it to Loki, labeled by container name - no changes needed to
+// webhook/mcp-server/worker/litellm's own logging (they already write to
+// stdout, picked up here via the Docker log driver). Discovers all running
+// containers regardless of compose profile, so core-stack and langfuse logs
+// land in Loki too once those containers are up - a passive sink, not scoped
+// to the observability profile's own services.
+discovery.docker "containers" {
+	host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+	targets = discovery.docker.containers.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+}
+
+loki.source.docker "default" {
+	host             = "unix:///var/run/docker.sock"
+	targets          = discovery.relabel.containers.output
+	forward_to       = [loki.write.default.receiver]
+	relabel_rules    = discovery.relabel.containers.rules
+}
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}

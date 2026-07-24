@@ -10,3 +10,19 @@ providers:
     allowUiUpdates: true
     options:
       path: /var/lib/grafana/dashboards
+
+  # Monitoring dashboards ported from metrics/ live in their own folder,
+  # kept separate from the product dashboard (agents_overview.json) above -
+  # a distinct top-level mount (not a subdirectory of the default provider's
+  # path), since the file provisioner scans `path` recursively and two
+  # providers both claiming the same file errors with "Cannot change
+  # resource manager identity".
+  - name: health
+    orgId: 1
+    folder: "Health"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards-health

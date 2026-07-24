@@ -22,6 +22,7 @@ from pathlib import Path
 import clickhouse_connect
 import yaml
 from mcp.server.fastmcp import FastMCP
+from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -42,6 +43,7 @@ mcp = FastMCP("clickhouse")
 # https://github.com/modelcontextprotocol/python-sdk/issues/1367). Serving it
 # directly as uvicorn's top-level `app` sidesteps that entirely.
 app = mcp.streamable_http_app()
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 
 async def health(request: Request) -> JSONResponse:

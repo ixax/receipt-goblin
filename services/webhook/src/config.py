@@ -31,6 +31,10 @@ REDIS_PORT = int(os.environ["REDIS_PORT"])
 LITELLM_MASTER_KEY = os.environ["LITELLM_MASTER_KEY"]
 LITELLM_BASE_URL = os.environ["LITELLM_BASE_URL"]
 
+# webhook-worker's own /metrics (prometheus_client.start_http_server) - see
+# worker.py. Not read by webhook/mcp-server/reparse.
+WORKER_METRICS_PORT = int(os.environ.get("WORKER_METRICS_PORT", "9200"))
+
 CAPTURE_DIR = Path(os.environ.get("CAPTURE_DIR", "/app/captures"))
 # Off by default - raw POST bodies contain real prompt/response content and
 # writing one file per request adds disk I/O to the hot path. Set

@@ -4,6 +4,10 @@ Local stack for tracking cost/efficiency of AI coding agents (Claude Code and Co
 Every LLM call is routed through a local LiteLLM proxy; its `generic_api` callback POSTs the full `StandardLoggingPayload` to `webhook`, which computes a compact event (see `build_event` below - the messages-dependent parsing happens here, but never a ClickHouse write) and enqueues it onto `redis`; `webhook-worker` drains that queue in batches and does the actual ClickHouse inserts. Grafana reads from ClickHouse; a CLI session reads back out via the `mcp-server` MCP server.
 This split exists because ClickHouse handles a few large batched inserts far better than many small per-request ones - see "Why a queue in front of ClickHouse" below.
 
+## Scratch pads and project memory
+
+All your notes and data keep inside .claude/data. It is ignored for commit directory, do not use temporary directories and users's home.
+
 ## Repository layout
 
 | Path                                               | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |

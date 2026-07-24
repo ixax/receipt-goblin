@@ -80,6 +80,22 @@ litellm_settings:
     # gpt-5.6-* models above instead of a single shared litellm-owned
     # login - see custom_callbacks.py.
     - custom_callbacks.chatgpt_auth_forward_handler
+    # Turns on LiteLLM's built-in Prometheus integration - exposes /metrics
+    # on this same proxy port (4000), no extra service or callback_settings
+    # block needed (unlike metrics_webhook above). Scraped by Prometheus's
+    # litellm job - see services/prometheus/prometheus.yml.
+    - prometheus
+
+  # /metrics auth defaults to requiring the caller's key via the Authorization
+  # header - but this project authenticates through x-litellm-api-key instead
+  # (general_settings.litellm_key_header_name above; see server.py's
+  # _virtual_key_is_valid comment on why LiteLLM no longer reads Authorization
+  # for key auth here), so the built-in /metrics auth path always rejects it
+  # as malformed. Prometheus scrapes this over the internal Docker network
+  # only, and /metrics carries no secrets (aggregate token/cost/latency
+  # counters, same exposure level as this project's other unauthenticated
+  # /metrics endpoints) - disabling its auth is the documented escape hatch.
+  require_auth_for_metrics_endpoint: false
 
   # "langfuse" is one of LiteLLM's native logging integrations (unlike
   # metrics_webhook above, it needs no callback_settings block - it just

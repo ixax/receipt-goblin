@@ -15,6 +15,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Request
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from .clickhouse_ingest import _session_and_trace_id, get_client, ingest_git_branch, ingest_plan_proposal
 from .config import CAPTURE_DIR, CAPTURE_ENABLED, LITELLM_BASE_URL, LITELLM_MASTER_KEY
@@ -23,6 +24,7 @@ from .queue_client import enqueue, get_async_redis
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 app = FastAPI()
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 if CAPTURE_ENABLED:
     CAPTURE_DIR.mkdir(parents=True, exist_ok=True)

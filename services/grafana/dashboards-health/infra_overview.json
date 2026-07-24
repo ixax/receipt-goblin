@@ -1,0 +1,1660 @@
+{
+  "apiVersion": "dashboard.grafana.app/v2beta1",
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "infra-overview"
+  },
+  "spec": {
+    "annotations": [],
+    "cursorSync": "Off",
+    "description": "Up/down status, request rate/latency, and worker queue health for every service added by the observability migration - the dashboard the infra-health alert rules (services/grafana/provisioning/alerting/rules.yml) are conceptually about.",
+    "editable": true,
+    "elements": {
+      "panel-1": {
+        "kind": "Panel",
+        "spec": {
+          "id": 1,
+          "title": "ClickHouse",
+          "description": "",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "up{job=\"clickhouse\"} + on() probe_success{job=\"blackbox\", instance=~\".*clickhouse.*\"}",
+                        "instant": true,
+                        "format": "time_series",
+                        "legendFormat": "",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {},
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "DOWN",
+                          "color": "red"
+                        },
+                        "1": {
+                          "text": "DOWN",
+                          "color": "red"
+                        },
+                        "2": {
+                          "text": "UP",
+                          "color": "green"
+                        }
+                      }
+                    }
+                  ],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "red",
+                        "value": 0
+                      },
+                      {
+                        "color": "green",
+                        "value": 2
+                      }
+                    ]
+                  },
+                  "unit": "none"
+                },
+                "overrides": []
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "showPercentChange": false
+              }
+            }
+          }
+        }
+      },
+      "panel-2": {
+        "kind": "Panel",
+        "spec": {
+          "id": 2,
+          "title": "Webhook",
+          "description": "",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "up{job=\"webhook\"} + on() probe_success{job=\"blackbox\", instance=~\".*webhook.*\"}",
+                        "instant": true,
+                        "format": "time_series",
+                        "legendFormat": "",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {},
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "DOWN",
+                          "color": "red"
+                        },
+                        "1": {
+                          "text": "DOWN",
+                          "color": "red"
+                        },
+                        "2": {
+                          "text": "UP",
+                          "color": "green"
+                        }
+                      }
+                    }
+                  ],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "red",
+                        "value": 0
+                      },
+                      {
+                        "color": "green",
+                        "value": 2
+                      }
+                    ]
+                  },
+                  "unit": "none"
+                },
+                "overrides": []
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "showPercentChange": false
+              }
+            }
+          }
+        }
+      },
+      "panel-3": {
+        "kind": "Panel",
+        "spec": {
+          "id": 3,
+          "title": "MCP server",
+          "description": "",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "up{job=\"mcp-server\"} + on() probe_success{job=\"blackbox\", instance=~\".*mcp-server.*\"}",
+                        "instant": true,
+                        "format": "time_series",
+                        "legendFormat": "",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {},
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "DOWN",
+                          "color": "red"
+                        },
+                        "1": {
+                          "text": "DOWN",
+                          "color": "red"
+                        },
+                        "2": {
+                          "text": "UP",
+                          "color": "green"
+                        }
+                      }
+                    }
+                  ],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "red",
+                        "value": 0
+                      },
+                      {
+                        "color": "green",
+                        "value": 2
+                      }
+                    ]
+                  },
+                  "unit": "none"
+                },
+                "overrides": []
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "showPercentChange": false
+              }
+            }
+          }
+        }
+      },
+      "panel-4": {
+        "kind": "Panel",
+        "spec": {
+          "id": 4,
+          "title": "Worker",
+          "description": "",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "up{job=\"worker\"}",
+                        "instant": true,
+                        "format": "time_series",
+                        "legendFormat": "",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {},
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "DOWN",
+                          "color": "red"
+                        },
+                        "1": {
+                          "text": "UP",
+                          "color": "green"
+                        }
+                      }
+                    }
+                  ],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "red",
+                        "value": 0
+                      },
+                      {
+                        "color": "green",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "unit": "none"
+                },
+                "overrides": []
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "showPercentChange": false
+              }
+            }
+          }
+        }
+      },
+      "panel-5": {
+        "kind": "Panel",
+        "spec": {
+          "id": 5,
+          "title": "Redis",
+          "description": "",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "up{job=\"redis\"}",
+                        "instant": true,
+                        "format": "time_series",
+                        "legendFormat": "",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {},
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "DOWN",
+                          "color": "red"
+                        },
+                        "1": {
+                          "text": "UP",
+                          "color": "green"
+                        }
+                      }
+                    }
+                  ],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "red",
+                        "value": 0
+                      },
+                      {
+                        "color": "green",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "unit": "none"
+                },
+                "overrides": []
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "showPercentChange": false
+              }
+            }
+          }
+        }
+      },
+      "panel-6": {
+        "kind": "Panel",
+        "spec": {
+          "id": 6,
+          "title": "LiteLLM",
+          "description": "",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "up{job=\"litellm\"} + on() probe_success{job=\"blackbox\", instance=~\".*litellm.*\"}",
+                        "instant": true,
+                        "format": "time_series",
+                        "legendFormat": "",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {},
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "DOWN",
+                          "color": "red"
+                        },
+                        "1": {
+                          "text": "DOWN",
+                          "color": "red"
+                        },
+                        "2": {
+                          "text": "UP",
+                          "color": "green"
+                        }
+                      }
+                    }
+                  ],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "red",
+                        "value": 0
+                      },
+                      {
+                        "color": "green",
+                        "value": 2
+                      }
+                    ]
+                  },
+                  "unit": "none"
+                },
+                "overrides": []
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "showPercentChange": false
+              }
+            }
+          }
+        }
+      },
+      "panel-7": {
+        "kind": "Panel",
+        "spec": {
+          "id": 7,
+          "title": "Grafana",
+          "description": "",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "probe_success{job=\"blackbox\", instance=~\".*grafana.*\"}",
+                        "instant": true,
+                        "format": "time_series",
+                        "legendFormat": "",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {},
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "DOWN",
+                          "color": "red"
+                        },
+                        "1": {
+                          "text": "UP",
+                          "color": "green"
+                        }
+                      }
+                    }
+                  ],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "red",
+                        "value": 0
+                      },
+                      {
+                        "color": "green",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "unit": "none"
+                },
+                "overrides": []
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "showPercentChange": false
+              }
+            }
+          }
+        }
+      },
+      "panel-8": {
+        "kind": "Panel",
+        "spec": {
+          "id": 8,
+          "title": "Request rate (webhook, mcp-server)",
+          "description": "",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "sum(rate(http_requests_total{job=\"webhook\"}[1m])) by (handler)",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "webhook {{handler}}",
+                        "interval": ""
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "B",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "sum(rate(http_requests_total{job=\"mcp-server\"}[1m])) by (handler)",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "mcp-server {{handler}}",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "barAlignment": 0,
+                    "lineWidth": 1,
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "spanNulls": false,
+                    "insertNulls": false,
+                    "showPoints": "never",
+                    "pointSize": 5,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "axisPlacement": "auto",
+                    "axisLabel": "",
+                    "axisColorMode": "text",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "axisCenteredZero": false,
+                    "hideFrom": {
+                      "tooltip": false,
+                      "viz": false,
+                      "legend": false
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "unit": "reqps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "none"
+                },
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "calcs": []
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-9": {
+        "kind": "Panel",
+        "spec": {
+          "id": 9,
+          "title": "p95 request latency (webhook, mcp-server)",
+          "description": "",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"webhook\"}[5m])) by (le, handler))",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "webhook {{handler}}",
+                        "interval": ""
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "B",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"mcp-server\"}[5m])) by (le, handler))",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "mcp-server {{handler}}",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "barAlignment": 0,
+                    "lineWidth": 1,
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "spanNulls": false,
+                    "insertNulls": false,
+                    "showPoints": "never",
+                    "pointSize": 5,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "axisPlacement": "auto",
+                    "axisLabel": "",
+                    "axisColorMode": "text",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "axisCenteredZero": false,
+                    "hideFrom": {
+                      "tooltip": false,
+                      "viz": false,
+                      "legend": false
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "none"
+                },
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "calcs": []
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-10": {
+        "kind": "Panel",
+        "spec": {
+          "id": 10,
+          "title": "Worker throughput",
+          "description": "",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "rate(worker_events_ingested_total[1m])",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "events ingested/s",
+                        "interval": ""
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "B",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "rate(worker_batches_flushed_total[1m])",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "batches flushed/s",
+                        "interval": ""
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "C",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "rate(worker_entries_reclaimed_total[1m])",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "reclaimed/s",
+                        "interval": ""
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "D",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "rate(worker_decode_failures_total[1m])",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "decode failures/s",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "barAlignment": 0,
+                    "lineWidth": 1,
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "spanNulls": false,
+                    "insertNulls": false,
+                    "showPoints": "never",
+                    "pointSize": 5,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "axisPlacement": "auto",
+                    "axisLabel": "",
+                    "axisColorMode": "text",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "axisCenteredZero": false,
+                    "hideFrom": {
+                      "tooltip": false,
+                      "viz": false,
+                      "legend": false
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "unit": "none"
+                },
+                "overrides": []
+              },
+              "options": {
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "none"
+                },
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "calcs": []
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-11": {
+        "kind": "Panel",
+        "spec": {
+          "id": 11,
+          "title": "Worker queue depth & lag",
+          "description": "",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "worker_stream_depth",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "stream depth (XLEN)",
+                        "interval": ""
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "B",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "worker_pending_count",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "pending (XPENDING)",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "barAlignment": 0,
+                    "lineWidth": 1,
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "spanNulls": false,
+                    "insertNulls": false,
+                    "showPoints": "never",
+                    "pointSize": 5,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "axisPlacement": "auto",
+                    "axisLabel": "",
+                    "axisColorMode": "text",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "axisCenteredZero": false,
+                    "hideFrom": {
+                      "tooltip": false,
+                      "viz": false,
+                      "legend": false
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "unit": "none"
+                },
+                "overrides": []
+              },
+              "options": {
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "none"
+                },
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "calcs": []
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-12": {
+        "kind": "Panel",
+        "spec": {
+          "id": 12,
+          "title": "Worker flush latency (p50/p95)",
+          "description": "",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "histogram_quantile(0.50, sum(rate(worker_flush_latency_seconds_bucket[5m])) by (le))",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "p50",
+                        "interval": ""
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "B",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "histogram_quantile(0.95, sum(rate(worker_flush_latency_seconds_bucket[5m])) by (le))",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "p95",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "barAlignment": 0,
+                    "lineWidth": 1,
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "spanNulls": false,
+                    "insertNulls": false,
+                    "showPoints": "never",
+                    "pointSize": 5,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "axisPlacement": "auto",
+                    "axisLabel": "",
+                    "axisColorMode": "text",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "axisCenteredZero": false,
+                    "hideFrom": {
+                      "tooltip": false,
+                      "viz": false,
+                      "legend": false
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "none"
+                },
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "calcs": []
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "layout": {
+      "kind": "GridLayout",
+      "spec": {
+        "items": [
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-1"
+              },
+              "x": 0,
+              "y": 0,
+              "width": 3,
+              "height": 4
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-2"
+              },
+              "x": 3,
+              "y": 0,
+              "width": 3,
+              "height": 4
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-3"
+              },
+              "x": 6,
+              "y": 0,
+              "width": 3,
+              "height": 4
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-4"
+              },
+              "x": 9,
+              "y": 0,
+              "width": 3,
+              "height": 4
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-5"
+              },
+              "x": 12,
+              "y": 0,
+              "width": 3,
+              "height": 4
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-6"
+              },
+              "x": 15,
+              "y": 0,
+              "width": 3,
+              "height": 4
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-7"
+              },
+              "x": 18,
+              "y": 0,
+              "width": 3,
+              "height": 4
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-8"
+              },
+              "x": 0,
+              "y": 4,
+              "width": 12,
+              "height": 8
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-9"
+              },
+              "x": 12,
+              "y": 4,
+              "width": 12,
+              "height": 8
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-10"
+              },
+              "x": 0,
+              "y": 12,
+              "width": 12,
+              "height": 8
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-11"
+              },
+              "x": 12,
+              "y": 12,
+              "width": 12,
+              "height": 8
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-12"
+              },
+              "x": 0,
+              "y": 20,
+              "width": 12,
+              "height": 8
+            }
+          }
+        ]
+      }
+    },
+    "links": [],
+    "liveNow": false,
+    "preload": false,
+    "tags": [
+      "health",
+      "infra"
+    ],
+    "timeSettings": {
+      "autoRefresh": "30s",
+      "autoRefreshIntervals": [
+        "5s",
+        "10s",
+        "30s",
+        "1m",
+        "5m"
+      ],
+      "fiscalYearStartMonth": 0,
+      "from": "now-6h",
+      "to": "now",
+      "timezone": "browser",
+      "hideTimepicker": false
+    },
+    "title": "Infra Overview",
+    "variables": []
+  }
+}

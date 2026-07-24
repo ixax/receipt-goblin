@@ -15,15 +15,26 @@ import socket
 import time
 
 import redis
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 from .clickhouse_ingest import ingest_events_batch
-from .config import BATCH_SIZE, FLUSH_INTERVAL_MS, CONSUMER_GROUP, STALE_IDLE_MS, STREAM_KEY
+from .config import BATCH_SIZE, FLUSH_INTERVAL_MS, CONSUMER_GROUP, STALE_IDLE_MS, STREAM_KEY, WORKER_METRICS_PORT
 from .queue_client import get_redis
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("webhook.worker")
 
 CONSUMER_NAME = f"{socket.gethostname()}-{os.getpid()}"
+
+# redis_exporter only sees Redis-server-level stats (memory, clients,
+# commands) - these cover the stream's own business metrics instead.
+BATCHES_FLUSHED = Counter("worker_batches_flushed_total", "Batches flushed to ClickHouse")
+EVENTS_INGESTED = Counter("worker_events_ingested_total", "Events ingested into ClickHouse")
+ENTRIES_RECLAIMED = Counter("worker_entries_reclaimed_total", "Stale pending entries reclaimed via XAUTOCLAIM")
+DECODE_FAILURES = Counter("worker_decode_failures_total", "Queued events that failed JSON decoding")
+FLUSH_LATENCY = Histogram("worker_flush_latency_seconds", "Time spent in ingest_events_batch per flush")
+STREAM_DEPTH = Gauge("worker_stream_depth", "Current XLEN of the queue stream")
+PENDING_COUNT = Gauge("worker_pending_count", "Current XPENDING count for the consumer group")
 
 
 def _ensure_group(client: redis.Redis) -> None:
@@ -43,14 +54,18 @@ def _decode_into(entries: list[tuple[str, dict]], message_ids: list[str], events
         try:
             events.append(json.loads(raw))
         except (TypeError, ValueError):
+            DECODE_FAILURES.inc()
             logger.exception("failed to decode queued event (message_id=%s)", message_id)
 
 
 def _flush(client: redis.Redis, message_ids: list[str], events: list[dict]) -> None:
     if not message_ids:
         return
-    ingest_events_batch(events)
+    with FLUSH_LATENCY.time():
+        ingest_events_batch(events)
     client.xack(STREAM_KEY, CONSUMER_GROUP, *message_ids)
+    BATCHES_FLUSHED.inc()
+    EVENTS_INGESTED.inc(len(events))
     logger.info("ingested batch (n=%d)", len(events))
 
 
@@ -60,11 +75,19 @@ def _claim_stale_entries(client: redis.Redis, message_ids: list[str], events: li
         min_idle_time=STALE_IDLE_MS, start_id="0-0", count=BATCH_SIZE,
     )
     if claimed:
+        ENTRIES_RECLAIMED.inc(len(claimed))
         logger.info("reclaimed stale pending entries (n=%d)", len(claimed))
         _decode_into(claimed, message_ids, events)
 
 
+def _refresh_queue_gauges(client: redis.Redis) -> None:
+    STREAM_DEPTH.set(client.xlen(STREAM_KEY))
+    pending = client.xpending(STREAM_KEY, CONSUMER_GROUP)
+    PENDING_COUNT.set(pending["pending"] if pending else 0)
+
+
 def run() -> None:
+    start_http_server(WORKER_METRICS_PORT)
     client = get_redis()
     _ensure_group(client)
     logger.info("webhook-worker started (consumer=%s, stream=%s, group=%s)", CONSUMER_NAME, STREAM_KEY, CONSUMER_GROUP)
@@ -102,7 +125,10 @@ def run() -> None:
             # Only worth checking for stranded pending entries when the
             # stream was otherwise idle, and no more than once every
             # STALE_IDLE_MS - no need to hammer XAUTOCLAIM on every empty poll.
+            # Reuses the same gate to refresh the queue-depth gauges, rather
+            # than hitting Redis with XLEN/XPENDING on every loop iteration.
             _claim_stale_entries(client, message_ids, events)
+            _refresh_queue_gauges(client)
             last_claim_check = now
 
 

@@ -33,4 +33,10 @@ sed \
   -e "s|__CLICKHOUSE_DATABASE__|${CLICKHOUSE_DATABASE}|g" \
   "$TEMPLATE" > "$OUT_DIR/clickhouse.yml"
 
+# Prometheus/Loki datasources carry no secrets/per-env values (fixed internal
+# Docker DNS names), so unlike ClickHouse's above they're plain static files,
+# not .template - just copied through as-is.
+cp /etc/grafana/provisioning-templates/datasources/prometheus.yml "$OUT_DIR/prometheus.yml"
+cp /etc/grafana/provisioning-templates/datasources/loki.yml "$OUT_DIR/loki.yml"
+
 exec /run.sh "$@"

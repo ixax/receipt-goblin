@@ -103,6 +103,11 @@ services:
         published: *clickhouse-http-port
       - target: 9000
         published: *clickhouse-native-port
+    expose:
+      # Prometheus's built-in metrics endpoint (config.d/prometheus.xml) -
+      # internal only, no host port, scraped by Prometheus's `clickhouse`
+      # job (services/prometheus/prometheus.yml).
+      - "9363"
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       # Backing disk for native BACKUP/RESTORE statements (see
@@ -186,7 +191,16 @@ services:
       - ./services/grafana/config.yml:/etc/grafana/config.yml:ro
       - ./services/grafana/provisioning/datasources:/etc/grafana/provisioning-templates/datasources:ro
       - ./services/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./services/grafana/provisioning/alerting:/etc/grafana/provisioning/alerting:ro
       - ./services/grafana/dashboards:/var/lib/grafana/dashboards
+      # Health-folder dashboards live under a separate top-level mount, not
+      # nested under dashboards/ above - the file provisioner scans its
+      # `path` recursively, so nesting it there made the `default` provider
+      # (path: /var/lib/grafana/dashboards) race the `health` provider to
+      # claim these files, which Grafana rejects ("Cannot change resource
+      # manager identity"). Keeping the two mounts as siblings avoids the
+      # overlap entirely.
+      - ./services/grafana/dashboards-health:/var/lib/grafana/dashboards-health
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 5s
@@ -333,6 +347,8 @@ services:
       # these with no fallback - unset here would crash worker.py on import.
       LITELLM_MASTER_KEY: *litellm-master-key
       LITELLM_BASE_URL: *litellm-base-url
+    expose:
+      - "9200"
     mem_limit: 256m
     restart: always
     healthcheck:
@@ -490,6 +506,180 @@ services:
       retries: 20
     mem_limit: 256m
     restart: always
+    networks:
+      - receipt-goblin
+
+  prometheus:
+    # Config baked in at build time (services/prometheus/Dockerfile) - see
+    # services/prometheus/prometheus.yml for scrape jobs.
+    build: ./services/prometheus
+    container_name: receipt-goblin-prometheus
+    profiles:
+      - observability
+    mem_limit: 512m
+    restart: unless-stopped
+    expose:
+      - "9090"
+    volumes:
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - receipt-goblin
+
+  blackbox:
+    # Config baked in at build time (services/blackbox/Dockerfile) - see
+    # services/blackbox/config.yml for the http_2xx module Prometheus's
+    # blackbox scrape job (services/prometheus/prometheus.yml) uses.
+    build: ./services/blackbox
+    container_name: receipt-goblin-blackbox
+    profiles:
+      - observability
+    mem_limit: 128m
+    restart: unless-stopped
+    expose:
+      - "9115"
+    networks:
+      - receipt-goblin
+
+  redis-exporter:
+    # Stock image, no custom config - server-level Redis stats only (memory,
+    # clients, commands). Business-level stream metrics (queue depth,
+    # consumer lag, batches) come from webhook-worker's own /metrics instead
+    # (see the worker service below), since redis_exporter can't see those.
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: receipt-goblin-redis-exporter
+    profiles:
+      - observability
+    command: ["--redis.addr", "redis://redis:6379"]
+    mem_limit: 128m
+    restart: unless-stopped
+    expose:
+      - "9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - receipt-goblin
+
+  cadvisor:
+    # Stock image, no custom config. Read-only host mounts below are system
+    # paths cAdvisor needs to read cgroup/container state directly - not
+    # config files, so they're outside the no-volume-mounts convention (same
+    # exception class as alloy's docker.sock mount below). On Docker Desktop
+    # for Mac these paths are the Linux VM's, not literally the host Mac -
+    # per-container numbers are accurate, host-wide ones reflect the VM.
+    # docker.sock is required too - without it cadvisor can only see raw
+    # cgroup paths (id="/docker/<hash>"), not human-readable container names
+    # (name="receipt-goblin-worker" etc.) the dashboard variable depends on.
+    # Docker Desktop's default containerd image store (Docker Desktop 4.x+)
+    # breaks cadvisor's classic overlay2-graphdriver container discovery
+    # ("failed to identify the read-write layer ID" - /var/lib/docker/image/
+    # overlayfs/ no longer exists there). Fix: point cadvisor at the same
+    # KNOWN BROKEN on this machine: this dev Docker runs under Colima
+    # (`docker info` -> Storage Driver: overlayfs, the containerd-snapshotter
+    # layout, not classic overlay2), so every real container fails with
+    # "failed to identify the read-write layer ID" and never gets tracked -
+    # cadvisor's container discovery still expects the classic overlay2
+    # layerdb layout. Confirmed: neither mounting docker.sock, nor pointing
+    # --containerd at Colima's own containerd socket
+    # (/run/containerd/containerd.sock inside the VM), changes this -
+    # cadvisor's cgroup-path-based docker detection takes over regardless.
+    # Only real fixes: disable the containerd-snapshotter feature for this
+    # Colima instance (VM-level daemon.json change, `colima start --edit`),
+    # or a plain Linux Docker host (no VM/containerd-snapshotter) in
+    # production. Left running for the node_exporter/Host tab pairing below;
+    # the Containers tab in
+    # services/grafana/dashboards-health/docker_containers.json will stay
+    # empty here until one of the above is done.
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: receipt-goblin-cadvisor
+    profiles:
+      - observability
+    mem_limit: 256m
+    restart: unless-stopped
+    expose:
+      - "8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - receipt-goblin
+
+  node-exporter:
+    # Stock image, no custom config. Same host-mount rationale as cadvisor
+    # above - reports on the Docker Desktop Linux VM on macOS, the real host
+    # on Linux.
+    image: prom/node-exporter:v1.8.2
+    container_name: receipt-goblin-node-exporter
+    profiles:
+      - observability
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/host/root"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    mem_limit: 128m
+    restart: unless-stopped
+    expose:
+      - "9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+    networks:
+      - receipt-goblin
+
+  loki:
+    # Config baked in at build time (services/loki/Dockerfile). Single-binary,
+    # filesystem-backed - no object storage needed at this scale.
+    build: ./services/loki
+    container_name: receipt-goblin-loki
+    profiles:
+      - observability
+    mem_limit: 512m
+    restart: unless-stopped
+    expose:
+      - "3100"
+    volumes:
+      - loki-data:/loki
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - receipt-goblin
+
+  alloy:
+    # Config baked in at build time (services/alloy/Dockerfile) - see
+    # services/alloy/config.alloy. Docker socket mount is a system-socket
+    # exception to this repo's no-config-volume-mounts convention (needed for
+    # discovery.docker to find and tail every running container's logs), not
+    # a config file.
+    build: ./services/alloy
+    container_name: receipt-goblin-alloy
+    profiles:
+      - observability
+    mem_limit: 256m
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      loki:
+        condition: service_healthy
     networks:
       - receipt-goblin
 
@@ -709,3 +899,5 @@ volumes:
   langfuse-clickhouse-logs:
   langfuse-minio-data:
   langfuse-redis-data:
+  prometheus-data:
+  loki-data:

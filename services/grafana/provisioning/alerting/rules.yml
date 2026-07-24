@@ -1,0 +1,219 @@
+apiVersion: 1
+
+# No contact point is wired up here (per project decision - see the plan) -
+# these rules alert into Grafana's built-in default receiver only, visible
+# under Alerting > Alert rules, not delivered anywhere real yet. Fill in a
+# services/grafana/provisioning/alerting/contactpoints.yml + notification
+# policy once there's somewhere to actually send these.
+groups:
+  - orgId: 1
+    name: infra-health
+    folder: Alerts
+    interval: 30s
+    rules:
+      - uid: alert-clickhouse-down
+        title: ClickHouse is down
+        condition: C
+        for: 30s
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              instant: true
+              expr: 'up{job="clickhouse"} + on() probe_success{job="blackbox", instance=~".*clickhouse.*"}'
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: lt, params: [2]}
+                  operator: {type: and}
+                  query: {params: [B]}
+                  reducer: {type: last, params: []}
+                  type: query
+
+      - uid: alert-webhook-down
+        title: Webhook is down
+        condition: C
+        for: 30s
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              instant: true
+              expr: 'up{job="webhook"} + on() probe_success{job="blackbox", instance=~".*webhook.*"}'
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: lt, params: [2]}
+                  operator: {type: and}
+                  query: {params: [B]}
+                  reducer: {type: last, params: []}
+                  type: query
+
+      - uid: alert-mcp-server-down
+        title: MCP server is down
+        condition: C
+        for: 30s
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              instant: true
+              expr: 'up{job="mcp-server"} + on() probe_success{job="blackbox", instance=~".*mcp-server.*"}'
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: lt, params: [2]}
+                  operator: {type: and}
+                  query: {params: [B]}
+                  reducer: {type: last, params: []}
+                  type: query
+
+      - uid: alert-redis-down
+        title: Redis is down
+        condition: C
+        for: 30s
+        noDataState: NoData
+        execErrState: Error
+        # No HTTP endpoint to blackbox-probe here - redis_exporter's own
+        # `up{job="redis"}` is the only signal, so this skips the
+        # up+probe_success combination the HTTP-fronted services use above.
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              instant: true
+              expr: 'up{job="redis"}'
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+                  operator: {type: and}
+                  query: {params: [B]}
+                  reducer: {type: last, params: []}
+                  type: query
+
+      - uid: alert-litellm-down
+        title: LiteLLM is down
+        condition: C
+        for: 30s
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              instant: true
+              expr: 'up{job="litellm"} + on() probe_success{job="blackbox", instance=~".*litellm.*"}'
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: lt, params: [2]}
+                  operator: {type: and}
+                  query: {params: [B]}
+                  reducer: {type: last, params: []}
+                  type: query
+
+      - uid: alert-grafana-down
+        title: Grafana is down
+        condition: C
+        for: 30s
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{job="blackbox", instance=~".*grafana.*"}'
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+                  operator: {type: and}
+                  query: {params: [B]}
+                  reducer: {type: last, params: []}
+                  type: query

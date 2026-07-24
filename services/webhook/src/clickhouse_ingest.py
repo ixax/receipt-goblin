@@ -36,6 +36,34 @@ _TRANSCRIPT_HANDOFF_PREFIX = "<transcript>"
 _TITLE_GEN_PREFIX = "<session>"
 _INTERRUPTED_PREFIX = "[Request interrupted by user]"
 _WEBPAGE_CONTENT_PREFIX = "Web page content"
+_STOP_HOOK_FEEDBACK_PREFIX = "Stop hook feedback:"
+
+# Trace panel (panel-76) text-cleaning regexes, ported from its SQL CTEs
+# (prompt_calc/prompt_display) so the cleaned/classified/truncated display
+# text can be precomputed once at ingest instead of on every dashboard load.
+_SYSTEM_REMINDER_STRIP_RE = re.compile(r"^<system-reminder>.*?</system-reminder>\s*", re.DOTALL)
+_COMMAND_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.DOTALL)
+_LOCAL_STDOUT_STRIP_RE = re.compile(r"^.*</local-command-stdout>", re.DOTALL)
+_INTERRUPTED_STRIP_RE = re.compile(r"^\[Request interrupted by user\]\s*")
+_SUMMARY_TAG_RE = re.compile(r"<summary>(.*?)</summary>", re.DOTALL)
+_STATUS_TAG_RE = re.compile(r"<status>(.*?)</status>")
+_SEVERITY_TAG_RE = re.compile(r"<severity>\s*(\d+)")
+_BLOCK_TAG_RE = re.compile(r"<block>\s*(yes|no)", re.IGNORECASE)
+# Stop hook feedback prompts are shaped "Stop hook feedback:\n[<original user
+# prompt>]: <judge's reasoning>" - the original prompt itself may contain
+# "]: " sequences, so the middle group is greedy (not lazy): the regex engine
+# backtracks from the end of the string, landing on the *last* "]: " in the
+# text, which is the real separator between the echoed prompt and the
+# reasoning that follows it.
+_STOP_HOOK_REASON_RE = re.compile(r"^Stop hook feedback:\n\[.*\]: (.*)$", re.DOTALL)
+_WHITESPACE_COLLAPSE_RE = re.compile(r"[ \t]+")
+_BLANK_LINES_COLLAPSE_RE = re.compile(r"\n{2,}")
+
+_DISPLAY_TEXT_TRUNCATE = 1500
+_WEBPAGE_DISPLAY_TRUNCATE = 100
+
+# tool_render's argument preference chain, ported verbatim (order matters).
+_TOOL_ARG_KEY_PREFERENCE = ("file_path", "command", "sql", "url", "query", "description", "summary", "task_id")
 
 # provider classification for agent_usage.provider - the same 3-way regex
 # that used to be duplicated across ~30 Grafana panels, now computed once
@@ -429,6 +457,148 @@ def _provider_for_model(model: str) -> str:
     return "other"
 
 
+def _collapse_whitespace(text: str) -> str:
+    text = _WHITESPACE_COLLAPSE_RE.sub(" ", text)
+    return _BLANK_LINES_COLLAPSE_RE.sub("\n", text)
+
+
+def _clean_prompt_text(prompt_text: str) -> str:
+    return _SYSTEM_REMINDER_STRIP_RE.sub("", prompt_text, count=1).strip()
+
+
+def _response_text(payload: dict) -> str:
+    """The model's own reply text for this call - shared by _message_row and
+    _prompt_kind_and_display's transcript_handoff branch, which needs to read
+    the safety-monitor's <severity>/<block> verdict out of it."""
+    response = payload.get("response") or {}
+    choices = response.get("choices") or []
+    return _flatten_content(choices[0].get("message", {}).get("content")) if choices else ""
+
+
+def _judge_verdict(response_text: str) -> tuple[Optional[bool], str]:
+    """Parses the goal-check judge's response, once at ingest, so the Trace
+    panel can render a pass/fail marker + explanation without re-parsing the
+    raw response JSON per row. Confirmed via real samples to always be a
+    bare top-level object shaped {"ok": <bool>, "reason": "<string>"} - no
+    markdown fencing, no wrapper tags."""
+    try:
+        data = json.loads(response_text)
+    except (TypeError, ValueError):
+        return None, ""
+    if not isinstance(data, dict):
+        return None, ""
+    ok = data.get("ok")
+    reason = data.get("reason")
+    return (ok if isinstance(ok, bool) else None), (reason if isinstance(reason, str) else "")
+
+
+def _prompt_kind_and_display(prompt_text: str, command_name: str, response_text: str = "") -> tuple[str, str, str]:
+    """Classifies the *incoming* prompt itself (a port of panel-76's
+    prompt_calc/prompt_display/prompt_final CTEs), independently of whatever
+    this call's own response went on to do. This is deliberately NOT the
+    same thing as calculated_type: calculated_type prioritizes "did the
+    response invoke a tool" (category A) over "what did the prompt that
+    triggered it look like" (category B) - so a system-notification/
+    judge-call/etc prompt whose response happens to also call a tool was
+    getting classified as a plain tool_call, and the Trace panel (which read
+    is_sys/is_real straight off calculated_type) rendered it as a real user
+    prompt. prompt_kind fixes that by always re-deriving the prompt's own
+    shape from prompt_text, never from calculated_type.
+
+    Returns (prompt_kind, display_text, display_arg) - display_arg is the
+    variable, "gray argument" part of the line (severity score, agent
+    completion summary, ...), shown the same way tool_render shows a tool's
+    main argument, rather than being fused into display_text's fixed label.
+    Empty when a branch has no such variable part."""
+    if not prompt_text:
+        return "", "", ""
+
+    cleaned = _clean_prompt_text(prompt_text)
+
+    command_args_match = _COMMAND_ARGS_RE.search(prompt_text)
+    command_args = command_args_match.group(1) if command_args_match else ""
+    if not command_args and command_name and "</local-command-stdout>" in prompt_text:
+        command_args = _LOCAL_STDOUT_STRIP_RE.sub("", prompt_text, count=1).strip()
+    if command_args:
+        return "command", f"/{command_name} {_collapse_whitespace(command_args)[:_DISPLAY_TEXT_TRUNCATE]}", ""
+
+    if prompt_text.startswith(_INTERRUPTED_PREFIX):
+        stripped = _INTERRUPTED_STRIP_RE.sub("", cleaned, count=1)
+        return "interrupted", f"[interrupted] {_collapse_whitespace(stripped)[:_DISPLAY_TEXT_TRUNCATE]}", ""
+    if prompt_text.startswith(_SUGGESTION_MODE_PREFIX):
+        return "suggestion_mode", _collapse_whitespace(cleaned)[:_DISPLAY_TEXT_TRUNCATE], ""
+    if prompt_text.startswith(_JUDGE_CALL_PREFIX):
+        return "judge_call", "[goal-check judge call]", ""
+    if prompt_text.startswith(_TITLE_GEN_PREFIX):
+        return "title_gen", "[title-gen call]", ""
+    if prompt_text.startswith(_TRANSCRIPT_HANDOFF_PREFIX):
+        severity_match = _SEVERITY_TAG_RE.search(response_text)
+        block_match = _BLOCK_TAG_RE.search(response_text)
+        arg_parts = []
+        if severity_match:
+            arg_parts.append(f"{severity_match.group(1)}/100")
+        if block_match:
+            arg_parts.append(f"block: {block_match.group(1).lower()}")
+        return "transcript_handoff", "[background] severity check", ", ".join(arg_parts)
+    if prompt_text.startswith(_SYSTEM_NOTIFICATION_PREFIX):
+        idx = cleaned.find("\n\n")
+        tail = (cleaned[idx + 2:] if idx >= 0 else cleaned[1:]).strip()
+        summary_match = _SUMMARY_TAG_RE.search(tail)
+        if summary_match:
+            status_match = _STATUS_TAG_RE.search(tail)
+            status_text = status_match.group(1) if status_match else ""
+            summary_text = _collapse_whitespace(summary_match.group(1))[:_DISPLAY_TEXT_TRUNCATE]
+            return "system_notification", f"[background] {status_text}", summary_text
+        if tail:
+            return "system_notification", f"[background] {_collapse_whitespace(tail)[:_DISPLAY_TEXT_TRUNCATE]}", ""
+        return "system_notification", "[background check]", ""
+    if prompt_text.startswith(_WEBPAGE_CONTENT_PREFIX):
+        excerpt = _collapse_whitespace(cleaned)[:_WEBPAGE_DISPLAY_TRUNCATE]
+        return "webpage_content", f"{excerpt}...", ""
+    if prompt_text.startswith(_STOP_HOOK_FEEDBACK_PREFIX):
+        return "stop_hook_feedback", "[background] stop hook feedback", ""
+
+    return "real", _collapse_whitespace(cleaned)[:_DISPLAY_TEXT_TRUNCATE], ""
+
+
+def _tool_display_arg(calculated_type: str, calculated_payload: dict) -> str:
+    """Ports tool_render's 8-branch JSONExtractString preference chain to
+    Python, run once at ingest over the already-parsed args dict instead of
+    per dashboard row over JSON text."""
+    if calculated_type == "skill_call":
+        args = calculated_payload.get("args", "")
+        return args if isinstance(args, str) else json.dumps(args, default=str)
+    if calculated_type != "tool_call":
+        return ""
+    tools = calculated_payload.get("tools") or []
+    if not tools:
+        return ""
+    args = tools[0].get("args") or {}
+    if not isinstance(args, dict):
+        return str(args)
+    for key in _TOOL_ARG_KEY_PREFERENCE:
+        value = args.get(key)
+        if value:
+            return f"task_id: {value}" if key == "task_id" else str(value)
+    return json.dumps(args, default=str)
+
+
+def _error_type(payload: dict) -> str:
+    """Decodes the LLM provider's error type (e.g. "rate_limit_error") from
+    error_information.error_message - a JSON object encoded as a string
+    within the payload - once at ingest, instead of a JOIN to event_sources
+    plus a nested JSONExtractString per failed row in the Trace panel."""
+    error_message = (payload.get("error_information") or {}).get("error_message")
+    if isinstance(error_message, str):
+        try:
+            error_message = json.loads(error_message)
+        except (TypeError, ValueError):
+            return ""
+    if not isinstance(error_message, dict):
+        return ""
+    return (error_message.get("error") or {}).get("type", "")
+
+
 def _classify_event(payload: dict) -> tuple[str, dict]:
     """The calculated_type/calculated_payload dispatcher - see the
     schema-sql-capture plan for the full category list and rationale for
@@ -685,6 +855,42 @@ def _event_row(
     tool_name = _first_tool_call_name(payload)
     failed_tool_name, failed_tool_args, failed_tool_error = _failed_tool_call(payload.get("messages"))
     calculated_type, calculated_payload = _classify_event(payload)
+
+    response_text = _response_text(payload)
+    prompt_text_raw = _last_user_text(payload.get("messages"))
+    prompt_kind, display_text, display_arg = _prompt_kind_and_display(
+        prompt_text_raw, command_name, response_text
+    )
+    if prompt_kind:
+        calculated_payload["prompt_kind"] = prompt_kind
+        calculated_payload["display_text"] = display_text
+        if display_arg:
+            calculated_payload["display_arg"] = display_arg
+        if prompt_kind == "transcript_handoff":
+            block_match = _BLOCK_TAG_RE.search(response_text)
+            if block_match:
+                calculated_payload["severity_check_block"] = block_match.group(1).lower()
+        if prompt_kind == "judge_call":
+            judge_ok, judge_reason = _judge_verdict(response_text)
+            if judge_ok is not None:
+                calculated_payload["judge_ok"] = judge_ok
+            if judge_reason:
+                calculated_payload["judge_reason"] = judge_reason
+        if prompt_kind == "stop_hook_feedback":
+            reason_match = _STOP_HOOK_REASON_RE.match(prompt_text_raw)
+            if reason_match:
+                calculated_payload["stop_hook_reason"] = reason_match.group(1).strip()
+    tool_display_arg = _tool_display_arg(calculated_type, calculated_payload)
+    if tool_display_arg:
+        calculated_payload["tool_display_arg"] = tool_display_arg
+    if calculated_type == "agent_spawn":
+        subagent_type = calculated_payload.get("subagent_type") or "?"
+        calculated_payload["agent_display_name"] = subagent_type.split("_")[0]
+    if payload.get("status") == "failure":
+        error_type = _error_type(payload)
+        if error_type:
+            calculated_payload["error_type"] = error_type
+
     return [
         _to_dt(payload.get("endTime") or payload.get("startTime")),
         _user_id(payload),
@@ -786,9 +992,7 @@ def _message_row(
     command_name: str, command_version: str, agent_invocation_id: str,
     now: Optional[datetime] = None,
 ) -> Optional[list]:
-    response = payload.get("response") or {}
-    choices = response.get("choices") or []
-    response_text = _flatten_content(choices[0].get("message", {}).get("content")) if choices else ""
+    response_text = _response_text(payload)
     prompt_text = _last_user_text(payload.get("messages"))
     if not prompt_text and not response_text:
         return None

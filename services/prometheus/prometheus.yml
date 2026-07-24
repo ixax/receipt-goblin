@@ -1,0 +1,68 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: clickhouse
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["clickhouse:9363"]
+
+  - job_name: webhook
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["webhook:8000"]
+
+  - job_name: mcp-server
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["mcp-server:8001"]
+
+  - job_name: worker
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["webhook-worker:9200"]
+
+  - job_name: redis
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  - job_name: litellm
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["litellm:4000"]
+
+  - job_name: cadvisor
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  - job_name: node-exporter
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # Blackbox HTTP probing of every service's health endpoint - see
+  # services/blackbox/config.yml for the http_2xx module. The relabel dance
+  # sends the actual probe target as a query param to blackbox itself, then
+  # rewrites `instance` back to the readable target URL for alert rules
+  # (up{job="blackbox", instance=~".*webhook.*"} and friends).
+  - job_name: blackbox
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://webhook:8000/health
+          - http://mcp-server:8001/health
+          - http://clickhouse:8123/ping
+          - http://grafana:3000/api/health
+          - http://litellm:4000/health/liveliness
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
