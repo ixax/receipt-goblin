@@ -86,7 +86,9 @@ def _to_dt(epoch_seconds: Optional[float]) -> datetime:
 
 def _flatten_content(content: Any) -> str:
     """Extracts human-readable text from Anthropic content (string or
-    text/tool_use/tool_result blocks); tool payloads are captured elsewhere."""
+    text/tool_use/tool_result blocks) or Responses-API content (input_text/
+    output_text blocks, used by the "chatgpt" provider); tool payloads are
+    captured elsewhere."""
     if isinstance(content, str):
         return content
     if not isinstance(content, list):
@@ -96,7 +98,7 @@ def _flatten_content(content: Any) -> str:
         if not isinstance(block, dict):
             continue
         block_type = block.get("type")
-        if block_type == "text" and block.get("text"):
+        if block_type in ("text", "input_text", "output_text") and block.get("text"):
             parts.append(block["text"])
         elif block_type == "tool_use":
             parts.append(f"[tool_use:{block.get('name', '')}]")
@@ -107,11 +109,16 @@ def _flatten_content(content: Any) -> str:
 
 def _last_user_text(messages: Any) -> str:
     """Most recent human-typed turn - skips tool_result continuations, which
-    are also role="user" but automatic, not human input."""
+    are also role="user" but automatic, not human input. Also skips non-turn
+    items from Responses-API-shaped messages (the "chatgpt" provider mixes
+    "reasoning"/"custom_tool_call"/etc. items into the same flat list -
+    only "message" items are actual chat turns)."""
     if not isinstance(messages, list):
         return ""
     for message in reversed(messages):
-        if not isinstance(message, dict) or message.get("role") != "user":
+        if not isinstance(message, dict) or message.get("type", "message") != "message":
+            continue
+        if message.get("role") != "user":
             continue
         content = message.get("content")
         if isinstance(content, list):
@@ -341,20 +348,32 @@ def _agent_id_from_tool_result(messages: list, tool_use_index: int, tool_use_id:
 def _response_tool_calls(payload: dict) -> list[tuple[str, dict]]:
     """Whether this call's own completion invoked a tool. LiteLLM normalizes
     the response to an OpenAI-style tool_calls list, so this reads
-    payload["response"], not "messages" (which stay Anthropic-shaped)."""
+    payload["response"], not "messages" (which stay Anthropic-shaped). Falls
+    back to Responses-API shape (the "chatgpt" provider) where there's no
+    "choices" - tool calls are "function_call" items in response["output"]."""
     response = payload.get("response") or {}
     choices = response.get("choices") or []
-    if not choices:
-        return []
-    message = choices[0].get("message") or {}
     calls = []
-    for call in message.get("tool_calls") or []:
-        if not isinstance(call, dict):
+    if choices:
+        message = choices[0].get("message") or {}
+        for call in message.get("tool_calls") or []:
+            if not isinstance(call, dict):
+                continue
+            function = call.get("function") or {}
+            name = function.get("name", "")
+            try:
+                arguments = json.loads(function.get("arguments") or "{}")
+            except (TypeError, ValueError):
+                arguments = {}
+            calls.append((name, arguments))
+        return calls
+
+    for item in response.get("output") or []:
+        if not isinstance(item, dict) or item.get("type") != "function_call":
             continue
-        function = call.get("function") or {}
-        name = function.get("name", "")
+        name = item.get("name", "")
         try:
-            arguments = json.loads(function.get("arguments") or "{}")
+            arguments = json.loads(item.get("arguments") or "{}")
         except (TypeError, ValueError):
             arguments = {}
         calls.append((name, arguments))
@@ -396,10 +415,20 @@ def _clean_prompt_text(prompt_text: str) -> str:
 def _response_text(payload: dict) -> str:
     """The model's reply text - shared by _message_row and the
     transcript_handoff branch, which reads the <severity>/<block> verdict
-    out of it."""
+    out of it. Falls back to Responses-API shape (the "chatgpt" provider)
+    where there's no "choices" - the reply is the last assistant "message"
+    item in response["output"], if any (can legitimately be empty even on a
+    successful call - not every logged Responses-API call captures its own
+    reply text there)."""
     response = payload.get("response") or {}
     choices = response.get("choices") or []
-    return _flatten_content(choices[0].get("message", {}).get("content")) if choices else ""
+    if choices:
+        return _flatten_content(choices[0].get("message", {}).get("content"))
+
+    for item in reversed(response.get("output") or []):
+        if isinstance(item, dict) and item.get("type") == "message" and item.get("role") == "assistant":
+            return _flatten_content(item.get("content"))
+    return ""
 
 
 def _judge_verdict(response_text: str) -> tuple[Optional[bool], str]:

@@ -1,0 +1,57 @@
+[
+  {
+    "id": "14401188-0153-475f-a981-4a314bf6850f",
+    "litellm_call_id": "14401188-0153-475f-a981-4a314bf6850f",
+    "trace_id": "b083eaf9-a257-483a-b489-a6468eec256f",
+    "call_type": "aresponses",
+    "cache_hit": false,
+    "stream": true,
+    "status": "success",
+    "custom_llm_provider": "chatgpt",
+    "model": "chatgpt/gpt-5.6-luna",
+    "metadata": {
+      "requester_custom_headers": {}
+    },
+    "messages": [
+      {
+        "type": "reasoning",
+        "encrypted_content": "opaque-blob"
+      },
+      {
+        "type": "additional_tools",
+        "role": "developer",
+        "content": [
+          {"type": "input_text", "text": "tool schema listing, not a chat turn"}
+        ]
+      },
+      {
+        "type": "custom_tool_call",
+        "name": "shell",
+        "arguments": "{\"command\": \"ls\"}"
+      },
+      {
+        "type": "custom_tool_call_output",
+        "output": "file1.txt\nfile2.txt"
+      },
+      {
+        "type": "message",
+        "role": "user",
+        "content": [
+          {"type": "input_text", "text": "ты тут?"}
+        ]
+      },
+      {
+        "type": "message",
+        "id": "msg_08d378b41c4c00c5016a6212779dfc81919a822bfe1d4116d8",
+        "role": "assistant",
+        "content": [
+          {"type": "output_text", "text": "Да, я здесь. Чем помочь?"}
+        ],
+        "phase": "final_answer"
+      }
+    ],
+    "response": {
+      "output": []
+    }
+  }
+]

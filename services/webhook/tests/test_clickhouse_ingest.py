@@ -44,6 +44,14 @@ def test_flatten_content_unsuccess_non_list_non_str_returns_empty():
     assert ci._flatten_content(42) == ""
 
 
+def test_flatten_content_success_extracts_responses_api_text_blocks():
+    content = [
+        {"type": "input_text", "text": "ты тут?"},
+        {"type": "output_text", "text": "Да, я здесь."},
+    ]
+    assert ci._flatten_content(content) == "ты тут?\nДа, я здесь."
+
+
 # ---------------------------------------------------------------------------
 # _last_user_text
 # ---------------------------------------------------------------------------
@@ -61,6 +69,19 @@ def test_last_user_text_unsuccess_skips_pure_tool_result_continuation():
     text = ci._last_user_text(payload["messages"])
     assert "[tool_result]" != text
     assert "test-summarizer skill" in text
+
+
+def test_last_user_text_success_returns_responses_api_prompt():
+    payload = load_capture("chatgpt_responses_shape")
+    text = ci._last_user_text(payload["messages"])
+    assert text == "ты тут?"
+
+
+def test_last_user_text_unsuccess_skips_non_message_items():
+    payload = load_capture("chatgpt_responses_shape")
+    text = ci._last_user_text(payload["messages"])
+    assert "tool schema listing" not in text
+    assert "ls" not in text
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +302,27 @@ def test_response_tool_calls_success_parses_function_arguments():
 def test_response_tool_calls_unsuccess_plain_text_reply_returns_empty():
     payload = load_capture("success_with_command", index=0)
     assert ci._response_tool_calls(payload) == []
+
+
+def test_response_tool_calls_success_parses_function_call_output():
+    payload = load_capture("chatgpt_responses_shape")
+    payload["response"]["output"] = [
+        {"type": "function_call", "name": "shell", "arguments": "{\"command\": \"ls\"}"}
+    ]
+    assert ci._response_tool_calls(payload) == [("shell", {"command": "ls"})]
+
+
+def test_response_text_success_falls_back_to_responses_output():
+    payload = load_capture("chatgpt_responses_shape")
+    payload["response"]["output"] = [
+        {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Да, я здесь."}]}
+    ]
+    assert ci._response_text(payload) == "Да, я здесь."
+
+
+def test_response_text_unsuccess_empty_output_returns_blank():
+    payload = load_capture("chatgpt_responses_shape")
+    assert ci._response_text(payload) == ""
 
 
 def test_first_tool_call_name_success_returns_first_call():
