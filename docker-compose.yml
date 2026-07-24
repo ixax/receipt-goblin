@@ -350,6 +350,10 @@ services:
       REDIS_HOST: *redis-host
       REDIS_PORT: *redis-port
       SESSION_ID: ${SESSION_ID:-}
+    # reparse.py pages through event_sources REPARSE_CHUNK_SIZE rows at a
+    # time (see config.yml) instead of buffering the whole table
+    # client-side, so this doesn't need the same headroom a single
+    # unbounded query over 300MB+ of raw payload text once did.
     mem_limit: 256m
     depends_on:
       clickhouse:

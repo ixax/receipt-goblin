@@ -117,10 +117,19 @@ CREATE TABLE IF NOT EXISTS ai_gateway_users
     user_id    LowCardinality(String),
     group_id   LowCardinality(String) DEFAULT '',
     user_name  LowCardinality(String),
+    -- Latest-seen calling client (metadata.user_agent, e.g.
+    -- "claude-cli/2.1.207 (external, cli)") for this user - same latest-wins
+    -- semantics as user_name, populated by
+    -- clickhouse_ingest.py:_user_agent/_user_row.
+    user_agent LowCardinality(String) DEFAULT '',
     updated_at DateTime64(3) DEFAULT now64(3)
 )
 ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (user_id);
+
+-- Table predates user_agent: ALTER for stacks whose ClickHouse volume
+-- already existed before this column was added.
+ALTER TABLE ai_gateway_users ADD COLUMN IF NOT EXISTS user_agent LowCardinality(String) DEFAULT '';
 
 -- One row per lifecycle event (hook invocation). raw_payload keeps the full
 -- untouched JSON Claude Code sent, so any field missed by the extracted
@@ -182,6 +191,11 @@ CREATE TABLE IF NOT EXISTS agent_events
     -- that's gone now - join ai_gateway_groups on group_id for a name
     -- instead (see that table's comment above).
     group_id          LowCardinality(String) DEFAULT '',
+    -- Which LiteLLM virtual key made this call (metadata.user_api_key_hash) -
+    -- distinct from user_id above: LiteLLM's "internal users" and "virtual
+    -- keys" are separate concepts, and one internal user can hold any number
+    -- of keys - see _user_key_hash in webhook/src/clickhouse_ingest.py.
+    user_key_hash     LowCardinality(String) DEFAULT '',
     session_id        String,
     trace_id          String,
     turn_id           UInt32,
@@ -280,6 +294,7 @@ ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS calculated_type LowCardinality
 ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS calculated_payload String DEFAULT '{}' CODEC(ZSTD(3));
 ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS ingested_at DateTime64(3) DEFAULT now64(3);
 ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS group_id LowCardinality(String) DEFAULT '';
+ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS user_key_hash LowCardinality(String) DEFAULT '';
 
 -- One row per model call (usage report). cost/input_cost/output_cost come
 -- straight from LiteLLM's own response_cost/cost_breakdown - no local price
@@ -301,6 +316,8 @@ CREATE TABLE IF NOT EXISTS agent_usage
     -- Stable team id (metadata.user_api_key_team_id) - see agent_events'
     -- group_id comment above for why this, not the alias, is the filter key.
     group_id             LowCardinality(String) DEFAULT '',
+    -- See agent_events.user_key_hash above.
+    user_key_hash        LowCardinality(String) DEFAULT '',
     session_id           String,
     trace_id             String,
     turn_id              UInt32,
@@ -362,6 +379,7 @@ ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS litellm_call_id String DEFAULT 
 ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS provider LowCardinality(String) DEFAULT '';
 ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS ingested_at DateTime64(3) DEFAULT now64(3);
 ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS group_id LowCardinality(String) DEFAULT '';
+ALTER TABLE agent_usage ADD COLUMN IF NOT EXISTS user_key_hash LowCardinality(String) DEFAULT '';
 
 -- One row per turn (main session turn or subagent turn), holding the
 -- actual prompt sent to the model and the text it replied with. Kept
@@ -384,6 +402,8 @@ CREATE TABLE IF NOT EXISTS agent_messages
     -- Stable team id (metadata.user_api_key_team_id) - see agent_events'
     -- group_id comment above for why this, not the alias, is the filter key.
     group_id      LowCardinality(String) DEFAULT '',
+    -- See agent_events.user_key_hash above.
+    user_key_hash LowCardinality(String) DEFAULT '',
     session_id    String,
     trace_id      String,
     turn_id       UInt32,
@@ -415,6 +435,7 @@ ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS command_version LowCardinali
 ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS litellm_call_id String DEFAULT '';
 ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS ingested_at DateTime64(3) DEFAULT now64(3);
 ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS group_id LowCardinality(String) DEFAULT '';
+ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS user_key_hash LowCardinality(String) DEFAULT '';
 
 -- Full, untouched original StandardLoggingPayload per call (messages
 -- included - the one place in this schema that keeps that field), written

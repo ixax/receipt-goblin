@@ -40,6 +40,7 @@ from .clickhouse_ingest import (
     _user_row,
     get_client,
 )
+from .config import REPARSE_CHUNK_SIZE
 from datetime import datetime, timezone
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -101,21 +102,38 @@ def _reparse_one(client, litellm_call_id: str, source_session_id: str, raw_paylo
 
 def reparse(session_id: str = "") -> int:
     """session_id="" (the default) reparses every row in event_sources.
-    Returns the number of rows processed."""
+    Returns the number of rows processed.
+
+    Pages through event_sources REPARSE_CHUNK_SIZE rows at a time (keyset
+    pagination on litellm_call_id, the table's actual ORDER BY/sort key -
+    see schema.sql) instead of pulling every raw_payload_full client-side in
+    one query: that used to OOM-kill the container once event_sources
+    passed a few hundred MB of raw payload text.
+    """
     client = get_client()
     query = (
         "SELECT litellm_call_id, session_id, raw_payload_full FROM event_sources "
-        "WHERE {session_id:String} = '' OR session_id = {session_id:String} "
-        "ORDER BY ingested_at"
+        "WHERE ({session_id:String} = '' OR session_id = {session_id:String}) "
+        "AND litellm_call_id > {cursor:String} "
+        "ORDER BY litellm_call_id "
+        "LIMIT {chunk_size:UInt32}"
     )
-    result = client.query(query, parameters={"session_id": session_id})
 
     count = 0
-    for call_id, row_session_id, raw_payload_full in result.result_rows:
-        _reparse_one(client, call_id, row_session_id, raw_payload_full)
-        count += 1
-        if count % 500 == 0:
-            logger.info("reparsed %d events so far...", count)
+    cursor = ""
+    while True:
+        result = client.query(query, parameters={
+            "session_id": session_id, "cursor": cursor, "chunk_size": REPARSE_CHUNK_SIZE,
+        })
+        rows = result.result_rows
+        if not rows:
+            break
+        for call_id, row_session_id, raw_payload_full in rows:
+            _reparse_one(client, call_id, row_session_id, raw_payload_full)
+            count += 1
+            if count % 500 == 0:
+                logger.info("reparsed %d events so far...", count)
+        cursor = rows[-1][0]
 
     logger.info("reparse complete (n=%d, session_id=%r)", count, session_id or "<all>")
     if count:

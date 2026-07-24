@@ -298,6 +298,25 @@ def _group_alias(payload: dict) -> str:
     return metadata.get("user_api_key_team_alias") or ""
 
 
+def _user_key_hash(payload: dict) -> str:
+    """Which LiteLLM virtual key made this call - metadata.user_api_key_hash,
+    stable per key. Distinct from _user_id: LiteLLM's "internal users" and
+    "virtual keys" are separate concepts, and one internal user can hold any
+    number of keys, so this is stored alongside user_id on every fact-table
+    row rather than replacing it."""
+    metadata = payload.get("metadata") or {}
+    return metadata.get("user_api_key_hash") or ""
+
+
+def _user_agent(payload: dict) -> str:
+    """The calling client, e.g. "claude-cli/2.1.207 (external, cli)" -
+    metadata.user_agent, stored as the latest-seen value per user in
+    ai_gateway_users (same ReplacingMergeTree "latest wins" pattern as
+    user_name)."""
+    metadata = payload.get("metadata") or {}
+    return metadata.get("user_agent") or ""
+
+
 def _agent_invocations_from_messages(messages: Any) -> list[tuple[str, str, str, str]]:
     """Scan messages for Agent tool_use blocks paired with the tool_result
     that immediately follows, and pull the spawned subagent's agent_id out
@@ -513,7 +532,7 @@ def _agent_name_and_version_for_invocation(client, agent_invocation_id: str) -> 
 
 _INVOCATION_COLUMNS = ["agent_id", "session_id", "subagent_type", "agent_version", "description", "spawned_at"]
 _EVENT_COLUMNS = [
-    "timestamp", "user_id", "group_id", "session_id", "trace_id",
+    "timestamp", "user_id", "group_id", "user_key_hash", "session_id", "trace_id",
     "turn_id", "event_type", "tool_name", "agent_name",
     "agent_version", "skill_name", "skill_version", "command_name",
     "command_version", "agent_invocation_id", "status", "latency_ms",
@@ -521,9 +540,9 @@ _EVENT_COLUMNS = [
     "litellm_call_id", "calculated_type", "calculated_payload", "ingested_at",
 ]
 _GROUP_COLUMNS = ["group_id", "group_name", "updated_at"]
-_USER_COLUMNS = ["user_id", "group_id", "user_name", "updated_at"]
+_USER_COLUMNS = ["user_id", "group_id", "user_name", "user_agent", "updated_at"]
 _USAGE_COLUMNS = [
-    "timestamp", "user_id", "group_id", "session_id", "trace_id", "turn_id", "model",
+    "timestamp", "user_id", "group_id", "user_key_hash", "session_id", "trace_id", "turn_id", "model",
     "agent_name", "agent_version", "skill_name", "skill_version",
     "command_name", "command_version", "agent_invocation_id", "mcp_tool_name",
     "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens",
@@ -533,7 +552,7 @@ _USAGE_COLUMNS = [
     "litellm_call_id", "provider", "ingested_at",
 ]
 _MESSAGE_COLUMNS = [
-    "timestamp", "user_id", "group_id", "session_id", "trace_id", "turn_id",
+    "timestamp", "user_id", "group_id", "user_key_hash", "session_id", "trace_id", "turn_id",
     "agent_name", "agent_version", "skill_name", "skill_version",
     "command_name", "command_version", "agent_invocation_id", "prompt_text", "response_text",
     "litellm_call_id", "ingested_at",
@@ -616,7 +635,10 @@ def _user_row(payload: dict, now: Optional[datetime] = None) -> Optional[list]:
     user_id = _user_id(payload)
     if not user_id:
         return None
-    return [user_id, _group_id(payload), _user_name(payload), now or datetime.now(timezone.utc)]
+    return [
+        user_id, _group_id(payload), _user_name(payload), _user_agent(payload),
+        now or datetime.now(timezone.utc),
+    ]
 
 
 def _insert_ai_gateway_groups(client, rows: list[list]) -> None:
@@ -647,6 +669,14 @@ def _event_row(
         if isinstance(start_time, (int, float)) and isinstance(end_time, (int, float))
         else None
     )
+    # LiteLLM occasionally reports endTime < startTime (clock/ordering
+    # artifact on some streamed calls) - a negative value can't pack into
+    # the UInt32 column and previously crashed the insert (and, in
+    # reparse.py, silently dropped that event's agent_events/agent_usage/
+    # agent_messages rows entirely). Unknown latency is already represented
+    # as None, so fold this into that instead of a fake 0.
+    if latency_ms is not None and latency_ms < 0:
+        latency_ms = None
     # Blank, not LiteLLM's call_type, when the turn made no tool call at all
     # (a plain text reply) - callers that care about "was this a tool call"
     # (Top 10 slowest tool calls, error rate/latency by tool_name) already
@@ -659,6 +689,7 @@ def _event_row(
         _to_dt(payload.get("endTime") or payload.get("startTime")),
         _user_id(payload),
         _group_id(payload),
+        _user_key_hash(payload),
         session_id,
         trace_id,
         0,  # turn_id: unknown from this source
@@ -718,6 +749,7 @@ def _usage_row(
         _to_dt(payload.get("endTime") or payload.get("startTime")),
         _user_id(payload),
         _group_id(payload),
+        _user_key_hash(payload),
         session_id,
         trace_id,
         0,  # turn_id: unknown from this source
@@ -765,6 +797,7 @@ def _message_row(
         _to_dt(payload.get("endTime") or payload.get("startTime")),
         _user_id(payload),
         _group_id(payload),
+        _user_key_hash(payload),
         session_id,
         trace_id,
         0,  # turn_id: unknown from this source

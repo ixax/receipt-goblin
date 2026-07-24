@@ -30,3 +30,12 @@ flush_interval_ms: 2000
 # but never XACK'd for this long (covers a worker crashing/restarting
 # mid-batch).
 stale_idle_ms: 300000
+
+# reparse.py (webhook-reparse, see docker-compose.yml) pages through
+# event_sources this many rows at a time instead of pulling the whole table
+# client-side in one query. event_sources.raw_payload_full is the full
+# original payload (ZSTD-compressed on disk, not in the query result) -
+# fetching all of it at once OOM-killed the container even at a 256m limit
+# once the table passed ~300MB of raw text. 100 keeps each chunk's memory
+# footprint small enough that the container's normal mem_limit is fine.
+reparse_chunk_size: 100
