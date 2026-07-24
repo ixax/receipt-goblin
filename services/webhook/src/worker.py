@@ -1,12 +1,8 @@
-"""Standalone consumer for queue_client.STREAM_KEY - the "other worker" that
-drains what webhook (server.py) enqueues and writes it into ClickHouse in
-batches via clickhouse_ingest.ingest_events_batch(), so ClickHouse sees a
-handful of large inserts instead of many small ones per request. See
-AGENTS.md.
+"""Drains what webhook (server.py) enqueues and writes it into ClickHouse
+in batches via ingest_events_batch(), so ClickHouse sees a handful of large
+inserts instead of many small ones per request. See AGENTS.md.
 
-Run as its own process/container (`python -m src.worker`), not through
-FastAPI/uvicorn - webhook only ever produces onto the stream, never
-consumes it.
+Runs as its own process (`python -m src.worker`), not through FastAPI/uvicorn.
 """
 import json
 import logging
@@ -26,8 +22,8 @@ logger = logging.getLogger("webhook.worker")
 
 CONSUMER_NAME = f"{socket.gethostname()}-{os.getpid()}"
 
-# redis_exporter only sees Redis-server-level stats (memory, clients,
-# commands) - these cover the stream's own business metrics instead.
+# redis_exporter only covers Redis-server stats; these cover the stream's
+# own business metrics.
 BATCHES_FLUSHED = Counter("worker_batches_flushed_total", "Batches flushed to ClickHouse")
 EVENTS_INGESTED = Counter("worker_events_ingested_total", "Events ingested into ClickHouse")
 ENTRIES_RECLAIMED = Counter("worker_entries_reclaimed_total", "Stale pending entries reclaimed via XAUTOCLAIM")
@@ -92,9 +88,8 @@ def run() -> None:
     _ensure_group(client)
     logger.info("webhook-worker started (consumer=%s, stream=%s, group=%s)", CONSUMER_NAME, STREAM_KEY, CONSUMER_GROUP)
 
-    # Buffers accumulate across multiple XREADGROUP calls within one flush
-    # window, so a batch actually fills up instead of being inserted as
-    # soon as the first event of the window arrives (see FLUSH_INTERVAL_MS).
+    # Buffers accumulate across multiple XREADGROUP calls per flush window,
+    # so a batch fills up instead of inserting on the first event.
     message_ids: list[str] = []
     events: list[dict] = []
     window_start = time.monotonic()
@@ -114,19 +109,15 @@ def run() -> None:
         now = time.monotonic()
         window_elapsed_ms = (now - window_start) * 1000
         if len(events) >= BATCH_SIZE or window_elapsed_ms >= FLUSH_INTERVAL_MS:
-            # Reset the window even with nothing buffered - otherwise, once
-            # idle, window_elapsed_ms would stay past FLUSH_INTERVAL_MS
-            # forever and block_ms would clamp to 1ms, busy-polling Redis.
+            # Reset the window even when empty, or window_elapsed_ms would stay
+            # past FLUSH_INTERVAL_MS forever and busy-poll Redis at block_ms=1.
             _flush(client, message_ids, events)
             message_ids, events = [], []
             window_start = now
 
         if not response and now - last_claim_check > STALE_IDLE_MS / 1000:
-            # Only worth checking for stranded pending entries when the
-            # stream was otherwise idle, and no more than once every
-            # STALE_IDLE_MS - no need to hammer XAUTOCLAIM on every empty poll.
-            # Reuses the same gate to refresh the queue-depth gauges, rather
-            # than hitting Redis with XLEN/XPENDING on every loop iteration.
+            # Only check for stranded entries when idle, at most every
+            # STALE_IDLE_MS; reuses the gate to refresh queue-depth gauges too.
             _claim_stale_entries(client, message_ids, events)
             _refresh_queue_gauges(client)
             last_claim_check = now

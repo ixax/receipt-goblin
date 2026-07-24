@@ -1,41 +1,27 @@
-# Queue mechanics for webhook (producer, queue_client.enqueue) / webhook-worker
-# (consumer, worker.run) - see AGENTS.md "Why a queue in front of ClickHouse"
-# for the sizing math behind these numbers. Loaded by src/config.py.
+# Queue mechanics shared by webhook (producer) / webhook-worker (consumer) -
+# see AGENTS.md "Why a queue in front of ClickHouse" for sizing math.
 stream_key: webhook:events
 consumer_group: clickhouse-ingest
 
-# Approximate cap on the stream's length, not a hard byte budget - sized so
-# that even a full stream stays within the redis service's mem_limit. Each
-# queued event now carries build_event()'s source_row (the full original
-# payload, messages included, ~360KB avg / ~1.5MB max observed - see
-# AGENTS.md "Why a queue in front of ClickHouse"), not just the compact
-# per-table rows, so this is sized around that larger figure (1500 * 360KB
-# avg =~ 540MB, comfortably under redis's maxmemory - see
-# services/redis/redis.conf). Past this, XADD trims the oldest entries:
-# acceptable for this best-effort tracking pipeline, a backlog this deep
-# means the worker or ClickHouse is already stuck.
+# Approximate cap, not a hard byte budget - sized around events' full
+# ~360KB avg payload so 1500 * 360KB stays under redis's maxmemory (see
+# services/redis/redis.conf). XADD trims oldest past this; a backlog this
+# deep means the worker/ClickHouse is already stuck.
 maxlen: 1500
 
 # Flush once this many events have accumulated in the window.
 batch_size: 500
 
-# Max time an event waits before its batch is flushed, even if batch_size
-# was never reached - XREADGROUP's own BLOCK unblocks on the *first* entry
-# it sees, so without this explicit window the worker would insert almost
-# every event on its own during normal (non-bursty) traffic instead of
-# actually batching.
+# Max wait before a batch flushes even if batch_size isn't reached -
+# without this, XREADGROUP's BLOCK unblocks on the first entry it sees,
+# defeating batching during normal (non-bursty) traffic.
 flush_interval_ms: 2000
 
-# XAUTOCLAIM threshold (ms) - reclaim entries a prior consumer XREADGROUP'd
-# but never XACK'd for this long (covers a worker crashing/restarting
-# mid-batch).
+# XAUTOCLAIM threshold (ms) - reclaims entries left un-XACK'd this long
+# (covers a worker crashing mid-batch).
 stale_idle_ms: 300000
 
-# reparse.py (webhook-reparse, see docker-compose.yml) pages through
-# event_sources this many rows at a time instead of pulling the whole table
-# client-side in one query. event_sources.raw_payload_full is the full
-# original payload (ZSTD-compressed on disk, not in the query result) -
-# fetching all of it at once OOM-killed the container even at a 256m limit
-# once the table passed ~300MB of raw text. 100 keeps each chunk's memory
-# footprint small enough that the container's normal mem_limit is fine.
+# reparse.py pages through event_sources this many rows at a time -
+# fetching raw_payload_full for the whole table at once OOM-killed the
+# container (256m limit) once it passed ~300MB of raw text.
 reparse_chunk_size: 100

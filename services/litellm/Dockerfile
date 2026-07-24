@@ -1,15 +1,10 @@
 # Prod image - config/entrypoint baked in at build time (this repo's
-# convention - see AGENTS.md / feedback memory "no config volume mounts"), not
-# bind-mounted. A config.yaml/entrypoint change means rebuilding this image
-# (`docker compose build litellm`), not editing a mounted file.
+# convention), not bind-mounted.
 #
-# user_configs/*.yaml is the one exception, deliberately NOT baked in here -
-# those files are gitignored and may carry real remote-model hosts/keys the
-# user doesn't want permanently embedded in an image layer, so
-# docker-compose.yml keeps a scoped bind mount for just that subdirectory
-# (see docker-entrypoint.sh's merge logic). Only the tracked format-spec
-# template is baked, for `docker build` to succeed standalone even with an
-# empty user_configs/.
+# user_configs/*.yaml is the exception, NOT baked in - those files are
+# gitignored and may carry real remote-model hosts/keys, so
+# docker-compose.yml bind-mounts just that subdirectory instead. Only the
+# tracked template is baked, so `docker build` still works standalone.
 FROM ghcr.io/berriai/litellm:main-latest
 
 COPY config.yaml /app/litellm-config/config.yaml

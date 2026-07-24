@@ -1,9 +1,6 @@
 """Unit tests for the pure (no-ClickHouse-access) functions in
-clickhouse_ingest.py, exercised against real LiteLLM payloads captured by
-the webhook (see webhook/tests/captures/*.json - copied from
-webhook/captures/). DB-touching functions (get_client,
-_agent_name_and_version_for_invocation, _insert_*, ingest_*) are out of
-scope here - they require a live ClickHouse connection."""
+clickhouse_ingest.py, exercised against real payloads in
+webhook/tests/captures/*.json. DB-touching functions are out of scope."""
 
 import json
 from datetime import datetime, timezone
@@ -59,9 +56,8 @@ def test_last_user_text_success_returns_plain_prompt():
 
 def test_last_user_text_unsuccess_skips_pure_tool_result_continuation():
     payload = load_capture("success_with_failed_tool_reaction", index=1)
-    # the trailing messages are all tool_use/tool_result continuations, no
-    # fresh human text after the original prompt - walking back must not
-    # return a bare tool_result placeholder.
+    # trailing messages are all tool_result continuations - must not return
+    # a bare tool_result placeholder.
     text = ci._last_user_text(payload["messages"])
     assert "[tool_result]" != text
     assert "test-summarizer skill" in text
@@ -73,9 +69,7 @@ def test_last_user_text_unsuccess_skips_pure_tool_result_continuation():
 
 def test_active_command_name_and_version_success_recovers_slash_command():
     payload = load_capture("success_with_command", index=1)
-    # this capture predates the <command_version> marker convention, so the
-    # command's body carries no marker - version comes back blank, same as
-    # any command never edited since creation.
+# predates the <command_version> marker convention - version comes back blank.
     assert ci._active_command_name_and_version(payload["messages"]) == ("mcp", "")
 
 
@@ -99,7 +93,7 @@ def test_failed_tool_call_success_finds_paired_failing_tool_use():
     payload = load_capture("success_with_failed_tool_reaction", index=0)
     tool_name, args_json, error_text = ci._failed_tool_call(payload["messages"])
     assert tool_name == "Bash"
-    assert "shuf" in args_json  # args come from the failing call (which used `shuf`), not a later one
+    assert "shuf" in args_json  # args come from the failing call, not a later one
     assert "command not found" in error_text
 
 
@@ -240,10 +234,8 @@ def test_issue_id_from_branch_unsuccess_no_ticket_returns_empty():
 def test_agent_invocations_from_messages_success_finds_spawned_subagent():
     payload = load_capture("success_with_agent_and_skill")
     invocations = ci._agent_invocations_from_messages(payload["messages"])
-    # this capture predates the <agent_version> marker convention, so the
-    # listing carries no marker for this name - falls back to splitting the
-    # "_v<version>" suffix baked into subagent_type itself (the old
-    # convention, via _split_name_version).
+    # predates the <agent_version> marker - falls back to splitting the
+    # "_v<version>" suffix (old convention, via _split_name_version).
     assert invocations == [("aac9d05f148e9ae4a", "test-researcher", "1.0.0", "Summarize Makefile contents")]
 
 
@@ -303,8 +295,7 @@ def test_first_tool_call_name_unsuccess_plain_text_reply_returns_empty():
 
 def test_skill_name_and_version_success_splits_skill_argument():
     payload = load_capture("success_with_agent_and_skill")
-    # this capture predates the <skill_version> marker convention, so the
-    # listing carries no marker for this name - version comes back blank.
+# predates the <skill_version> marker convention - version comes back blank.
     assert ci._skill_name_and_version(payload) == ("test-summarizer", "")
 
 
@@ -424,10 +415,8 @@ def test_message_row_unsuccess_no_prompt_or_response_text_returns_none():
 
 
 # ---------------------------------------------------------------------------
-# build_event - the queue-facing, DB-free half of ingestion (see
-# queue_client.enqueue). source_row deliberately DOES carry the full
-# payload (messages included) - that's what event_sources is for; only the
-# per-table rows are stripped down.
+# build_event - queue-facing, DB-free half of ingestion. source_row
+# deliberately carries the full payload; only per-table rows are stripped.
 # ---------------------------------------------------------------------------
 
 def test_build_event_success_returns_json_safe_dict_with_source_row():
@@ -439,8 +428,7 @@ def test_build_event_success_returns_json_safe_dict_with_source_row():
     assert event["event_row"] is not None
     assert event["usage_row"] is not None
     assert event["message_row"] is not None
-    # timestamps are serialized to ISO strings, not raw datetime objects,
-    # so the dict is safe to json.dumps() straight onto the Redis stream.
+# timestamps are ISO strings, not datetime objects, so this is safe to XADD.
     assert isinstance(event["event_row"][ci._EVENT_TIMESTAMP_IDX], str)
     assert isinstance(event["source_row"][ci._SOURCE_INGESTED_AT_IDX], str)
     # the full original payload really is in there, untouched
@@ -499,9 +487,8 @@ def test_ingest_events_batch_success_issues_one_insert_per_table(monkeypatch):
 
 
 def test_ingest_events_batch_success_dedups_dimension_rows_by_id(monkeypatch):
-    # Both captures share the same user/team (see captures/*.json), so a
-    # batch of two events should still only insert one ai_gateway_users and
-    # one ai_gateway_groups row - not one per event.
+    # Both captures share the same user/team, so this batch should insert
+    # one ai_gateway_users/ai_gateway_groups row, not one per event.
     events = [
         ci.build_event(load_capture("success_plain")),
         ci.build_event(load_capture("success_with_command")),

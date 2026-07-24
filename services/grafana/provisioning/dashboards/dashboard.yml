@@ -9,19 +9,15 @@ providers:
     updateIntervalSeconds: 30
     allowUiUpdates: true
     options:
-      # Not under /var/lib/grafana - that whole tree is shadowed at runtime
-      # by the grafana-data named volume (docker-compose.yml), so anything
-      # the image bakes in under it (see services/grafana/Dockerfile) would
-      # disappear the moment the volume mounts. /etc/grafana isn't part of
-      # that volume, so baked-in dashboards survive.
+      # Not under /var/lib/grafana - that tree is shadowed by the
+      # grafana-data named volume, so anything baked in there would
+      # disappear. /etc/grafana isn't part of that volume.
       path: /etc/grafana/dashboards
 
-  # Monitoring dashboards ported from metrics/ live in their own folder,
-  # kept separate from the product dashboard (agents_overview.json) above -
-  # a distinct top-level mount (not a subdirectory of the default provider's
-  # path), since the file provisioner scans `path` recursively and two
-  # providers both claiming the same file errors with "Cannot change
-  # resource manager identity".
+  # Separate top-level mount, not a subdirectory of the default provider's
+  # path - the file provisioner scans `path` recursively, and two providers
+  # claiming the same file errors with "Cannot change resource manager
+  # identity".
   - name: health
     orgId: 1
     folder: "Health"

@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 """SessionStart/CwdChanged hook (Claude Code; SessionStart only for Codex
-CLI - see .claude/settings.json / .codex/hooks.json): reports the current
-git branch and repo for this session to the webhook. This is the one
-lifecycle hook this stack still has - see session_git_branch in
-clickhouse/schema.sql for why. Stdlib only. Must never raise on git/network
-failures (those are swallowed and logged to stderr) - but
-AGENT_CLI_TRACKING_API_URL/LITELLM_VIRTUAL_KEY have no fallback, so a
-missing/unset value is a misconfiguration, not a transient failure, and is
-allowed to crash this hook (KeyError, non-zero exit) rather than silently
-pointing at a guessed URL or skipping auth.
+CLI - see .claude/settings.json / .codex/hooks.json): reports the session's
+git branch/repo to the webhook. Must never raise on git/network failures
+(swallowed, logged to stderr), but missing tracking env vars are a
+misconfiguration and are allowed to crash the hook rather than fall back
+silently.
 """
 import json
 import os
@@ -18,9 +14,7 @@ import urllib.error
 import urllib.request
 
 INGEST_API_URL = os.environ["AGENT_CLI_TRACKING_API_URL"]
-# Personal LiteLLM virtual key (see `make env`) - webhook checks this
-# against LiteLLM's own /key/info before accepting the report, so this
-# isn't just a header we're adding for show.
+# Checked against LiteLLM's /key/info by the webhook before accepting the report.
 LITELLM_VIRTUAL_KEY = os.environ["LITELLM_VIRTUAL_KEY"]
 REQUEST_TIMEOUT = float(os.environ.get("AGENT_CLI_TRACKING_TIMEOUT", "3"))
 
@@ -43,10 +37,8 @@ def _current_branch(cwd: str) -> str:
 
 
 def _current_repo(cwd: str) -> str:
-    # Prefer the "origin" remote's URL basename, so the same repo reports
-    # the same name regardless of what its local clone directory is called.
-    # Falls back to the toplevel directory's basename when there's no
-    # "origin" remote (e.g. a local-only repo).
+    # Prefer origin's URL basename so the same repo reports the same name
+    # regardless of local clone dir; fall back to toplevel dir basename.
     remote_url = _run_git(cwd, "remote", "get-url", "origin")
     if remote_url:
         name = remote_url.rstrip("/").rsplit("/", 1)[-1]

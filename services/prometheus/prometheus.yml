@@ -43,11 +43,10 @@ scrape_configs:
     static_configs:
       - targets: ["node-exporter:9100"]
 
-  # Blackbox HTTP probing of every service's health endpoint - see
-  # services/blackbox/config.yml for the http_2xx module. The relabel dance
-  # sends the actual probe target as a query param to blackbox itself, then
-  # rewrites `instance` back to the readable target URL for alert rules
-  # (up{job="blackbox", instance=~".*webhook.*"} and friends).
+  # HTTP probing of each service's health endpoint (see
+  # services/blackbox/config.yml). Relabeling sends the target as a query
+  # param to blackbox, then rewrites `instance` back to the target URL so
+  # alert rules can match on it (instance=~".*webhook.*").
   - job_name: blackbox
     metrics_path: /probe
     params:

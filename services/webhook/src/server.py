@@ -33,10 +33,8 @@ _UNSAFE_SESSION_ID_CHARS = re.compile(r"[^A-Za-z0-9_.-]")
 
 
 def _safe_session_dir_name(session_id: str) -> str:
-    # session_id ultimately comes from a client-supplied header
-    # (x-claude-code-session-id) - strip it down to a safe folder-name
-    # charset so a crafted header can't escape CAPTURE_DIR via path
-    # separators or "..".
+    # session_id is client-supplied; strip to a safe charset so a crafted
+    # header can't escape CAPTURE_DIR via path separators or "..".
     cleaned = _UNSAFE_SESSION_ID_CHARS.sub("_", session_id).strip("._")
     return cleaned or "unknown"
 
@@ -54,14 +52,11 @@ async def health():
 @app.post("/api/v1/metrics")
 async def receive_metrics(request: Request):
     body = await request.json()
-    # log_format: json_array in litellm/config.yaml means `body` is usually a
-    # list of StandardLoggingPayload objects, not a single one.
+# body is usually a list of StandardLoggingPayload objects (log_format: json_array).
     payloads = body if isinstance(body, list) else [body]
 
-    # One file per event (not per POST - a single POST can bundle several
-    # events), grouped into a per-session subfolder, named so a plain `ls |
-    # sort` replays them in creation order. Off by default, see
-    # config.CAPTURE_ENABLED.
+    # One file per event (a POST can bundle several), per-session
+    # subfolder, named so `ls | sort` replays creation order.
     if CAPTURE_ENABLED:
         for event in payloads:
             session_id, _ = _session_and_trace_id(event if isinstance(event, dict) else {})
@@ -77,18 +72,13 @@ async def receive_metrics(request: Request):
 
 
 def _virtual_key_is_valid(key: str) -> bool:
-    # Checks the caller's personal LiteLLM virtual key against LiteLLM's own
-    # /key/info - reuses the trust root the proxy already uses for every LLM
-    # call, instead of inventing a separate signing scheme.
+# Checks the caller's key against LiteLLM's own /key/info instead of inventing a signing scheme.
     if not key:
         return False
     req = urllib.request.Request(
         f"{LITELLM_BASE_URL}/key/info?key={key}",
-        # services/litellm/config.yaml sets general_settings.litellm_key_header_name
-        # to x-litellm-api-key (see AGENTS.md), which applies to every proxy
-        # route including admin ones - plain `Authorization: Bearer` here gets
-        # rejected as "Malformed API Key passed in" since LiteLLM no longer
-        # looks at that header for key auth.
+        # LiteLLM's litellm_key_header_name is x-litellm-api-key (see AGENTS.md);
+        # plain Authorization: Bearer here is rejected as malformed.
         headers={"x-litellm-api-key": f"Bearer {LITELLM_MASTER_KEY}"},
     )
     try:
@@ -106,11 +96,8 @@ def _virtual_key_is_valid(key: str) -> bool:
 
 @app.post("/api/v1/session-git-branch")
 async def receive_git_branch(request: Request):
-    # Reported by hooks/report_git_branch.py at SessionStart and (Claude Code
-    # only) CwdChanged - the one lifecycle hook this stack still has, since
-    # neither LiteLLM's StandardLoggingPayload nor ANTHROPIC_CUSTOM_HEADERS
-    # can carry the client's cwd/git state. See session_git_branch in
-    # clickhouse/schema.sql.
+    # Reported by hooks/report_git_branch.py (SessionStart/CwdChanged) since
+    # neither StandardLoggingPayload nor ANTHROPIC_CUSTOM_HEADERS carry cwd/git state.
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.removeprefix("Bearer ").strip()
     if not _virtual_key_is_valid(token):
@@ -123,11 +110,8 @@ async def receive_git_branch(request: Request):
 
 @app.post("/api/v1/plan-proposal")
 async def receive_plan_proposal(request: Request):
-    # Reported by hooks/report_plan_proposal.py at PreToolUse (matcher:
-    # ExitPlanMode) - LiteLLM's StandardLoggingPayload doesn't carry the
-    # plan text (its tool_calls[0].function.arguments comes back empty for
-    # ExitPlanMode), so this hook reads it straight from the tool_input
-    # Claude Code passes it. See plan_proposals in clickhouse/schema.sql.
+    # Reported by hooks/report_plan_proposal.py (PreToolUse: ExitPlanMode) -
+    # StandardLoggingPayload's arguments come back empty for ExitPlanMode.
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.removeprefix("Bearer ").strip()
     if not _virtual_key_is_valid(token):

@@ -1,9 +1,7 @@
 """Parses LiteLLM's StandardLoggingPayload webhook events and inserts them
-into ClickHouse (agent_events, agent_usage, agent_messages) - the only
-ingestion path now that the transcript-reading .claude/hooks + .codex/hooks
-pipeline has been retired. agent_name/skill_name are recovered from the
-payload's own messages (Agent/Skill tool_use blocks), not from a CLI-side
-hook - see AGENTS.md.
+into ClickHouse (agent_events, agent_usage, agent_messages). agent_name/
+skill_name are recovered from the payload's own messages (Agent/Skill
+tool_use blocks), not from a CLI-side hook - see AGENTS.md.
 """
 import json
 import logging
@@ -25,10 +23,8 @@ _AGENT_ID_RE = re.compile(r"agentId:\s*([0-9a-f]+)")
 _COMMAND_NAME_RE = re.compile(r"<command-name>/?(.*?)</command-name>")
 _COMMAND_VERSION_RE = re.compile(r"<command_version>(.*?)</command_version>")
 
-# calculated_type prompt-prefix classifiers (category B in the schema-sql-
-# capture plan) - checked in this order only when the response made no tool
-# call at all (category A, handled separately in _classify_event via
-# _response_tool_calls).
+# calculated_type prompt-prefix classifiers (category B), checked only
+# when the response made no tool call at all (category A, see _classify_event).
 _JUDGE_CALL_PREFIX = "Based on the conversation transcript above"
 _SYSTEM_NOTIFICATION_PREFIX = "[SYSTEM NOTIFICATION"
 _SUGGESTION_MODE_PREFIX = "[SUGGESTION MODE"
@@ -39,8 +35,7 @@ _WEBPAGE_CONTENT_PREFIX = "Web page content"
 _STOP_HOOK_FEEDBACK_PREFIX = "Stop hook feedback:"
 
 # Trace panel (panel-76) text-cleaning regexes, ported from its SQL CTEs
-# (prompt_calc/prompt_display) so the cleaned/classified/truncated display
-# text can be precomputed once at ingest instead of on every dashboard load.
+# so display text is precomputed once at ingest instead of per dashboard load.
 _SYSTEM_REMINDER_STRIP_RE = re.compile(r"^<system-reminder>.*?</system-reminder>\s*", re.DOTALL)
 _COMMAND_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.DOTALL)
 _LOCAL_STDOUT_STRIP_RE = re.compile(r"^.*</local-command-stdout>", re.DOTALL)
@@ -49,12 +44,8 @@ _SUMMARY_TAG_RE = re.compile(r"<summary>(.*?)</summary>", re.DOTALL)
 _STATUS_TAG_RE = re.compile(r"<status>(.*?)</status>")
 _SEVERITY_TAG_RE = re.compile(r"<severity>\s*(\d+)")
 _BLOCK_TAG_RE = re.compile(r"<block>\s*(yes|no)", re.IGNORECASE)
-# Stop hook feedback prompts are shaped "Stop hook feedback:\n[<original user
-# prompt>]: <judge's reasoning>" - the original prompt itself may contain
-# "]: " sequences, so the middle group is greedy (not lazy): the regex engine
-# backtracks from the end of the string, landing on the *last* "]: " in the
-# text, which is the real separator between the echoed prompt and the
-# reasoning that follows it.
+# Shape: "Stop hook feedback:\n[<prompt>]: <reasoning>". Greedy match so it
+# lands on the *last* "]: " even if the prompt itself contains "]: ".
 _STOP_HOOK_REASON_RE = re.compile(r"^Stop hook feedback:\n\[.*\]: (.*)$", re.DOTALL)
 _WHITESPACE_COLLAPSE_RE = re.compile(r"[ \t]+")
 _BLANK_LINES_COLLAPSE_RE = re.compile(r"\n{2,}")
@@ -65,9 +56,8 @@ _WEBPAGE_DISPLAY_TRUNCATE = 100
 # tool_render's argument preference chain, ported verbatim (order matters).
 _TOOL_ARG_KEY_PREFERENCE = ("file_path", "command", "sql", "url", "query", "description", "summary", "task_id")
 
-# provider classification for agent_usage.provider - the same 3-way regex
-# that used to be duplicated across ~30 Grafana panels, now computed once
-# at ingest time instead.
+# provider classification for agent_usage.provider, computed once at
+# ingest instead of duplicated across ~30 Grafana panels.
 _PROVIDER_OPENAI_RE = re.compile(r"^(gpt-|chatgpt-|o[0-9]|text-embedding-|dall-e-|whisper|tts-)")
 
 logger = logging.getLogger("webhook.clickhouse_ingest")
@@ -95,10 +85,8 @@ def _to_dt(epoch_seconds: Optional[float]) -> datetime:
 
 
 def _flatten_content(content: Any) -> str:
-    """Anthropic message content is either a plain string or a list of
-    content blocks (text/tool_use/tool_result/...). Only the human-readable
-    text is worth storing in agent_messages - tool payloads are already
-    captured in full on disk (webhook/captures/*.json)."""
+    """Extracts human-readable text from Anthropic content (string or
+    text/tool_use/tool_result blocks); tool payloads are captured elsewhere."""
     if isinstance(content, str):
         return content
     if not isinstance(content, list):
@@ -118,15 +106,8 @@ def _flatten_content(content: Any) -> str:
 
 
 def _last_user_text(messages: Any) -> str:
-    """The most recent human-originated turn, not just the most recent
-    "user"-role message - a tool_result continuation is also role="user" but
-    is an automatic reply, not something a human typed. Skipping those (same
-    logic as _active_command_name) avoids storing a bare "[tool_result]"
-    placeholder as prompt_text for every call after the first in a chain.
-    Doesn't strip injected system-reminder/command-message boilerplate that
-    may still share the same message as genuine text - that's inherent to
-    how the CLI constructs its prompts, not something this can cleanly
-    separate out."""
+    """Most recent human-typed turn - skips tool_result continuations, which
+    are also role="user" but automatic, not human input."""
     if not isinstance(messages, list):
         return ""
     for message in reversed(messages):
@@ -141,20 +122,10 @@ def _last_user_text(messages: Any) -> str:
 
 
 def _active_command_name_and_version(messages: Any) -> tuple[str, str]:
-    """Walks backward from the most recent message, skipping over messages
-    that are pure tool_result continuations (automatic, not new human
-    input), to find the human-originated turn that started the current
-    chain of calls. Claude Code injects a "<command-name>/foo</command-name>"
-    tag into that turn's text when it was a slash-command invocation - if
-    found, this whole chain (tool calls, follow-up turns) is attributed to
-    command "foo". A command's own body may carry a
-    "<command_version>1.2.3</command_version>" marker (a command file never
-    needs a version-suffixed filename - see AGENTS.md); since that body is
-    expanded into this same message, look for it right here rather than via
-    a separate lookup. Returns ("", "") for a freeform prompt (not a
-    command), or once the user has moved on to unrelated freeform text in a
-    later turn. A never-edited command has no marker - version comes back
-    "" (same graceful blank as an unversioned agent/skill)."""
+    """Walks back to the human-originated turn that started this chain of
+    calls, looking for Claude Code's "<command-name>/foo</command-name>" tag
+    (slash-command invocation) and an optional "<command_version>" marker in
+    the same expanded body. Returns ("", "") for a freeform prompt."""
     if not isinstance(messages, list):
         return "", ""
     for message in reversed(messages):
@@ -175,12 +146,9 @@ def _active_command_name_and_version(messages: Any) -> tuple[str, str]:
 
 def _failed_tool_call(messages: Any) -> tuple[str, str, str]:
     """If the last message is a tool_result marked is_error, find its paired
-    tool_use (by tool_use_id) earlier in the same messages array and return
-    (tool_name, arguments_json, error_text) - the specific tool invocation
-    whose failure THIS call is now reacting to. Distinct from this row's own
-    tool_name, which is whatever tool (if any) THIS call's own response goes
-    on to invoke next - a call can process a failed tool result and then
-    invoke a completely different tool, or none at all."""
+    tool_use by tool_use_id and return (tool_name, arguments_json, error_text)
+    - the failed invocation this call is reacting to, distinct from
+    tool_name (whatever this call's own response invokes next, if anything)."""
     if not isinstance(messages, list) or not messages:
         return "", "", ""
     last = messages[-1]
@@ -224,16 +192,10 @@ def _session_and_trace_id(payload: dict) -> tuple[str, str]:
 
 
 def _split_name_version(value: str) -> tuple[str, str]:
-    """Splits on the last "_v" - the *old* convention, where an agent/skill's
-    invocation identifier itself carried "<name>_v<version>" (e.g.
-    "test-researcher_v1.0.0"). Superseded for new writes by
-    _version_marker_for_name (version now lives in a marker inside
-    description:/body instead, so the identifier itself never needs to
-    change) - kept as a fallback in _agent_invocations_from_messages for
-    subagent_type values still carrying the old suffix (no marker found),
-    and for reading historical agent_invocations rows written under the old
-    convention. Skills have no equivalent suffix convention (confirmed via
-    AGENTS.md), so this fallback only applies to agents."""
+    """Splits on the last "_v" - the old naming convention (e.g.
+    "test-researcher_v1.0.0"), superseded by _version_marker_for_name.
+    Kept as a fallback for subagent_type values with no version marker and
+    for historical rows. Agents only; skills have no such suffix convention."""
     idx = value.rfind("_v")
     if idx == -1 or idx + 2 >= len(value):
         return value, ""
@@ -242,11 +204,9 @@ def _split_name_version(value: str) -> tuple[str, str]:
 
 def _flatten_messages_text(messages: Any) -> str:
     """Every message's text, joined - used to search for the "Available
-    agent types"/"available skills" system-reminder listings Claude Code
-    injects into the conversation, which is where an <agent_version>/
-    <skill_version> marker (embedded in that entry's description:) actually
-    surfaces. Not restricted to a single message since the listing can sit
-    several turns back from the tool call it informed."""
+    agent types"/"available skills" listings Claude Code injects, where
+    <agent_version>/<skill_version> markers surface. Not restricted to one
+    message since the listing can sit several turns back."""
     if not isinstance(messages, list):
         return ""
     parts = []
@@ -259,15 +219,9 @@ def _flatten_messages_text(messages: Any) -> str:
 
 
 def _version_marker_for_name(text: str, name: str, tag: str) -> str:
-    """Finds "- <name>: <tag>version</tag>..." - the shape of one entry in
-    the "Available agent types"/"available skills" listing once its
-    description: is authored with the marker as the very first thing in the
-    text (see AGENTS.md), which keeps the marker on the same line as the
-    entry's own name so it can be looked up by name rather than position.
-    Takes the last match so a listing that gets refreshed mid-session
-    ("New agent types are now available...") always wins over a stale one.
-    Returns "" when the name has no marker (self-named/ad-hoc agent, or an
-    entry never edited since creation)."""
+    """Finds "- <name>: <tag>version</tag>..." in an agent/skill listing
+    (see AGENTS.md for the marker convention). Takes the last match so a
+    mid-session refreshed listing wins over a stale one. "" if no marker."""
     if not name:
         return ""
     pattern = re.compile(rf"^- {re.escape(name)}: <{tag}>([^<]*)</{tag}>", re.MULTILINE)
@@ -276,14 +230,10 @@ def _version_marker_for_name(text: str, name: str, tag: str) -> str:
 
 
 def _user_id(payload: dict) -> str:
-    """The real, stable identity of the caller - metadata.user_api_key_user_id,
-    as sent by LiteLLM. Deliberately not user_api_key_alias/
-    user_api_key_team_alias: those are human-editable display names that can
-    be renamed at any time, which used to silently change what every fact
-    table's user_id "meant" for historical rows. The alias is still used as
-    a last-resort fallback for a virtual key with no user id configured, so
-    ingestion never has to drop a row for lack of an id - see _user_name
-    below for where the alias actually belongs (ai_gateway_users.user_name)."""
+    """Stable caller identity: metadata.user_api_key_user_id. Deliberately
+    not user_api_key_alias, which is a renamable display name that would
+    silently change what historical rows' user_id "meant". Alias is only a
+    last-resort fallback so ingestion never drops a row for lack of an id."""
     metadata = payload.get("metadata") or {}
     return (
         metadata.get("user_api_key_user_id")
@@ -293,9 +243,8 @@ def _user_id(payload: dict) -> str:
 
 
 def _user_name(payload: dict) -> str:
-    """Human-readable label for the user identified by _user_id above -
-    display only, stored in ai_gateway_users.user_name rather than repeated
-    onto every fact-table row (see that table's comment in schema.sql)."""
+    """Display-only label for the user identified by _user_id, stored once
+    in ai_gateway_users.user_name rather than on every fact-table row."""
     metadata = payload.get("metadata") or {}
     return (
         metadata.get("user_api_key_alias")
@@ -305,61 +254,43 @@ def _user_name(payload: dict) -> str:
 
 
 def _group_id(payload: dict) -> str:
-    """The LiteLLM Team a virtual key belongs to, as its *stable* UUID
-    (empty until Teams are actually configured in services/litellm/config.yaml
-    - see README "LiteLLM" "Once it's needed: Teams..."). Deliberately reads
-    user_api_key_team_id rather than user_api_key_team_alias: the alias is a
-    human-editable display name that can be renamed in the LiteLLM UI at any
-    time, which would silently break any dashboard filter keyed on it. The
-    dashboard's Group filter and any group_id column are keyed on this value;
-    _group_alias below carries the renamable display name separately, purely
-    for showing a readable label."""
+    """Stable UUID of the LiteLLM Team a key belongs to (empty until Teams
+    are configured). Deliberately not user_api_key_team_alias, a renamable
+    display name that would silently break filters keyed on it - see
+    _group_alias for the display label."""
     metadata = payload.get("metadata") or {}
     return metadata.get("user_api_key_team_id") or ""
 
 
 def _group_alias(payload: dict) -> str:
-    """Human-readable label for the group identified by _group_id above -
-    display only, never used as a filter/join key (see _group_id's
-    docstring for why the id, not this, is the stable key)."""
+    """Display-only label for the group identified by _group_id; never
+    used as a filter/join key."""
     metadata = payload.get("metadata") or {}
     return metadata.get("user_api_key_team_alias") or ""
 
 
 def _user_key_hash(payload: dict) -> str:
-    """Which LiteLLM virtual key made this call - metadata.user_api_key_hash,
-    stable per key. Distinct from _user_id: LiteLLM's "internal users" and
-    "virtual keys" are separate concepts, and one internal user can hold any
-    number of keys, so this is stored alongside user_id on every fact-table
-    row rather than replacing it."""
+    """Stable per-key id (metadata.user_api_key_hash). Distinct from
+    _user_id since one internal user can hold multiple keys."""
     metadata = payload.get("metadata") or {}
     return metadata.get("user_api_key_hash") or ""
 
 
 def _user_agent(payload: dict) -> str:
-    """The calling client, e.g. "claude-cli/2.1.207 (external, cli)" -
-    metadata.user_agent, stored as the latest-seen value per user in
-    ai_gateway_users (same ReplacingMergeTree "latest wins" pattern as
-    user_name)."""
+    """Calling client, e.g. "claude-cli/2.1.207 (external, cli)" - latest
+    value wins in ai_gateway_users (ReplacingMergeTree)."""
     metadata = payload.get("metadata") or {}
     return metadata.get("user_agent") or ""
 
 
 def _agent_invocations_from_messages(messages: Any) -> list[tuple[str, str, str, str]]:
-    """Scan messages for Agent tool_use blocks paired with the tool_result
-    that immediately follows, and pull the spawned subagent's agent_id out
-    of that result's text (e.g. "agentId: a04bd3c594bf74fb9"). subagent_type
-    is the bare name as-is under the current convention (see AGENTS.md);
-    agent_version comes from a "<agent_version>...</agent_version>" marker
-    inside that agent's entry in the "Available agent types" listing, which
-    Claude Code re-injects into messages on every call - falling back, when
-    no marker is found, to splitting a "_v<version>" suffix baked directly
-    into subagent_type itself (the *old* convention - see
-    _split_name_version), so agent_invocations always holds a clean
-    (subagent_type, agent_version) pair regardless of which convention the
-    wire value used. Returns (agent_id, subagent_type, agent_version,
-    description) tuples - usually empty, since most calls never spawn a
-    subagent."""
+    """Scan messages for Agent tool_use blocks paired with the following
+    tool_result, pulling the spawned subagent's agent_id from its text (e.g.
+    "agentId: a04bd3c594bf74fb9"). agent_version comes from the
+    "<agent_version>" marker in the "Available agent types" listing,
+    falling back to splitting a legacy "_v<version>" suffix off
+    subagent_type (see _split_name_version). Returns (agent_id,
+    subagent_type, agent_version, description) tuples, usually empty."""
     if not isinstance(messages, list):
         return []
     listing_text = _flatten_messages_text(messages)
@@ -408,11 +339,9 @@ def _agent_id_from_tool_result(messages: list, tool_use_index: int, tool_use_id:
 
 
 def _response_tool_calls(payload: dict) -> list[tuple[str, dict]]:
-    """Whether *this* call's own completion just invoked a tool. LiteLLM
-    normalizes the response to an OpenAI-style tool_calls list
-    (function.name/function.arguments as a JSON string) regardless of the
-    Anthropic-style content blocks used in the historical "messages" - so
-    this must read payload["response"], not "messages"."""
+    """Whether this call's own completion invoked a tool. LiteLLM normalizes
+    the response to an OpenAI-style tool_calls list, so this reads
+    payload["response"], not "messages" (which stay Anthropic-shaped)."""
     response = payload.get("response") or {}
     choices = response.get("choices") or []
     if not choices:
@@ -433,12 +362,10 @@ def _response_tool_calls(payload: dict) -> list[tuple[str, dict]]:
 
 
 def _skill_name_and_version(payload: dict) -> tuple[str, str]:
-    """skill_name is the bare skill name as-is (a skill's directory name
-    never carries a "_v<version>" suffix - see AGENTS.md). skill_version
-    comes from a "<skill_version>...</skill_version>" marker inside that
-    skill's own entry in the "available skills" listing, which sits in this
-    same payload's messages alongside the Skill tool_use - no cross-call
-    lookup needed."""
+    """skill_name is the bare directory name (no version suffix - see
+    AGENTS.md). skill_version comes from the "<skill_version>" marker in
+    the "available skills" listing, already present in this payload's
+    messages."""
     for name, arguments in _response_tool_calls(payload):
         if name == "Skill" and arguments.get("skill"):
             skill_name = arguments["skill"]
@@ -467,9 +394,9 @@ def _clean_prompt_text(prompt_text: str) -> str:
 
 
 def _response_text(payload: dict) -> str:
-    """The model's own reply text for this call - shared by _message_row and
-    _prompt_kind_and_display's transcript_handoff branch, which needs to read
-    the safety-monitor's <severity>/<block> verdict out of it."""
+    """The model's reply text - shared by _message_row and the
+    transcript_handoff branch, which reads the <severity>/<block> verdict
+    out of it."""
     response = payload.get("response") or {}
     choices = response.get("choices") or []
     return _flatten_content(choices[0].get("message", {}).get("content")) if choices else ""
@@ -477,10 +404,8 @@ def _response_text(payload: dict) -> str:
 
 def _judge_verdict(response_text: str) -> tuple[Optional[bool], str]:
     """Parses the goal-check judge's response, once at ingest, so the Trace
-    panel can render a pass/fail marker + explanation without re-parsing the
-    raw response JSON per row. Confirmed via real samples to always be a
-    bare top-level object shaped {"ok": <bool>, "reason": "<string>"} - no
-    markdown fencing, no wrapper tags."""
+    panel doesn't re-parse raw JSON per row. Expected shape: a bare
+    {"ok": <bool>, "reason": "<string>"} object."""
     try:
         data = json.loads(response_text)
     except (TypeError, ValueError):
@@ -493,23 +418,15 @@ def _judge_verdict(response_text: str) -> tuple[Optional[bool], str]:
 
 
 def _prompt_kind_and_display(prompt_text: str, command_name: str, response_text: str = "") -> tuple[str, str, str]:
-    """Classifies the *incoming* prompt itself (a port of panel-76's
-    prompt_calc/prompt_display/prompt_final CTEs), independently of whatever
-    this call's own response went on to do. This is deliberately NOT the
-    same thing as calculated_type: calculated_type prioritizes "did the
-    response invoke a tool" (category A) over "what did the prompt that
-    triggered it look like" (category B) - so a system-notification/
-    judge-call/etc prompt whose response happens to also call a tool was
-    getting classified as a plain tool_call, and the Trace panel (which read
-    is_sys/is_real straight off calculated_type) rendered it as a real user
-    prompt. prompt_kind fixes that by always re-deriving the prompt's own
-    shape from prompt_text, never from calculated_type.
+    """Classifies the *incoming* prompt (port of panel-76's prompt_calc/
+    prompt_display/prompt_final CTEs), independent of calculated_type -
+    which prioritizes "did the response invoke a tool" and previously
+    misclassified system-notification/judge-call prompts whose response
+    happened to also call a tool as a real user prompt.
 
-    Returns (prompt_kind, display_text, display_arg) - display_arg is the
-    variable, "gray argument" part of the line (severity score, agent
-    completion summary, ...), shown the same way tool_render shows a tool's
-    main argument, rather than being fused into display_text's fixed label.
-    Empty when a branch has no such variable part."""
+    Returns (prompt_kind, display_text, display_arg); display_arg is the
+    variable "gray argument" part of the line (severity score, summary...),
+    empty when a branch has none."""
     if not prompt_text:
         return "", "", ""
 
@@ -562,9 +479,8 @@ def _prompt_kind_and_display(prompt_text: str, command_name: str, response_text:
 
 
 def _tool_display_arg(calculated_type: str, calculated_payload: dict) -> str:
-    """Ports tool_render's 8-branch JSONExtractString preference chain to
-    Python, run once at ingest over the already-parsed args dict instead of
-    per dashboard row over JSON text."""
+    """Ports tool_render's 8-branch preference chain to Python, run once at
+    ingest instead of per dashboard row over JSON text."""
     if calculated_type == "skill_call":
         args = calculated_payload.get("args", "")
         return args if isinstance(args, str) else json.dumps(args, default=str)
@@ -584,10 +500,9 @@ def _tool_display_arg(calculated_type: str, calculated_payload: dict) -> str:
 
 
 def _error_type(payload: dict) -> str:
-    """Decodes the LLM provider's error type (e.g. "rate_limit_error") from
-    error_information.error_message - a JSON object encoded as a string
-    within the payload - once at ingest, instead of a JOIN to event_sources
-    plus a nested JSONExtractString per failed row in the Trace panel."""
+    """Decodes the provider's error type (e.g. "rate_limit_error") from
+    error_information.error_message once at ingest, instead of a JOIN +
+    JSONExtractString per failed row in the Trace panel."""
     error_message = (payload.get("error_information") or {}).get("error_message")
     if isinstance(error_message, str):
         try:
@@ -600,15 +515,10 @@ def _error_type(payload: dict) -> str:
 
 
 def _classify_event(payload: dict) -> tuple[str, dict]:
-    """The calculated_type/calculated_payload dispatcher - see the
-    schema-sql-capture plan for the full category list and rationale for
-    keeping this a single unified classification rather than spread across
-    fields/tables. Priority order: did this call's own response invoke a
-    tool (category A), and if not, what does the prompt that led to a plain
-    text reply look like (category B, a port of panel-76's startsWith
-    chain). 'unknown' is a real, searchable bucket for iterative extension,
-    not an error - `_response_tool_calls`/`_last_user_text` are reused
-    as-is rather than re-parsing payload["response"]/["messages"] again."""
+    """The calculated_type/calculated_payload dispatcher. Priority: did
+    this call's response invoke a tool (category A), else what did the
+    triggering prompt look like (category B, port of panel-76's startsWith
+    chain). 'unknown' is a searchable bucket, not an error."""
     tool_calls = _response_tool_calls(payload)
     if tool_calls:
         first_name, first_args = tool_calls[0]
@@ -628,9 +538,7 @@ def _classify_event(payload: dict) -> tuple[str, dict]:
 
     prompt_text = _last_user_text(payload.get("messages"))
     if prompt_text.startswith(_JUDGE_CALL_PREFIX):
-        # Structured confidence/reasoning extraction from the judge's
-        # free-text response is a later classifier refinement (once real
-        # examples are visible via reparse) - excerpt only for now.
+        # TODO: structured confidence/reasoning extraction; excerpt only for now.
         return "judge_call", {"prompt_excerpt": prompt_text[:500]}
     if prompt_text.startswith(_SYSTEM_NOTIFICATION_PREFIX):
         return "system_notification", {}
@@ -645,18 +553,15 @@ def _classify_event(payload: dict) -> tuple[str, dict]:
     if prompt_text.startswith(_WEBPAGE_CONTENT_PREFIX):
         return "webpage_content", {}
     if prompt_text:
-        # The text itself already lives in agent_messages.response_text -
-        # calculated_payload stays empty rather than duplicating it.
+        # Text already lives in agent_messages.response_text; don't duplicate it.
         return "llm_answer", {}
     return "unknown", {}
 
 
 def _source_row(payload: dict, session_id: str, now: datetime) -> list:
-    """The event_sources row - the full, untouched original payload
-    (messages included), written once per call so a later reparse
-    (webhook/src/reparse.py) can recompute calculated_type/calculated_payload/
-    provider without needing .capture/*.json, which is out of scope as a
-    parsing source (see event_sources's comment in schema.sql)."""
+    """The event_sources row: full untouched original payload, written once
+    per call so reparse.py can recompute calculated_type/provider without
+    needing .capture/*.json."""
     return [
         payload.get("litellm_call_id", ""),
         session_id,
@@ -666,9 +571,8 @@ def _source_row(payload: dict, session_id: str, now: datetime) -> list:
 
 
 def _first_tool_call_name(payload: dict) -> str:
-    """The actual tool the model invoked this turn (e.g. "Agent", "Skill",
-    "mcp__clickhouse__whatsup", "Read", "Bash", ...) - falls back to the
-    call_type when the turn made no tool call at all (a plain text reply)."""
+    """The tool the model invoked this turn (e.g. "Agent", "Skill", "Read"),
+    or "" for a plain text reply."""
     calls = _response_tool_calls(payload)
     return calls[0][0] if calls else ""
 
@@ -680,11 +584,7 @@ def _agent_invocation_id(payload: dict) -> str:
 
 def _agent_name_and_version_for_invocation(client, agent_invocation_id: str) -> tuple[str, str]:
     """Best-effort lookup - blank if the parent's Agent tool_use/tool_result
-    hasn't been ingested yet (e.g. the subagent's own first call raced
-    ahead of it). agent_version is its own column now (extracted once, at
-    the parent's insert time, from the "Available agent types" listing -
-    see _agent_invocations_from_messages) rather than split out of
-    subagent_type here."""
+    hasn't been ingested yet (e.g. subagent's first call raced ahead of it)."""
     if not agent_invocation_id:
         return "", ""
     try:
@@ -831,27 +731,19 @@ def _event_row(
 ) -> list:
     start_time = payload.get("startTime")
     end_time = payload.get("endTime")
-    # NOT payload["response_time"] - for streamed calls that's LiteLLM's
-    # time-to-first-token, not the call's total duration (was ~1-3ms while
-    # endTime-startTime showed multi-second real latency).
+    # NOT payload["response_time"]: for streamed calls that's time-to-first-
+    # token (~1-3ms), not total duration.
     latency_ms = (
         int((end_time - start_time) * 1000)
         if isinstance(start_time, (int, float)) and isinstance(end_time, (int, float))
         else None
     )
-    # LiteLLM occasionally reports endTime < startTime (clock/ordering
-    # artifact on some streamed calls) - a negative value can't pack into
-    # the UInt32 column and previously crashed the insert (and, in
-    # reparse.py, silently dropped that event's agent_events/agent_usage/
-    # agent_messages rows entirely). Unknown latency is already represented
-    # as None, so fold this into that instead of a fake 0.
+    # LiteLLM occasionally reports endTime < startTime on streamed calls;
+    # a negative value can't pack into UInt32 and used to crash the insert.
     if latency_ms is not None and latency_ms < 0:
         latency_ms = None
-    # Blank, not LiteLLM's call_type, when the turn made no tool call at all
-    # (a plain text reply) - callers that care about "was this a tool call"
-    # (Top 10 slowest tool calls, error rate/latency by tool_name) already
-    # filter tool_name != '', and call_type showing up as a fake "tool" was
-    # exactly the noise that filter was meant to exclude.
+    # Blank (not call_type) for a plain text reply - callers filter on
+    # tool_name != '' to mean "was a tool call".
     tool_name = _first_tool_call_name(payload)
     failed_tool_name, failed_tool_args, failed_tool_error = _failed_tool_call(payload.get("messages"))
     calculated_type, calculated_payload = _classify_event(payload)
@@ -1021,8 +913,7 @@ def _message_row(
 
 def ingest_standard_logging_payload(payload: dict) -> None:
     """Insert one LiteLLM StandardLoggingPayload into ClickHouse. Never
-    raises - a malformed/unexpected payload shape must not break the
-    webhook's ack to LiteLLM (LiteLLM would otherwise retry it forever)."""
+    raises - LiteLLM would retry a payload forever if this broke the ack."""
     session_id = trace_id = ""
     try:
         session_id, trace_id = _session_and_trace_id(payload)
@@ -1074,23 +965,17 @@ _ISSUE_ID_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9]{1,9}-\d+)(?![A-Za-z0-9])")
 
 
 def _issue_id_from_branch(git_branch: str) -> str:
-    """Ticket ID embedded in a branch name, e.g. "VIEW-12345" out of
-    "VIEW-12345-my-super-branch" or "my-super-branch-view-12345" - matched
-    case-insensitively and normalized to uppercase so both group under the
-    same issue. Empty string if the branch carries no ticket-shaped
-    substring. Trailing boundary is a negative lookahead rather than \\b:
-    branches like "VIEW-100500_my-branch" put an underscore right after the
-    number, and \\b treats digit/underscore as the same word class, so a
-    plain \\b there would never match."""
+    """Ticket ID embedded in a branch name, e.g. "VIEW-12345", matched
+    case-insensitively and uppercased. Trailing boundary is a negative
+    lookahead, not \\b: \\b treats digit/underscore as the same word class
+    and would miss "VIEW-100500_my-branch"."""
     match = _ISSUE_ID_RE.search(git_branch or "")
     return match.group(1).upper() if match else ""
 
 
 def ingest_git_branch(session_id: str, git_branch: str, git_repo: str = "") -> None:
-    """Insert a session's git branch/repo, reported by
-    hooks/report_git_branch.py at SessionStart. Never raises - a
-    tracking-side failure must not surface as an error to the CLI session
-    that reported it."""
+    """Insert a session's git branch/repo (hooks/report_git_branch.py).
+    Never raises - a tracking failure must not surface to the CLI session."""
     try:
         client = get_client()
         issue_id = _issue_id_from_branch(git_branch)
@@ -1100,10 +985,8 @@ def ingest_git_branch(session_id: str, git_branch: str, git_repo: str = "") -> N
 
 
 def ingest_plan_proposal(session_id: str, plan_text: str) -> None:
-    """Insert an ExitPlanMode call's plan text, reported by
-    hooks/report_plan_proposal.py at PreToolUse. Never raises - a
-    tracking-side failure must not surface as an error to the CLI session
-    that reported it."""
+    """Insert an ExitPlanMode call's plan text (hooks/report_plan_proposal.py).
+    Never raises - a tracking failure must not surface to the CLI session."""
     try:
         client = get_client()
         _insert_plan_proposal(client, [session_id, plan_text, datetime.now(timezone.utc)])
@@ -1112,9 +995,8 @@ def ingest_plan_proposal(session_id: str, plan_text: str) -> None:
 
 
 def ingest_webhook_body(body: Any) -> None:
-    """body is usually a list of StandardLoggingPayload dicts
-    (log_format: json_array in litellm/config.yaml), but tolerate a single
-    dict too."""
+    """Usually a list of StandardLoggingPayload dicts (log_format:
+    json_array), but tolerate a single dict too."""
     payloads = body if isinstance(body, list) else [body]
     for payload in payloads:
         if isinstance(payload, dict):
@@ -1160,30 +1042,21 @@ def _deserialize_row_multi(row: Optional[list], *timestamp_indices: int) -> Opti
 
 
 def build_event(payload: dict) -> dict:
-    """The messages-dependent, DB-free half of ingesting one
-    StandardLoggingPayload - everything that can be computed with pure
-    functions, no ClickHouse round-trip. Called synchronously in the
-    webhook's request handler (see server.py) so ClickHouse itself is never
-    touched in the request path - webhook only ever produces onto Redis,
-    webhook-worker is the only thing that inserts.
+    """The DB-free half of ingesting one StandardLoggingPayload: pure
+    functions only, no ClickHouse round-trip. Called synchronously in the
+    request handler so ClickHouse is never touched in the request path -
+    webhook only produces onto Redis, webhook-worker inserts.
 
-    Includes source_row - the untouched original payload (messages
-    included), destined for event_sources - alongside the compact
-    per-table rows. This is the one field NOT stripped down, since
-    event_sources is exactly where the full payload is supposed to land
-    (see schema.sql's event_sources comment); MAXLEN/the redis service's
-    mem_limit are sized around this larger per-event footprint (see
-    config.yml), not the ~100KB stripped-messages figure from before
-    event_sources existed.
+    Includes source_row (full untouched payload) alongside the compact
+    per-table rows; Redis MAXLEN/mem_limit are sized around this larger
+    per-event footprint (see config.yml).
 
-    agent_name/agent_version can't be resolved here - that needs a SELECT
+    agent_name/agent_version are left blank - resolving them needs a SELECT
     against agent_invocations, which only makes sense once this batch's own
-    invocation_rows have actually been inserted. Left blank; patched in by
-    ingest_events_batch() once it knows them.
+    invocation_rows are inserted; ingest_events_batch() patches them in.
 
-    Never raises internally - lets the caller (queue_client.enqueue) decide
-    whether one bad payload should drop just that item or the whole batch,
-    matching this module's usual "ingestion is best-effort" stance.
+    Never raises internally - lets queue_client.enqueue decide whether one
+    bad payload drops just that item or the whole batch.
     """
     session_id, trace_id = _session_and_trace_id(payload)
     messages = payload.get("messages")
@@ -1230,15 +1103,13 @@ def build_event(payload: dict) -> dict:
 
 
 def ingest_events_batch(events: list[dict]) -> None:
-    """Runs in webhook-worker, not webhook - takes a batch of build_event()
-    outputs read back off the Redis stream and writes them with exactly one
-    client.insert() per table, instead of the up-to-4-inserts-per-payload
-    the synchronous path used to do. This is the batching that takes load
-    off ClickHouse under concurrent webhook traffic - see AGENTS.md.
+    """Runs in webhook-worker. Writes a batch of build_event() outputs with
+    exactly one client.insert() per table (vs up-to-4-per-payload in the
+    old synchronous path) - the batching that takes load off ClickHouse
+    under concurrent traffic.
 
-    Never raises - a malformed/unexpected event in the batch must not
-    crash the worker loop (the caller still needs to XACK or retry the
-    batch's message ids regardless).
+    Never raises - the caller still needs to XACK/retry the batch's message
+    ids regardless of a malformed event.
     """
     if not events:
         return
@@ -1259,10 +1130,8 @@ def ingest_events_batch(events: list[dict]) -> None:
         if source_rows:
             client.insert("event_sources", source_rows, column_names=_SOURCE_COLUMNS)
 
-        # Dedup by id within the batch (last one wins) before inserting -
-        # ReplacingMergeTree would collapse duplicate ids on merge anyway,
-        # this just avoids inserting redundant rows for a batch with many
-        # calls from the same user/group.
+        # Dedup by id within the batch (last wins); ReplacingMergeTree would
+        # collapse duplicates on merge anyway, this just skips redundant inserts.
         group_rows_by_id: dict[str, list] = {}
         for event in events:
             row = _deserialize_row(event.get("group_row"), _GROUP_UPDATED_AT_IDX)

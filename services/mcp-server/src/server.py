@@ -1,18 +1,11 @@
 """MCP server exposing read access to the agent-tracking ClickHouse database.
 
-Runs as its own docker-compose service, alongside `webhook` (write-only)
-and `grafana`. Claude Code talks to it over Streamable HTTP (see `.mcp.json`
-at the project root), instead of `docker exec`-ing into the ClickHouse
-container.
-
-Two tools: `whatsup`, which only ever runs its three fixed queries, and
-`query`, which accepts arbitrary SQL from the model but is validated in
-`_validate_readonly_sql` below (SELECT/WITH only, single statement, no
-DDL/DML keywords, no system tables, no remote/file/URL table functions).
-There is no separate read-only ClickHouse user (docker-compose.yml uses one
-shared user for webhook/mcp-server/grafana - see its comments), so
-this code-level validation is the only thing standing between `query` and
-a write/DDL statement - keep it strict rather than convenient.
+Claude Code talks to it over Streamable HTTP (see `.mcp.json`).
+`query` accepts arbitrary SQL from the model, validated in
+`_validate_readonly_sql` (SELECT/WITH only, no DDL/DML, no system tables,
+no remote/file/URL functions). There is no separate read-only ClickHouse
+user, so this validation is the only thing preventing a write/DDL statement
+- keep it strict rather than convenient.
 """
 import os
 import re
@@ -26,8 +19,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-# Defaults live in docker-compose.yml (single source of truth); these vars
-# are always set by the time this container starts, so no fallback here.
+# Defaults live in docker-compose.yml; always set by container start, no fallback needed.
 CLICKHOUSE_HOST = os.environ["CLICKHOUSE_HOST"]
 CLICKHOUSE_PORT = int(os.environ["CLICKHOUSE_PORT"])
 CLICKHOUSE_USER = os.environ["CLICKHOUSE_USER"]
@@ -36,12 +28,9 @@ CLICKHOUSE_DATABASE = os.environ["CLICKHOUSE_DATABASE"]
 
 mcp = FastMCP("clickhouse")
 
-# Standalone ASGI app, run via uvicorn (see Dockerfile / docker-compose.yml) -
-# NOT mounted under a separate FastAPI app: the official mcp SDK's
-# streamable_http_app() has a known bug when mounted as a sub-app (session
-# manager never initializes, requests 404/507 -
-# https://github.com/modelcontextprotocol/python-sdk/issues/1367). Serving it
-# directly as uvicorn's top-level `app` sidesteps that entirely.
+# Served directly as uvicorn's top-level app, not mounted under FastAPI:
+# mcp SDK's streamable_http_app() has a known bug when mounted as a sub-app
+# (session manager never initializes, requests 404/507 - python-sdk#1367).
 app = mcp.streamable_http_app()
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
@@ -58,8 +47,7 @@ app.add_route("/health", health, methods=["GET"])
 
 _client = None
 
-# Read-only SQL validation rules - see config.yml (allow/deny lists live
-# there now, since that's the file you actually edit to tune them).
+# Allow/deny lists for read-only SQL validation live in config.yml.
 _config = yaml.safe_load((Path(__file__).resolve().parent.parent / "config.yml").read_text())
 
 _ALLOWED_TABLES = set(_config["allowed_tables"])
@@ -122,12 +110,9 @@ def whatsup(hours: int = 24) -> dict:
     ).result_rows[0]
     total_tokens = tokens_row[0] or 0
 
-    # LiteLLM already computes an accurate per-call cost (cache-pricing-aware)
-    # in its own response_cost, stored verbatim as agent_usage.cost - no
-    # ASOF JOIN against a manually-maintained price table needed or wanted
-    # (that table used to exist and silently overcounted cost by several
-    # times whenever prompt caching was in play, since it priced every
-    # input token at full rate with no cache discount).
+    # agent_usage.cost is LiteLLM's own cache-pricing-aware response_cost.
+    # A prior manual price-table JOIN overcounted cost under prompt caching
+    # (priced every input token at full rate) - don't reintroduce it.
     cost_row = client.query(
         "SELECT sum(cost) FROM agent_usage "
         "WHERE timestamp >= now() - INTERVAL %(hours)s HOUR",

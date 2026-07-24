@@ -1,11 +1,7 @@
 """Redis Streams queue between webhook (producer) and webhook-worker
-(consumer) - see AGENTS.md. webhook stays a thin, fast producer: it turns
-each StandardLoggingPayload into a build_event() dict (pure CPU, no
-ClickHouse round-trip - see clickhouse_ingest.py; includes both the compact
-per-table rows and source_row, the full original payload for event_sources)
-and XADDs it, instead of inserting into ClickHouse directly in the request
-path. webhook-worker drains the stream in batches and does the actual
-inserts.
+(consumer) - see AGENTS.md. webhook turns each payload into a build_event()
+dict (pure CPU, no ClickHouse round-trip) and XADDs it; webhook-worker
+drains the stream in batches and does the actual inserts.
 """
 import json
 import logging
@@ -31,9 +27,8 @@ def get_async_redis() -> aioredis.Redis:
 
 
 def get_redis() -> redis.Redis:
-    """Used by webhook-worker (worker.py) - a plain blocking consumer loop,
-    no event loop to share. decode_responses=True since the worker only
-    ever reads back what it wrote (JSON text), never binary."""
+    """Used by webhook-worker - a plain blocking consumer loop, no event
+    loop to share. decode_responses=True since it only reads back JSON text."""
     global _sync_client
     if _sync_client is None:
         _sync_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
@@ -41,11 +36,9 @@ def get_redis() -> redis.Redis:
 
 
 async def enqueue(payloads: list) -> None:
-    """payloads is the list of StandardLoggingPayload dicts from one webhook
-    POST body. Never raises - a malformed payload or a briefly-unavailable
-    Redis must not break the webhook's ack to LiteLLM (LiteLLM would
-    otherwise retry the whole body forever), same stance
-    clickhouse_ingest.py takes for the ClickHouse side.
+    """payloads: StandardLoggingPayload dicts from one webhook POST body.
+    Never raises - LiteLLM would retry the whole body forever if a
+    malformed payload or unavailable Redis broke the ack.
     """
     client = get_async_redis()
     for payload in payloads:

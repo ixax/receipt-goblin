@@ -1,19 +1,12 @@
 """Idempotent ClickHouse migration runner - applies every
-services/clickhouse/migrations/*.sql file at most once, then exits. Runs
-automatically on every `docker compose up` via the clickhouse-migrate
-service (webhook/webhook-worker both `depends_on` it with
-`condition: service_completed_successfully` - see docker-compose.yml), so a
-stack's tables are always brought up to date before anything tries to write
-to them - no separate manual step needed on either a brand-new volume (where
-schema.sql already created the final shape, see SKIP_CHECKS below) or an
-existing one (where a migration actually needs to run).
+services/clickhouse/migrations/*.sql file at most once, then exits. Runs on
+every `docker compose up` via clickhouse-migrate (webhook/webhook-worker
+`depends_on` it with `condition: service_completed_successfully`).
 
-Safe to re-run any number of times: applied migrations are recorded in
-schema_migrations and never re-executed. Migrations that do a destructive
-recreate+swap (like 001_replacing_mergetree.sql) additionally get a
-structural SKIP_CHECKS guard so a fresh volume - whose tables already match
-the post-migration shape via schema.sql, with zero rows to lose - never
-runs that SQL at all instead of just harmlessly re-running it.
+Applied migrations are recorded in schema_migrations and never re-executed.
+Destructive recreate+swap migrations (like 001_replacing_mergetree.sql) also
+get a SKIP_CHECKS guard so a fresh volume - already matching the
+post-migration shape via schema.sql - skips running that SQL at all.
 """
 import logging
 import os
@@ -39,14 +32,10 @@ MIGRATIONS_DIR = Path(os.environ.get("MIGRATIONS_DIR", "/app/migrations"))
 
 
 def _ensure_app_user() -> None:
-    """Creates/refreshes the SQL-managed app user (CLICKHOUSE_USER, stored in
-    ClickHouse's local_directory access storage - see system.users) using the
-    bootstrap superuser the image provisions (see docker-compose.yml's
-    x-clickhouse-bootstrap-* anchors and CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT).
-    OR REPLACE makes this idempotent on every stack start - including picking
-    up a changed CLICKHOUSE_PASSWORD in .env - and unlike the migrations/*.sql
-    files below, the password never touches disk or schema_migrations.
-    Grants are database-scoped, not instance-wide.
+    """Creates/refreshes CLICKHOUSE_USER via the bootstrap superuser. OR
+    REPLACE makes this idempotent and picks up a changed CLICKHOUSE_PASSWORD
+    on every start; unlike migrations/*.sql, the password never touches
+    disk or schema_migrations.
     """
     bootstrap_client = clickhouse_connect.get_client(
         host=CLICKHOUSE_HOST,
@@ -67,21 +56,17 @@ def _ensure_app_user() -> None:
 
 
 def _already_replacing_mergetree(client) -> bool:
-    """SKIP_CHECKS guard for 001_replacing_mergetree: true once agent_events
-    is already ReplacingMergeTree (either migrated already, or created
-    straight into that shape by schema.sql on a fresh volume)."""
+    """True once agent_events is already ReplacingMergeTree (migrated
+    already, or created that way by schema.sql on a fresh volume)."""
     rows = client.query(
         "SELECT engine FROM system.tables WHERE database = currentDatabase() AND name = 'agent_events'"
     ).result_rows
     return bool(rows) and rows[0][0] == "ReplacingMergeTree"
 
 
-# Maps a migration file's stem to a callable(client) -> bool: when it
-# returns True, the migration is recorded as applied WITHOUT executing its
-# SQL (the target already has the shape the migration would produce, so
-# running it would only be destructive/wasteful, never a no-op). Migrations
-# not listed here are assumed to be pure `IF NOT EXISTS`-style DDL, safe to
-# run for real every time they're not yet recorded.
+# Maps a migration stem to callable(client) -> bool: True means record as
+# applied without running its SQL (target already has the shape it'd
+# produce). Unlisted migrations are assumed safe `IF NOT EXISTS` DDL.
 SKIP_CHECKS = {
     "001_replacing_mergetree": _already_replacing_mergetree,
 }

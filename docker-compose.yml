@@ -1,9 +1,6 @@
-# The application-facing identity - SQL-managed (CREATE USER, stored in
-# ClickHouse's local_directory access storage / system.users), created and
-# kept in sync on every `docker compose up` by clickhouse-migrate's
-# bootstrap step (see services/webhook/src/migrate.py's _ensure_app_user)
-# using the bootstrap identity below. webhook/webhook-worker/mcp-server/
-# grafana/clickhouse-migrate/backup all connect as this one shared user.
+# App-facing identity, provisioned via SQL each `docker compose up` by
+# clickhouse-migrate (migrate.py:_ensure_app_user) using the bootstrap
+# identity below. Shared by webhook/worker/mcp-server/grafana/backup.
 x-clickhouse-user: &clickhouse-user ${CLICKHOUSE_USER:?set CLICKHOUSE_USER, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-password: &clickhouse-password ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-database: &clickhouse-database ${CLICKHOUSE_DATABASE:?set CLICKHOUSE_DATABASE, e.g. in a .env file next to docker-compose.yml}
@@ -11,26 +8,22 @@ x-clickhouse-host: &clickhouse-host ${CLICKHOUSE_HOST:-clickhouse}
 x-clickhouse-port: &clickhouse-port ${CLICKHOUSE_PORT:-8123}
 x-clickhouse-http-port: &clickhouse-http-port ${CLICKHOUSE_HTTP_PORT:-8123}
 x-clickhouse-native-port: &clickhouse-native-port ${CLICKHOUSE_NATIVE_PORT:-9000}
-# Version pin shared by the `clickhouse` service's own image build and the
-# `backup` service's apt-installed clickhouse-client, so the two never
-# drift apart (see services/clickhouse/Dockerfile, services/backup/Dockerfile).
+# Pins clickhouse's image and backup's apt-installed clickhouse-client to
+# the same version so they can't drift (see both services' Dockerfiles).
 x-clickhouse-version: &clickhouse-version ${CLICKHOUSE_VERSION:-24.8.14.39}
-# XML/env-defined superuser the ClickHouse image itself creates at
-# container start (access_management=1, see CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
-# below) - exists only to bootstrap the real *clickhouse-user above via SQL
-# on every startup. No application service ever connects as this user.
+# Superuser the ClickHouse image creates itself at startup
+# (CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 below) - exists only to bootstrap
+# *clickhouse-user via SQL. No application service connects as this user.
 x-clickhouse-bootstrap-user: &clickhouse-bootstrap-user ${CLICKHOUSE_BOOTSTRAP_USER:?set CLICKHOUSE_BOOTSTRAP_USER, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-bootstrap-password: &clickhouse-bootstrap-password ${CLICKHOUSE_BOOTSTRAP_PASSWORD:?set CLICKHOUSE_BOOTSTRAP_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 
 x-mcp-server-port: &mcp-server-port ${MCP_SERVER_PORT:-8001}
 x-grafana-port: &grafana-port ${GRAFANA_PORT:-3000}
 
-# Host-side root directory backup/restore scripts (services/backup/) read
-# from and write to ($BACKUP_DIR, default .backups - see
-# services/backup/README.md). Referenced directly as
-# ${BACKUP_DIR:-.backups} below rather than via an anchor, since compose
-# anchors substitute whole scalars and can't be concatenated into a bind
-# mount's host-side path.
+# Host root dir backup/restore scripts read/write ($BACKUP_DIR, default
+# .backups - see services/backup/README.md). Used directly as
+# ${BACKUP_DIR:-.backups} below, not via an anchor, since anchors can't be
+# concatenated into a bind mount's host-side path.
 
 x-redis-host: &redis-host ${REDIS_HOST:-redis}
 x-redis-port: &redis-port ${REDIS_PORT:-6379}
@@ -42,25 +35,20 @@ x-litellm-port: &litellm-port ${LITELLM_PORT:-4000}
 x-litellm-master-key: &litellm-master-key ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY, e.g. in a .env file next to docker-compose.yml}
 x-litellm-db-password: &litellm-db-password ${LITELLM_DB_PASSWORD:?set LITELLM_DB_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 x-litellm-db-url: &litellm-db-url postgresql://litellm:${LITELLM_DB_PASSWORD:?set LITELLM_DB_PASSWORD, e.g. in a .env file next to docker-compose.yml}@litellm-db:5432/litellm
-# Internal docker network address - litellm's container-internal port is
-# fixed at 4000 (baked into its image's CMD - see
-# services/litellm/Dockerfile) regardless of LITELLM_PORT, which only remaps
-# the host side. Used by webhook to call
-# LiteLLM's /key/info when verifying hooks/report_git_branch.py's virtual key.
+# Container-internal port is fixed at 4000 (baked into the Dockerfile CMD)
+# regardless of LITELLM_PORT, which only remaps the host side. Used by
+# webhook to call /key/info when verifying report_git_branch.py's key.
 x-litellm-base-url: &litellm-base-url http://litellm:4000
 
-# Langfuse self-hosted (LLM tracing/observability, fed by litellm's
-# success_callback/failure_callback in services/litellm/config.yaml) - its
-# own Postgres/ClickHouse/Redis/MinIO, kept fully separate from the
-# agent-tracking stack above so schemas/versions never collide.
+# Langfuse (LLM tracing, fed by litellm's callbacks in config.yaml) - its
+# own Postgres/ClickHouse/Redis/MinIO, kept separate so schemas never collide
+# with the agent-tracking stack above.
 x-langfuse-port: &langfuse-port ${LANGFUSE_PORT:-3001}
 x-langfuse-clickhouse-http-port: &langfuse-clickhouse-http-port ${LANGFUSE_CLICKHOUSE_HTTP_PORT:-8124}
 x-langfuse-clickhouse-native-port: &langfuse-clickhouse-native-port ${LANGFUSE_CLICKHOUSE_NATIVE_PORT:-9001}
-# Langfuse lives entirely behind the `langfuse` compose profile (opt-in -
-# `docker compose --profile langfuse up -d`, see "Langfuse" in README.md) -
-# unlike the rest of this file's required secrets, these fall back to empty
-# defaults (not `:?`) so `docker compose up` with no Langfuse setup at all
-# still works. Fill them in .env before enabling the profile.
+# Langfuse lives behind the `langfuse` compose profile (opt-in, see
+# "Langfuse" in README.md) - these default to empty, not `:?`, so a plain
+# `docker compose up` still works with no Langfuse setup.
 x-langfuse-clickhouse-user: &langfuse-clickhouse-user ${LANGFUSE_CLICKHOUSE_USER:-langfuse}
 x-langfuse-clickhouse-password: &langfuse-clickhouse-password ${LANGFUSE_CLICKHOUSE_PASSWORD:-}
 x-langfuse-db-password: &langfuse-db-password ${LANGFUSE_DB_PASSWORD:-}
@@ -71,33 +59,29 @@ x-langfuse-minio-password: &langfuse-minio-password ${LANGFUSE_MINIO_ROOT_PASSWO
 x-langfuse-salt: &langfuse-salt ${LANGFUSE_SALT:-}
 x-langfuse-encryption-key: &langfuse-encryption-key ${LANGFUSE_ENCRYPTION_KEY:-}
 x-langfuse-nextauth-secret: &langfuse-nextauth-secret ${LANGFUSE_NEXTAUTH_SECRET:-}
-# Internal docker network address - what litellm talks to (fixed
-# container-internal port, same pattern as litellm-base-url above).
+# Fixed container-internal port, same pattern as litellm-base-url above.
 x-langfuse-base-url: &langfuse-base-url http://langfuse-web:3000
 
 services:
   clickhouse:
-    # Config (schema.sql, config.d/*.xml) is baked in at build time - see
-    # services/clickhouse/Dockerfile - not bind-mounted, so a config change
-    # needs `docker compose build clickhouse`, not just an edit+restart.
+    # Config (schema.sql, config.d/*.xml) is baked in at build time - a
+    # change needs `docker compose build clickhouse`, not just a restart.
     build:
       context: ./services/clickhouse
       args:
         CLICKHOUSE_VERSION: *clickhouse-version
     container_name: receipt-goblin-clickhouse
     environment:
-      # Bootstrap superuser only (see the x-clickhouse-bootstrap-* anchors
-      # above) - not the identity application services connect as.
-      # CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 grants it CREATE USER/GRANT so
-      # clickhouse-migrate's bootstrap step can provision *clickhouse-user
-      # via SQL on every startup (system.users, not users.xml). The image's
-      # entrypoint drops the "default" account entirely in this mode.
+      # Bootstrap superuser only (see x-clickhouse-bootstrap-* above), not
+      # the app identity. ACCESS_MANAGEMENT=1 lets clickhouse-migrate
+      # provision *clickhouse-user via SQL; the image drops the "default"
+      # account entirely in this mode.
       CLICKHOUSE_USER: *clickhouse-bootstrap-user
       CLICKHOUSE_PASSWORD: *clickhouse-bootstrap-password
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
       CLICKHOUSE_DB: *clickhouse-database
-    # 3.6x real observed peak (419MiB) - heaviest CPU user of the stack, the
-    # analytical CTE/window-function panels can spike higher than idle usage.
+    # 3.6x observed peak (419MiB) - heaviest CPU user; analytical
+    # CTE/window-function panels can spike well above idle.
     mem_limit: 4g
     ports:
       - target: 8123
@@ -105,17 +89,14 @@ services:
       - target: 9000
         published: *clickhouse-native-port
     expose:
-      # Prometheus's built-in metrics endpoint (config.d/prometheus.xml) -
-      # internal only, no host port, scraped by Prometheus's `clickhouse`
-      # job (services/prometheus/prometheus.yml).
+      # Metrics endpoint (config.d/prometheus.xml) - internal only, scraped
+      # by Prometheus's `clickhouse` job.
       - "9363"
     volumes:
       - clickhouse-data:/var/lib/clickhouse
-      # Backing disk for native BACKUP/RESTORE statements (see
-      # services/backup/scripts/backup_clickhouse.sh) - the server process
-      # itself writes/reads here, bind-mounted so files land on the host.
-      # Data, not config - the config.d/backups.xml pointing at this path is
-      # baked into the image (see services/clickhouse/Dockerfile).
+      # Backing disk for native BACKUP/RESTORE (backup_clickhouse.sh) - the
+      # server writes/reads here directly, bind-mounted so files land on the
+      # host. Data only; config.d/backups.xml pointing here is baked in.
       - ${BACKUP_DIR:-.backups}/clickhouse:/backups/clickhouse
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
@@ -126,20 +107,12 @@ services:
       - receipt-goblin
 
   clickhouse-migrate:
-    # Runs services/webhook/src/migrate.py once per `docker compose up` and
-    # exits - first provisions the SQL-managed application user (see
-    # migrate.py's _ensure_app_user, using the bootstrap creds below), then
-    # applies every services/clickhouse/migrations/*.sql file that isn't
-    # already recorded in schema_migrations. Safe to run on every startup
-    # (idempotent - see migrate.py's docstring): a brand-new volume already
-    # has the final shape from schema.sql and each migration self-skips via
-    # a structural check, an existing volume actually gets migrated the
-    # first time this runs, and every subsequent run is a no-op once
-    # schema_migrations has the version recorded. webhook/webhook-worker
-    # both wait on this completing successfully so they never race a
-    # migration with live inserts.
-    # Build context is the repo root, not ./services/webhook - see
-    # services/webhook/Dockerfile's top comment for why.
+    # Runs migrate.py once per `docker compose up`: provisions the app user
+    # via SQL, then applies any services/clickhouse/migrations/*.sql not yet
+    # in schema_migrations. Idempotent, safe on every startup - see
+    # migrate.py's docstring. webhook/worker wait on this so they never race
+    # a migration with live inserts.
+    # Build context is the repo root - see services/webhook/Dockerfile.
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
@@ -153,15 +126,13 @@ services:
       CLICKHOUSE_USER: *clickhouse-user
       CLICKHOUSE_PASSWORD: *clickhouse-password
       CLICKHOUSE_DATABASE: *clickhouse-database
-      # Bootstrap superuser used only to run CREATE USER/GRANT for the app
-      # user above - see the x-clickhouse-bootstrap-* anchors.
+      # Bootstrap superuser, used only for CREATE USER/GRANT above.
       CLICKHOUSE_BOOTSTRAP_USER: *clickhouse-bootstrap-user
       CLICKHOUSE_BOOTSTRAP_PASSWORD: *clickhouse-bootstrap-password
       LITELLM_MASTER_KEY: *litellm-master-key
       LITELLM_BASE_URL: *litellm-base-url
-      # Never used (migrate.py has no Redis path), but config.py is shared
-      # with webhook and reads these with no fallback - unset would crash on
-      # import.
+      # Unused by migrate.py, but config.py is shared with webhook and reads
+      # these with no fallback - unset would crash on import.
       REDIS_HOST: *redis-host
       REDIS_PORT: *redis-port
     mem_limit: 256m
@@ -172,10 +143,9 @@ services:
       - receipt-goblin
 
   grafana:
-    # Config/provisioning/dashboards baked into the image at build time - see
-    # services/grafana/Dockerfile. A dashboard/provisioning change needs
-    # `docker compose build grafana`, not just an edit+restart, in prod;
-    # docker-compose.dev.yml bind-mounts all of it back for live editing.
+    # Config/dashboards baked into the image at build time - a change needs
+    # `docker compose build grafana` in prod; docker-compose.dev.yml
+    # bind-mounts them back for live editing.
     build: ./services/grafana
     container_name: receipt-goblin-grafana
     ports:
@@ -205,12 +175,9 @@ services:
       - receipt-goblin
 
   mcp-server:
-    # Self-contained prod image - src/config.yml baked in via
-    # services/mcp-server/Dockerfile. docker-compose.dev.yml overlays live
-    # source on top for dev: ./src bind-mounted over the image's /app/src,
-    # and `command:` adds --reload. Editing services/mcp-server/src/server.py
-    # then restarts uvicorn without a rebuild; changing requirements.txt does
-    # need `docker compose build mcp-server` either way.
+    # Prod image is self-contained (config.yml baked in). docker-compose.dev.yml
+    # bind-mounts ./src over /app/src and adds `command: --reload` for live
+    # editing; requirements.txt changes still need a rebuild either way.
     build: ./services/mcp-server
     container_name: receipt-goblin-mcp-server
     ports:
@@ -239,15 +206,12 @@ services:
 
   redis:
     # Queue between webhook (producer) and webhook-worker (consumer) - see
-    # services/webhook/src/queue_client.py. Tuning lives in
-    # services/redis/redis.conf, baked into the image at build time (see
-    # services/redis/Dockerfile) - a tuning change needs
-    # `docker compose build redis`, no dev override for this one (rarely
-    # edited live).
+    # queue_client.py. Tuning lives in redis.conf, baked in at build time -
+    # no dev override for this one, rarely edited live.
     build: ./services/redis
     container_name: receipt-goblin-redis
-    # Above redis.conf's maxmemory (1024mb) - leaves headroom for Redis's
-    # own overhead beyond the dataset itself.
+    # Above redis.conf's maxmemory (1024mb) - headroom for Redis's own
+    # overhead beyond the dataset.
     mem_limit: 1200m
     restart: always
     volumes:
@@ -261,21 +225,18 @@ services:
       - receipt-goblin
 
   webhook:
-    # Self-contained prod image - src/config.yml baked in via
-    # services/webhook/Dockerfile (build context is the repo root - see that
-    # file's top comment). docker-compose.dev.yml overlays live source on
-    # top for dev: ./src bind-mounted over the image's /app/src, and
-    # `command:` adds --reload. Editing services/webhook/src/server.py then
-    # restarts uvicorn without a rebuild; changing requirements.txt does need
-    # `docker compose build webhook` either way.
+    # Prod image is self-contained (config.yml baked in; build context is
+    # the repo root - see services/webhook/Dockerfile). docker-compose.dev.yml
+    # bind-mounts ./src over /app/src and adds `command: --reload` for live
+    # editing; requirements.txt changes still need a rebuild either way.
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
     container_name: receipt-goblin-webhook
     volumes:
-      # Captured payloads land here on the host, not just inside the
-      # container - see services/webhook/src/server.py CAPTURE_DIR. Runtime
-      # output, not source/config, so this stays mounted in prod too.
+      # Captured payloads land on the host too, not just in-container - see
+      # server.py's CAPTURE_DIR. Runtime output, so this stays mounted in
+      # prod too (unlike source/config).
       - ./.capture:/app/captures
     ports:
       - target: 8000
@@ -289,8 +250,7 @@ services:
       CAPTURE_ENABLED: "true"
       REDIS_HOST: *redis-host
       REDIS_PORT: *redis-port
-      # For /key/info lookups when verifying hooks/report_git_branch.py's
-      # Authorization header.
+      # For /key/info lookups verifying report_git_branch.py's auth header.
       LITELLM_MASTER_KEY: *litellm-master-key
       LITELLM_BASE_URL: *litellm-base-url
     mem_limit: 128m
@@ -311,11 +271,9 @@ services:
       - receipt-goblin
 
   webhook-worker:
-    # Same image as webhook (built again from the same Dockerfile/layer
-    # cache, not a separate image) - only the APP_ROLE env var differs (see
-    # services/webhook/docker-entrypoint.sh). Drains queue_client.STREAM_KEY
-    # in batches and does the actual ClickHouse inserts - see
-    # services/webhook/src/worker.py.
+    # Same image as webhook, only APP_ROLE differs (docker-entrypoint.sh).
+    # Drains queue_client.STREAM_KEY in batches and does the ClickHouse
+    # inserts - see worker.py.
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
@@ -329,9 +287,8 @@ services:
       CLICKHOUSE_DATABASE: *clickhouse-database
       REDIS_HOST: *redis-host
       REDIS_PORT: *redis-port
-      # worker.py never calls /key/info itself, but config.py is shared with
-      # webhook (see AGENTS.md "every tunable lives in config.py") and reads
-      # these with no fallback - unset here would crash worker.py on import.
+      # worker.py never calls /key/info, but config.py is shared with
+      # webhook and reads these with no fallback - unset crashes on import.
       LITELLM_MASTER_KEY: *litellm-master-key
       LITELLM_BASE_URL: *litellm-base-url
     expose:
@@ -354,11 +311,10 @@ services:
       - receipt-goblin
 
   webhook-reparse:
-    # Same image as webhook/webhook-worker - CLI-only, no HTTP API. Recomputes
-    # calculated_type/calculated_payload etc. for events already in
-    # event_sources - see services/webhook/src/reparse.py. Never starts with
-    # `docker compose up` (profiles: ["tools"]) - only via
-    # `make reparse`/`make reparse-all` (docker compose run --rm).
+    # Same image as webhook/webhook-worker, CLI-only. Recomputes
+    # calculated_type/calculated_payload for existing event_sources rows -
+    # see reparse.py. Not started by `docker compose up` (profiles: tools) -
+    # run via `make reparse`/`make reparse-all`.
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
@@ -372,21 +328,16 @@ services:
       CLICKHOUSE_USER: *clickhouse-user
       CLICKHOUSE_PASSWORD: *clickhouse-password
       CLICKHOUSE_DATABASE: *clickhouse-database
-      # worker.py/reparse.py never call /key/info themselves, but config.py is
-      # shared with webhook (see AGENTS.md "every tunable lives in
-      # config.py") and reads these with no fallback.
+      # reparse.py doesn't use LITELLM_*/REDIS_*, but config.py is shared
+      # with webhook and reads them unconditionally - unset crashes on import.
       LITELLM_MASTER_KEY: *litellm-master-key
       LITELLM_BASE_URL: *litellm-base-url
-      # Never used (reparse.py has no Redis path), but config.py is shared
-      # with webhook and reads these with no fallback - unset would crash on
-      # import.
       REDIS_HOST: *redis-host
       REDIS_PORT: *redis-port
       SESSION_ID: ${SESSION_ID:-}
-    # reparse.py pages through event_sources REPARSE_CHUNK_SIZE rows at a
-    # time (see config.yml) instead of buffering the whole table
-    # client-side, so this doesn't need the same headroom a single
-    # unbounded query over 300MB+ of raw payload text once did.
+    # reparse.py pages event_sources REPARSE_CHUNK_SIZE rows at a time
+    # instead of buffering the whole table client-side, so this doesn't need
+    # headroom for a full 300MB+ payload-text load.
     mem_limit: 256m
     depends_on:
       clickhouse:
@@ -397,14 +348,11 @@ services:
       - receipt-goblin
 
   backup:
-    # Backup/restore for clickhouse, litellm-db, and grafana-data - see
-    # services/backup/README.md for the playbook. Never starts with
-    # `docker compose up` (profiles: ["tools"]) - only via
-    # `make backup-*`/`make restore-*` (docker compose run --rm), or from
-    # cron calling `make backup-all` directly. Never uses docker exec or the
-    # Docker socket: clickhouse/litellm-db are reached over the network,
-    # grafana-data is mounted directly as the same named volume the
-    # `grafana` service uses.
+    # Backup/restore for clickhouse, litellm-db, grafana-data - see
+    # services/backup/README.md. Not started by `docker compose up`
+    # (profiles: tools) - run via `make backup-*`/`restore-*` or cron.
+    # No docker exec/socket: clickhouse/litellm-db go over the network,
+    # grafana-data is the same named volume the `grafana` service uses.
     build:
       context: ./services/backup
       args:
@@ -432,12 +380,10 @@ services:
       - receipt-goblin
 
   litellm:
-    # config.yaml/entrypoint baked into the image at build time - see
-    # services/litellm/Dockerfile. A config change needs
-    # `docker compose build litellm`, not just an edit+restart - no dev
-    # override for this one (rarely edited live). user_configs/*.yaml stays
-    # bind-mounted below even in prod (gitignored, may hold real
-    # secrets/hosts - not something to bake into a shared image layer).
+    # config.yaml/entrypoint baked into the image at build time - a change
+    # needs `docker compose build litellm`, no dev override, rarely edited
+    # live. user_configs/*.yaml stays bind-mounted below even in prod
+    # (gitignored, may hold real secrets/hosts).
     build: ./services/litellm
     container_name: receipt-goblin-litellm
     ports:
@@ -447,26 +393,18 @@ services:
       WEBHOOK_URL: *webhook-url
       LITELLM_MASTER_KEY: *litellm-master-key
       DATABASE_URL: *litellm-db-url
-      # Read by litellm's built-in "langfuse" success_callback/failure_callback
-      # (services/litellm/config.yaml) - no callback_settings block needed,
-      # unlike metrics_webhook, since langfuse is one of litellm's native
-      # logging integrations and just reads these three env vars. Optional
-      # (not `:?`), since Langfuse itself lives behind the `langfuse` compose
-      # profile - if unset/langfuse-web isn't running, litellm just logs a
-      # per-call callback error and otherwise works fine, see "Langfuse" in
-      # README.md.
+      # Read by litellm's built-in langfuse callback (config.yaml) - one of
+      # litellm's native integrations, so no callback_settings block needed.
+      # Optional (not `:?`): Langfuse is opt-in (`langfuse` profile), and if
+      # unset litellm just logs a per-call callback error and keeps working.
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_HOST: *langfuse-base-url
     volumes:
-      # docker-entrypoint.sh (baked into the image) merges in whatever
-      # config.<name>.yaml files it finds here (e.g. config.ollama.yaml,
-      # config.reranker.yaml - see user_configs/config.yaml.tmpl and "Remote
-      # model sources" under "LiteLLM" in README.md). Gitignored - may carry
-      # real remote-model hosts/keys, so unlike the rest of services/litellm
-      # this directory stays bind-mounted even in prod: adding a new remote
-      # model source is still just dropping a file here and restarting, no
-      # image rebuild needed.
+      # docker-entrypoint.sh merges in any config.<name>.yaml found here
+      # (e.g. config.ollama.yaml - see user_configs/config.yaml.tmpl).
+      # Gitignored, may hold real hosts/keys, so stays bind-mounted even in
+      # prod: a new remote model source is just drop-file + restart, no rebuild.
       - ./services/litellm/user_configs:/app/litellm-config/user_configs:ro
     mem_limit: 2g
     healthcheck:
@@ -502,8 +440,7 @@ services:
       - receipt-goblin
 
   prometheus:
-    # Config baked in at build time (services/prometheus/Dockerfile) - see
-    # services/prometheus/prometheus.yml for scrape jobs.
+    # Config baked in at build time - see prometheus.yml for scrape jobs.
     build: ./services/prometheus
     container_name: receipt-goblin-prometheus
     profiles:
@@ -523,9 +460,8 @@ services:
       - receipt-goblin
 
   blackbox:
-    # Config baked in at build time (services/blackbox/Dockerfile) - see
-    # services/blackbox/config.yml for the http_2xx module Prometheus's
-    # blackbox scrape job (services/prometheus/prometheus.yml) uses.
+    # Config baked in at build time - see config.yml for the http_2xx
+    # module Prometheus's blackbox job uses.
     build: ./services/blackbox
     container_name: receipt-goblin-blackbox
     profiles:
@@ -538,10 +474,9 @@ services:
       - receipt-goblin
 
   redis-exporter:
-    # Stock image, no custom config - server-level Redis stats only (memory,
-    # clients, commands). Business-level stream metrics (queue depth,
-    # consumer lag, batches) come from webhook-worker's own /metrics instead
-    # (see the worker service below), since redis_exporter can't see those.
+    # Stock image, server-level Redis stats only (memory, clients, commands).
+    # Business-level stream metrics (queue depth, lag) come from
+    # webhook-worker's own /metrics instead - redis_exporter can't see those.
     image: oliver006/redis_exporter:v1.66.0
     container_name: receipt-goblin-redis-exporter
     profiles:
@@ -559,35 +494,11 @@ services:
       - receipt-goblin
 
   cadvisor:
-    # Stock image, no custom config. Read-only host mounts below are system
-    # paths cAdvisor needs to read cgroup/container state directly - not
-    # config files, so they're outside the no-volume-mounts convention (same
-    # exception class as alloy's docker.sock mount below). On Docker Desktop
-    # for Mac these paths are the Linux VM's, not literally the host Mac -
-    # per-container numbers are accurate, host-wide ones reflect the VM.
-    # docker.sock is required too - without it cadvisor can only see raw
-    # cgroup paths (id="/docker/<hash>"), not human-readable container names
-    # (name="receipt-goblin-worker" etc.) the dashboard variable depends on.
-    # Docker Desktop's default containerd image store (Docker Desktop 4.x+)
-    # breaks cadvisor's classic overlay2-graphdriver container discovery
-    # ("failed to identify the read-write layer ID" - /var/lib/docker/image/
-    # overlayfs/ no longer exists there). Fix: point cadvisor at the same
-    # KNOWN BROKEN on this machine: this dev Docker runs under Colima
-    # (`docker info` -> Storage Driver: overlayfs, the containerd-snapshotter
-    # layout, not classic overlay2), so every real container fails with
-    # "failed to identify the read-write layer ID" and never gets tracked -
-    # cadvisor's container discovery still expects the classic overlay2
-    # layerdb layout. Confirmed: neither mounting docker.sock, nor pointing
-    # --containerd at Colima's own containerd socket
-    # (/run/containerd/containerd.sock inside the VM), changes this -
-    # cadvisor's cgroup-path-based docker detection takes over regardless.
-    # Only real fixes: disable the containerd-snapshotter feature for this
-    # Colima instance (VM-level daemon.json change, `colima start --edit`),
-    # or a plain Linux Docker host (no VM/containerd-snapshotter) in
-    # production. Left running for the node_exporter/Host tab pairing below;
-    # the Containers tab in
-    # services/grafana/dashboards-health/docker_containers.json will stay
-    # empty here until one of the above is done.
+    # Stock image. Read-only host mounts give cgroup/container state, not
+    # config - exempt from the no-config-volume-mounts convention (same
+    # class as alloy's docker.sock below). Broken under the
+    # containerd-snapshotter storage driver (Docker Desktop default / Colima)
+    # - kept anyway, see AGENTS.md "cAdvisor container-level metrics".
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: receipt-goblin-cadvisor
     profiles:
@@ -612,10 +523,9 @@ services:
       - receipt-goblin
 
   node-exporter:
-    # CLI flags baked into the image at build time (see
-    # services/node-exporter/Dockerfile) - no compose `command:` override.
-    # Same host-mount rationale as cadvisor above - reports on the Docker
-    # Desktop Linux VM on macOS, the real host on Linux.
+    # CLI flags baked into the image, no compose `command:` override. Same
+    # host-mount rationale as cadvisor - reports on the Docker Desktop Linux
+    # VM on macOS, the real host on Linux.
     build: ./services/node-exporter
     container_name: receipt-goblin-node-exporter
     profiles:
@@ -632,8 +542,8 @@ services:
       - receipt-goblin
 
   loki:
-    # Config baked in at build time (services/loki/Dockerfile). Single-binary,
-    # filesystem-backed - no object storage needed at this scale.
+    # Config baked in at build time. Single-binary, filesystem-backed - no
+    # object storage needed at this scale.
     build: ./services/loki
     container_name: receipt-goblin-loki
     profiles:
@@ -653,11 +563,9 @@ services:
       - receipt-goblin
 
   alloy:
-    # Config baked in at build time (services/alloy/Dockerfile) - see
-    # services/alloy/config.alloy. Docker socket mount is a system-socket
-    # exception to this repo's no-config-volume-mounts convention (needed for
-    # discovery.docker to find and tail every running container's logs), not
-    # a config file.
+    # Config baked in at build time (config.alloy). Docker socket mount is a
+    # system-socket exception to the no-config-volume-mounts convention -
+    # needed for discovery.docker to tail every container's logs.
     build: ./services/alloy
     container_name: receipt-goblin-alloy
     profiles:
@@ -695,9 +603,8 @@ services:
     networks:
       - receipt-goblin
 
-  # A second, dedicated ClickHouse instance for Langfuse's own trace/
-  # observation/score tables - intentionally not shared with the `clickhouse`
-  # service above, which has its own schema.sql and is owned by webhook.
+  # Dedicated ClickHouse for Langfuse's own trace/observation/score tables -
+  # not shared with the `clickhouse` service above, which is owned by webhook.
   langfuse-clickhouse:
     image: clickhouse/clickhouse-server:24.8
     container_name: receipt-goblin-langfuse-clickhouse
@@ -725,12 +632,11 @@ services:
     networks:
       - receipt-goblin
 
-  # S3-compatible blob store Langfuse uses for ingested events/media - not
-  # published to the host, only langfuse-web/langfuse-worker talk to it.
+  # S3-compatible blob store for Langfuse's ingested events/media - internal
+  # only, only langfuse-web/langfuse-worker talk to it.
   langfuse-minio:
-    # Startup logic (bucket-dir precreate + minio server invocation) baked
-    # into the image at build time - see
-    # services/langfuse-minio/Dockerfile + entrypoint.sh.
+    # Startup logic (bucket precreate + minio invocation) baked into the
+    # image - see Dockerfile + entrypoint.sh.
     build: ./services/langfuse-minio
     container_name: receipt-goblin-langfuse-minio
     profiles:
@@ -751,11 +657,9 @@ services:
       - receipt-goblin
 
   langfuse-redis:
-    # Startup logic (reads REDIS_PASSWORD at runtime and execs redis-server)
-    # baked into the image at build time - see
-    # services/langfuse-redis/Dockerfile + entrypoint.sh. The password can't
-    # be baked into the image itself (it's a runtime secret), so it still
-    # flows in via environment: below, just not as a compose `command:` arg.
+    # Startup logic baked into the image (Dockerfile + entrypoint.sh) - reads
+    # REDIS_PASSWORD at runtime and execs redis-server, since the password
+    # is a runtime secret and can't be baked in.
     build: ./services/langfuse-redis
     container_name: receipt-goblin-langfuse-redis
     profiles:
@@ -774,10 +678,9 @@ services:
     networks:
       - receipt-goblin
 
-  # Async ingestion worker - langfuse-web writes incoming traces straight to
-  # langfuse-minio and queues a reference on langfuse-redis; this drains that
-  # queue and does the actual langfuse-clickhouse inserts. Not published to
-  # the host, nothing calls it directly.
+  # Async ingestion worker - langfuse-web writes traces to langfuse-minio and
+  # queues a reference on langfuse-redis; this drains the queue and does the
+  # langfuse-clickhouse inserts. Internal only.
   langfuse-worker:
     image: langfuse/langfuse-worker:3
     container_name: receipt-goblin-langfuse-worker
@@ -831,18 +734,14 @@ services:
       - langfuse
     environment:
       <<: *langfuse-env
-      # Next.js standalone server.js binds to $HOSTNAME if set; Docker auto-sets
-      # HOSTNAME to the container ID, so without this it listens only on the
-      # container's actual IP - not localhost - and the healthcheck below
-      # (and anything hitting localhost:3000) gets connection refused even
-      # though the app is up and "Ready".
+      # Next.js binds to $HOSTNAME if set; Docker auto-sets it to the
+      # container ID, so without this it listens only on the container IP,
+      # not localhost - the healthcheck below gets connection refused.
       HOSTNAME: "0.0.0.0"
       NEXTAUTH_URL: http://localhost:${LANGFUSE_PORT:-3001}
       NEXTAUTH_SECRET: *langfuse-nextauth-secret
-      # Auto-provisions an org/project/admin user + the exact
-      # LANGFUSE_PUBLIC_KEY/SECRET_KEY pair litellm authenticates with (see
-      # the litellm service's environment above) on first boot only - see
-      # "Langfuse" in README.md.
+      # Auto-provisions an org/project/admin user + the LANGFUSE_PUBLIC/SECRET_KEY
+      # pair litellm authenticates with, on first boot only - see README.md.
       LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-}
       LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-}
       LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-}
@@ -852,18 +751,17 @@ services:
       LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-}
       LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-}
       LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-}
-    # 1g OOM-killed the Next.js server during its init-scripts pass
-    # (observed heap crash right after "MCP feature registered" logging) -
-    # langfuse-web is a full Next.js app, notably heavier than this stack's
-    # other services.
+    # 1g OOM-killed Next.js during init-scripts (heap crash right after
+    # "MCP feature registered") - langfuse-web is heavier than the rest of
+    # this stack.
     mem_limit: 2g
     restart: always
     ports:
       - target: 3000
         published: *langfuse-port
     healthcheck:
-      # 127.0.0.1, not localhost - the container has no IPv6 listener (see
-      # HOSTNAME comment above), and "localhost" resolves to ::1 first here.
+      # 127.0.0.1, not localhost - no IPv6 listener here (see HOSTNAME
+      # above), and localhost resolves to ::1 first.
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/public/health"]
       interval: 5s
       timeout: 3s

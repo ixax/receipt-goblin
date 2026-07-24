@@ -14,14 +14,9 @@ model_list:
   - model_name: claude-fable-5
     litellm_params:
       model: anthropic/claude-fable-5
-  # Codex/ChatGPT subscription passthrough - forwards the caller's own
-  # `codex login` OAuth token instead of using a single shared litellm-owned
-  # ChatGPT login, via the is_anthropic_oauth_key monkeypatch +
-  # ChatGPTAuthForwardHandler pre-call hook in custom_callbacks.py (see
-  # README.md "Routing Codex CLI through it" and the comment block at the
-  # top of custom_callbacks.py's "Codex/ChatGPT subscription passthrough"
-  # section for the full mechanism and why a plain forward_client_headers
-  # setting alone can't do this).
+  # Forwards the caller's own `codex login` OAuth token instead of a shared
+  # ChatGPT login - see custom_callbacks.py's "Codex/ChatGPT subscription
+  # passthrough" section for why plain forward_client_headers can't do this.
   - model_name: gpt-5.6-sol
     litellm_params:
       model: chatgpt/gpt-5.6-sol
@@ -36,25 +31,19 @@ general_settings:
   store_model_in_db: true
   store_prompts_in_spend_logs: true
 
-  # Admin/master credential: logs into /ui and calls /key/generate to mint
-  # per-person virtual keys. Not meant for day-to-day calls.
+  # Admin credential for /ui and /key/generate - not for day-to-day calls.
   master_key: os.environ/LITELLM_MASTER_KEY
 
-  # Everyone's own personal LiteLLM virtual key goes in this SAME header
-  # (x-litellm-api-key) regardless of which route they use, via
-  # ANTHROPIC_CUSTOM_HEADERS (see README.md "LiteLLM"). For the OAuth-backed
-  # routes above, this is also what lets LiteLLM tell "this authenticated to
-  # me" apart from "this is the caller's own Anthropic credential, forward
-  # it" - without it, LiteLLM can't tell the two apart and strips
-  # Authorization before forwarding (see BerriAI/litellm#19618).
+  # Personal virtual keys go in this header regardless of route (see
+  # README.md "LiteLLM"). Needed for OAuth-backed routes too - without it
+  # LiteLLM can't tell "authed to me" from "caller's own Anthropic cred,
+  # forward it" and strips Authorization before forwarding (litellm#19618).
   litellm_key_header_name: x-litellm-api-key
 
 model_group_settings:
-  # Forwards the caller's own Authorization (subscription OAuth token) to
-  # Anthropic - scoped to exactly the model_list entries above, so once
-  # any of them moves to the admin UI (real api_key) instead, remove its name
-  # from this list too, or a client's own credential could still get forwarded
-  # for it depending on which definition LiteLLM picks up.
+  # Forwards caller's own Authorization (OAuth token) to Anthropic - if a
+  # model here moves to a real api_key, remove its name too or its
+  # credential could still get forwarded.
   forward_client_headers_to_llm_api:
     - claude-sonnet-5
     - claude-haiku-4-5
@@ -66,44 +55,30 @@ model_group_settings:
     - gpt-5.6-luna
 
 litellm_settings:
-  # NOTE: a bare `success_callback: ["webhook"]` fires LiteLLM's built-in
-  # *alerting* webhook (Slack-style budget/error pings, thin payload) - not
-  # what you want for inspecting full request/response JSON. `generic_api`
-  # is the callback type that ships the full StandardLoggingPayload
-  # (messages, response, usage, cost, timing, metadata) to your endpoint.
+  # NOTE: bare `success_callback: ["webhook"]` fires LiteLLM's *alerting*
+  # webhook (thin Slack-style pings), not this. `generic_api` ships the
+  # full StandardLoggingPayload (messages, response, usage, cost) instead.
   callbacks:
     - metrics_webhook
-    # Copies x-claude-code-session-id into metadata.session_id pre-call so
-    # Langfuse groups traces by CLI session - see custom_callbacks.py.
+    # Copies x-claude-code-session-id into metadata.session_id so Langfuse
+    # groups traces by CLI session.
     - custom_callbacks.session_id_handler
-    # Forwards a Codex caller's own ChatGPT subscription token to the
-    # gpt-5.6-* models above instead of a single shared litellm-owned
-    # login - see custom_callbacks.py.
+    # Forwards a Codex caller's own ChatGPT token to gpt-5.6-* models
+    # instead of a shared login.
     - custom_callbacks.chatgpt_auth_forward_handler
-    # Turns on LiteLLM's built-in Prometheus integration - exposes /metrics
-    # on this same proxy port (4000), no extra service or callback_settings
-    # block needed (unlike metrics_webhook above). Scraped by Prometheus's
-    # litellm job - see services/prometheus/prometheus.yml.
+    # Exposes /metrics on this proxy port (4000); scraped by Prometheus's
+    # litellm job.
     - prometheus
 
-  # /metrics auth defaults to requiring the caller's key via the Authorization
-  # header - but this project authenticates through x-litellm-api-key instead
-  # (general_settings.litellm_key_header_name above; see server.py's
-  # _virtual_key_is_valid comment on why LiteLLM no longer reads Authorization
-  # for key auth here), so the built-in /metrics auth path always rejects it
-  # as malformed. Prometheus scrapes this over the internal Docker network
-  # only, and /metrics carries no secrets (aggregate token/cost/latency
-  # counters, same exposure level as this project's other unauthenticated
-  # /metrics endpoints) - disabling its auth is the documented escape hatch.
+  # Built-in /metrics auth expects the Authorization header, but this
+  # project authenticates via x-litellm-api-key instead, so it always
+  # rejects as malformed. Scraped only over the internal Docker network;
+  # /metrics carries no secrets, so disabling auth is the escape hatch.
   require_auth_for_metrics_endpoint: false
 
-  # "langfuse" is one of LiteLLM's native logging integrations (unlike
-  # metrics_webhook above, it needs no callback_settings block - it just
-  # reads LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY/LANGFUSE_HOST from the
-  # litellm container's environment, set in docker-compose.yml). Ships every
-  # call as a Langfuse trace: full messages/response, per-call cost/usage,
-  # latency, and groups calls into sessions via metadata.session_id - see
-  # "Langfuse" in README.md for how session_id gets set for CLI traffic.
+  # Native LiteLLM integration - reads LANGFUSE_* env vars, needs no
+  # callback_settings block. Ships every call as a trace (messages,
+  # cost/usage, latency) grouped by metadata.session_id.
   success_callback:
     - langfuse
   failure_callback:
@@ -112,8 +87,7 @@ litellm_settings:
 callback_settings:
   metrics_webhook:
     callback_type: generic_api
-    # Internal service DNS name on the agent-tracking network - no host
-    # port needed since only the litellm container talks to it.
+    # Internal DNS name; no host port needed since only litellm talks to it.
     endpoint: os.environ/WEBHOOK_URL
     headers:
       Content-Type: application/json

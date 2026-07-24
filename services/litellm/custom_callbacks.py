@@ -1,19 +1,10 @@
-# Loaded by litellm's proxy via the `custom_callbacks.session_id_handler`
-# entry in config.yaml's litellm_settings.callbacks - docker-entrypoint.sh
-# copies this file next to the effective merged config so that reference
-# resolves (see "same directory as config.yaml" import convention:
-# https://docs.litellm.ai/docs/proxy/call_hooks).
+# Loaded via config.yaml's litellm_settings.callbacks (docker-entrypoint.sh
+# copies this file next to the merged config so the reference resolves).
 #
-# Purpose: litellm already captures the "x-claude-code-session-id" header
-# services/webhook/src/clickhouse_ingest.py's _session_and_trace_id reads
-# from payload["metadata"]["requester_custom_headers"] - but that's only
-# used by the metrics_webhook callback today. Langfuse groups traces into a
-# "session" via metadata["session_id"] on the *request*, which nothing sets
-# by default, so without this every call would land in Langfuse as its own
-# disconnected trace instead of being grouped per CLI session. This hook
-# copies the same header into metadata["session_id"] (and
-# metadata["trace_user_id"]) before the call, so Langfuse ends up with the
-# exact same session grouping ClickHouse already has.
+# Langfuse only groups calls into a "session" via metadata["session_id"] on
+# the request, which nothing sets by default. This copies the
+# x-claude-code-session-id header into metadata["session_id"]/trace_user_id
+# so Langfuse sessions match the grouping ClickHouse already has.
 import base64
 import binascii
 import json
@@ -53,27 +44,16 @@ session_id_handler = SessionIdHandler()
 
 # --- Codex/ChatGPT subscription passthrough -------------------------------
 #
-# Mirrors the Anthropic OAuth passthrough this proxy already relies on for
-# Claude Code (see README.md "Routing Claude Code through it" and
-# BerriAI/litellm#19618): litellm's own `clean_headers()` (proxy internal,
-# proxy/litellm_pre_call_utils.py) drops any incoming `Authorization` header
-# unless it recognizes it as a provider OAuth token via
-# `litellm.llms.anthropic.common_utils.is_anthropic_oauth_key()` - which only
-# checks for Anthropic's `sk-ant-oat*` prefix. There is no equivalent
-# built-in recognizer for a ChatGPT/Codex subscription token (confirmed
-# against litellm's docs and open issues - BerriAI/litellm#23777 and #24500
-# are open feature requests for exactly this, unresolved upstream), so
-# without this, a Codex caller's own token is silently stripped and the
-# built-in `chatgpt` provider falls back to whatever single account is
-# logged into this container (see docker-entrypoint.sh's dummy auth.json
-# seed).
+# litellm's clean_headers() strips any Authorization header it doesn't
+# recognize as provider OAuth via is_anthropic_oauth_key(), which only
+# matches Anthropic's sk-ant-oat* prefix (no ChatGPT equivalent exists
+# upstream: BerriAI/litellm#23777, #24500). Without this, a Codex caller's
+# token gets stripped and falls back to the container's single logged-in
+# account.
 #
-# ChatGPT/OpenAI tokens have no fixed prefix to check the way Anthropic's
-# do, so instead this decodes the JWT payload and looks for the
-# "https://api.openai.com/auth" claim - the same claim litellm's own
-# Authenticator._extract_account_id() (llms/chatgpt/authenticator.py) reads
-# to derive the account id, so this isn't guessing at OpenAI's token
-# format, it's reusing litellm's own detection logic.
+# ChatGPT tokens have no fixed prefix, so decode the JWT and read the
+# "https://api.openai.com/auth" claim - same claim litellm's own
+# Authenticator._extract_account_id() uses.
 def _chatgpt_account_id(token: str) -> Optional[str]:
     parts = token.split(".")
     if len(parts) != 3:
@@ -96,10 +76,8 @@ def _is_anthropic_or_chatgpt_oauth_key(value: Optional[str]) -> bool:
     return bool(value and _chatgpt_account_id(value))
 
 
-# `clean_headers()` does a function-local `from litellm.llms.anthropic.common_utils
-# import is_anthropic_oauth_key` on every call (not a module-load-time bind),
-# so patching the module attribute here is enough for it to pick up the
-# broadened check - no litellm proxy source needs touching.
+# clean_headers() imports is_anthropic_oauth_key locally on every call (not
+# bound at module load), so patching the module attribute here is enough.
 _anthropic_common_utils.is_anthropic_oauth_key = _is_anthropic_or_chatgpt_oauth_key
 
 

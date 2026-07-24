@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
-"""PreToolUse hook (Claude Code only, matcher: ExitPlanMode - Codex CLI has
-no plan-mode equivalent): reports the proposed plan text to the webhook.
-Exists because LiteLLM's StandardLoggingPayload doesn't carry it -
-agent_events.raw_payload's tool_calls[0].function.arguments comes back as an
-empty "{}" for every observed ExitPlanMode call, unlike every other tool
-(confirmed against live data), so the plan has to be read straight from this
-hook's own tool_input instead. See plan_proposals in clickhouse/schema.sql.
-Stdlib only. Must never raise on network failures (swallowed and logged to
-stderr) or block the tool call - but AGENT_CLI_TRACKING_API_URL/
-LITELLM_VIRTUAL_KEY have no fallback, so a missing/unset value is a
-misconfiguration, not a transient failure, and is allowed to crash this hook
-(KeyError, non-zero exit) rather than silently pointing at a guessed URL or
-skipping auth.
+"""PreToolUse hook (Claude Code only, matcher: ExitPlanMode). Reports the
+proposed plan text to the webhook. Exists because LiteLLM's
+StandardLoggingPayload arguments come back empty "{}" for ExitPlanMode, so
+the plan must be read from this hook's own tool_input instead. Must never
+raise on network failures or block the tool call, but missing tracking env
+vars are a misconfiguration and are allowed to crash the hook.
 """
 import json
 import os
@@ -20,9 +13,7 @@ import urllib.error
 import urllib.request
 
 INGEST_API_URL = os.environ["AGENT_CLI_TRACKING_API_URL"]
-# Personal LiteLLM virtual key (see `make env`) - webhook checks this
-# against LiteLLM's own /key/info before accepting the report, so this
-# isn't just a header we're adding for show.
+# Checked against LiteLLM's /key/info by the webhook before accepting the report.
 LITELLM_VIRTUAL_KEY = os.environ["LITELLM_VIRTUAL_KEY"]
 REQUEST_TIMEOUT = float(os.environ.get("AGENT_CLI_TRACKING_TIMEOUT", "3"))
 

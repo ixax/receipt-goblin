@@ -1,20 +1,14 @@
 """CLI-only reparse tool - recomputes agent_events/agent_usage/agent_messages/
 agent_invocations/ai_gateway_users/ai_gateway_groups for events already in
-event_sources, using whatever the current classification/parsing logic in
-clickhouse_ingest.py knows how to do (reused directly, never re-derived
-here). Run via `make reparse-all` or `make reparse SESSION=<session_id>`
-(see Makefile/docker-compose.yml "webhook-reparse", profiles: ["tools"]) -
-no HTTP API, this only ever runs as a one-shot `python -m src.reparse`
-invocation.
+event_sources, reusing clickhouse_ingest.py's classification logic directly.
+Run via `make reparse-all` or `make reparse SESSION=<session_id>`; no HTTP
+API, one-shot `python -m src.reparse` only.
 
-event_sources is the only source this reads from - .capture/*.json is
-explicitly out of scope as a parsing/backfill input, now and always (see
-schema.sql's event_sources comment and AGENTS.md).
+event_sources is the only source read; .capture/*.json is out of scope
+(see AGENTS.md).
 
-Safe to re-run for the same session (or all data) any number of times:
-agent_events/agent_usage/agent_messages/agent_invocations are all
-ReplacingMergeTree, keyed so this run's `ingested_at`/`spawned_at` (now())
-always wins over whatever was there before - see clickhouse/schema.sql.
+Safe to re-run any number of times: the target tables are all
+ReplacingMergeTree, keyed so this run's now() always wins.
 """
 import argparse
 import json
@@ -101,14 +95,12 @@ def _reparse_one(client, litellm_call_id: str, source_session_id: str, raw_paylo
 
 
 def reparse(session_id: str = "") -> int:
-    """session_id="" (the default) reparses every row in event_sources.
-    Returns the number of rows processed.
+    """session_id="" reparses every row in event_sources. Returns rows
+    processed.
 
-    Pages through event_sources REPARSE_CHUNK_SIZE rows at a time (keyset
-    pagination on litellm_call_id, the table's actual ORDER BY/sort key -
-    see schema.sql) instead of pulling every raw_payload_full client-side in
-    one query: that used to OOM-kill the container once event_sources
-    passed a few hundred MB of raw payload text.
+    Pages REPARSE_CHUNK_SIZE rows at a time (keyset pagination on
+    litellm_call_id) instead of pulling every raw_payload_full in one
+    query, which used to OOM-kill the container.
     """
     client = get_client()
     query = (

@@ -1,15 +1,9 @@
-# Dev-only override, layered on top of docker-compose.yml (the prod-default
-# file) - see Makefile's ENVIRONMENT switch. Re-adds exactly the live
-# source/config bind mounts (and, for webhook/mcp-server, the --reload
-# command) that docker-compose.yml no longer carries, so editing code under
-# services/*/src or a service's config.yml takes effect without a rebuild,
-# same as this whole stack originally worked.
+# Dev override layered on docker-compose.yml (see Makefile's ENVIRONMENT
+# switch): re-adds live source/config bind mounts + --reload so editing
+# services/*/src or config.yml takes effect without a rebuild.
 #
-# litellm and redis are intentionally NOT overridden here - both dev and
-# prod always run the baked image built by their own Dockerfile (see
-# docker-compose.yml's comments on those two services); editing
-# services/litellm/config.yaml or services/redis/redis.conf needs a rebuild
-# in dev too.
+# litellm and redis are NOT overridden - both always run the baked image;
+# editing their configs needs a rebuild even in dev.
 services:
   clickhouse-migrate:
     volumes:

@@ -26,6 +26,5 @@ schema_config:
         period: 24h
 
 limits_config:
-  # No object storage/retention automation at this scale - single-binary,
-  # filesystem-backed, small self-hosted stack. Bump if disk pressure shows up.
+  # No retention automation at this scale - bump if disk pressure shows up.
   retention_period: 168h
