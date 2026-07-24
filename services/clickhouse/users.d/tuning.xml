@@ -27,6 +27,19 @@
             <!-- spill to disk instead of OOMing under the 2g cap -->
             <max_bytes_before_external_sort>50000000</max_bytes_before_external_sort>
             <max_bytes_before_external_group_by>50000000</max_bytes_before_external_group_by>
+
+            <!-- Per-query and per-user memory caps, so one heavy query throws
+                 ClickHouse's own graceful MEMORY_LIMIT_EXCEEDED instead of
+                 growing unbounded until the container's mem_limit forces the
+                 OS OOM-killer to take out the whole server. ClickHouse has no
+                 ratio/percent syntax for these two settings (unlike
+                 max_server_memory_usage_to_ram_ratio in ../config.d/memory.xml,
+                 which stays the source of truth for the server-wide ceiling),
+                 so these are absolute bytes, kept under that ratio so a
+                 single/per-user runaway query trips first - recompute if
+                 docker-compose.yml's clickhouse mem_limit changes. -->
+            <max_memory_usage>2576980377</max_memory_usage>
+            <max_memory_usage_for_user>3221225472</max_memory_usage_for_user>
         </default>
     </profiles>
 </clickhouse>

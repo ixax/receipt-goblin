@@ -83,6 +83,7 @@ services:
     # 3.6x observed peak (419MiB) - heaviest CPU user; analytical
     # CTE/window-function panels can spike well above idle.
     mem_limit: 4g
+    restart: always
     ports:
       - target: 8123
         published: *clickhouse-http-port
