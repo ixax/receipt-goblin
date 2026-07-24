@@ -132,13 +132,14 @@ test: check-env
 # AGENT_CLI_TRACKING_API_URL/LITELLM_VIRTUAL_KEY for hooks/report_git_branch.py
 # (neither has a fallback - the hook crashes if they aren't exported;
 # LITELLM_VIRTUAL_KEY also authenticates that hook's report, checked by
-# webhook against LiteLLM's own /key/info), followed by ready-to-paste config
-# blocks for Codex's ~/.codex/config.toml and Claude Code's settings.json, so
-# nothing here needs re-typing by hand (see README "Configuring via config
-# files instead of shell exports"). `<virtual key>` is a placeholder unless
-# LITELLM_VIRTUAL_KEY is already set in .env, in which case it's substituted
-# everywhere below - add it there once and every future `make env` is fully
-# filled in, no shell rc edits needed at all.
+# webhook against LiteLLM's own /key/info), followed by a ready-to-paste
+# config block for each CLI (see README "Configuring via config files instead
+# of shell exports"). The shell-export lines above are still required for
+# Codex regardless of the config.toml block below - Codex hooks just inherit
+# whatever environment the shell that launched `codex` already has, there's
+# no config.toml equivalent of Claude's "env" block for that. `<virtual key>`
+# is a placeholder unless LITELLM_VIRTUAL_KEY is already set in .env, in
+# which case it's substituted everywhere below.
 env: check-env
 	@echo 'export LITELLM_VIRTUAL_KEY="$(VKEY)"'
 	@echo 'export LITELLM_AUTH_HEADER="Bearer $(VKEY)"'
@@ -148,6 +149,8 @@ env: check-env
 	@echo 'export AGENT_CLI_TRACKING_API_URL="$(INGEST_URI)"'
 	@echo ''
 	@echo '# --- ~/.codex/config.toml (merge in, keep any hooks/mcp_servers already there) ---'
+	@echo '# Only covers model routing - the export lines above are still needed'
+	@echo '# in your shell for hooks/report_git_branch.py, see comment above.'
 	@echo 'model_provider = "litellm"'
 	@echo ''
 	@echo '[model_providers.litellm]'
@@ -156,11 +159,6 @@ env: check-env
 	@echo 'wire_api = "responses"'
 	@echo 'requires_openai_auth = true'
 	@echo 'env_http_headers = { "x-litellm-api-key" = "LITELLM_AUTH_HEADER" }'
-	@echo ''
-	@echo '[shell_environment_policy.set]'
-	@echo 'LITELLM_AUTH_HEADER = "Bearer $(VKEY)"'
-	@echo 'AGENT_CLI_TRACKING_API_URL = "$(INGEST_URI)"'
-	@echo 'LITELLM_VIRTUAL_KEY = "$(VKEY)"'
 	@echo ''
 	@echo '# --- ~/.claude/settings.json ("env" block - merge in, keep any hooks already there) ---'
 	@echo '{'

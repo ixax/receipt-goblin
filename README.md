@@ -91,20 +91,6 @@ Anonymous viewer access is enabled by default - no login needed.
 
 ## Usage
 
-### Test agents and skills
-
-Subagents and skills are a Claude Code concept - Codex has no equivalent, so this test flow is Claude Code only.
-Open a Claude Code session **in this project directory**, routed through the local LiteLLM proxy (see "LiteLLM" below), then ask for `test-researcher`/`test-coder`/`test-summarizer`/`test-linter` by name - point at a randomly chosen file in the project root rather than a fixed one, to keep token usage low:
-
-```
-> use the test-researcher agent to pick a random file from the project root and summarize what it does
-> use the test-coder agent to add a one-line comment to a randomly chosen file in the project root, then immediately remove that same line
-> use the test-summarizer skill to summarize a randomly chosen file in the project root
-> use the test-linter skill to check a randomly chosen file in the project root for style issues
-```
-
-The write example is self-cleaning by design - anything written should be removed again right after, so repeated test runs don't leave junk in the repo.
-
 ### Check spend from Claude Code
 
 ```
@@ -204,7 +190,7 @@ Everything below is background/design detail, not needed day-to-day - see `AGENT
 | **Git branch reporting hook** |                                      |                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `AGENT_CLI_TRACKING_API_URL`  | required                             | `hooks/report_git_branch.py` - not a `docker-compose.yml`/`.env` variable, exported into your shell instead (see `make env` and "Git branch/repo" below). No fallback: if unset, the hook crashes (`KeyError`, non-zero exit) instead of guessing a URL.                                                                                                                                                             |
 | `LITELLM_VIRTUAL_KEY`         | required                             | `hooks/report_git_branch.py` - personal virtual key (see `make env`), sent as `Authorization: Bearer` on every git-branch report; webhook verifies it against LiteLLM's own `/key/info` before accepting the report. No fallback: hook crashes if unset, same as `AGENT_CLI_TRACKING_API_URL`.                                                                                                                       |
-| **Langfuse** (all optional - behind the `langfuse` compose profile, see "Langfuse" above; unset just means the callback/services stay off, nothing else breaks) | | |
+| **Langfuse** | | |
 | `LANGFUSE_PORT`               | `3001`                               | host port mapping for langfuse-web                                                                                                                                                                                                                                                                                                                                                                                    |
 | `LANGFUSE_CLICKHOUSE_HTTP_PORT` | `8124`                              | host port mapping for langfuse-clickhouse's HTTP interface (separate instance from the agent-tracking `clickhouse` service, deliberately not `8123`)                                                                                                                                                                                                                                                                 |
 | `LANGFUSE_CLICKHOUSE_NATIVE_PORT` | `9001`                            | host port mapping for langfuse-clickhouse's native protocol (deliberately not `9000`)                                                                                                                                                                                                                                                                                                                                 |
@@ -217,8 +203,7 @@ Everything below is background/design detail, not needed day-to-day - see `AGENT
 | `LANGFUSE_SALT`               | empty                                | langfuse-web, langfuse-worker - `openssl rand -hex 16`                                                                                                                                                                                                                                                                                                                                                                 |
 | `LANGFUSE_ENCRYPTION_KEY`     | empty                                | langfuse-web, langfuse-worker - `openssl rand -hex 32`, must be exactly 64 hex chars or Langfuse refuses to boot                                                                                                                                                                                                                                                                                                      |
 | `LANGFUSE_NEXTAUTH_SECRET`    | empty                                | langfuse-web - `openssl rand -hex 32`                                                                                                                                                                                                                                                                                                                                                                                  |
-| `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` | empty                  | litellm - what it authenticates to Langfuse with; must exactly match `LANGFUSE_INIT_PROJECT_PUBLIC_KEY`/`SECRET_KEY` below, see "Langfuse" above. Left unset, `litellm` still runs fine - its `langfuse` callback just fails per-call (logged, non-fatal)                                                                                                                                                            |
-| `LANGFUSE_INIT_ORG_ID`/`ORG_NAME`/`PROJECT_ID`/`PROJECT_NAME`/`PROJECT_PUBLIC_KEY`/`PROJECT_SECRET_KEY`/`USER_EMAIL`/`USER_NAME`/`USER_PASSWORD` | empty | langfuse-web - auto-provisioning on first boot only, see "Langfuse" above |
+| `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` | empty                  | litellm - what it authenticates to Langfuse with; must exactly match `LANGFUSE_INIT_PROJECT_PUBLIC_KEY`/`SECRET_KEY` (`LANGFUSE_INIT_*` vars, see "Langfuse" above and `.env.example`). Left unset, `litellm` still runs fine - its `langfuse` callback just fails per-call (logged, non-fatal)                                                                                                                                                            |
 
 ClickHouse auth is two-tier: `CLICKHOUSE_BOOTSTRAP_USER`/`CLICKHOUSE_BOOTSTRAP_PASSWORD` are provisioned by the ClickHouse image itself (`CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1` in `docker-compose.yml`'s `clickhouse` service) and used only to bootstrap the real app user; the `default` user is removed entirely (image behavior whenever a non-`default` user/password is configured). On every `clickhouse-migrate` run, that bootstrap user is used to `CREATE USER OR REPLACE` the SQL-managed app user named by `CLICKHOUSE_USER` (scoped to `CLICKHOUSE_DATABASE` only, not instance-wide) - this is the user `webhook`/`webhook-worker`/`mcp-server`/`grafana` actually connect as. All four `CLICKHOUSE_*`/`CLICKHOUSE_BOOTSTRAP_*` vars are required - `docker-compose.yml` refuses to start without them.
 `*_PORT` variables only change the **host** side of each port mapping - the container-internal port stays fixed, so services keep reaching each other over the `receipt-goblin` Docker network regardless of what you set these to.
@@ -244,7 +229,7 @@ Beyond token counts, each usage row also carries a few fields read straight off 
 | `cache_creation_1h_tokens`, `cache_creation_5m_tokens` | `usage.prompt_tokens_details.cache_creation_token_details.ephemeral_{1h,5m}_input_tokens` | 1h and 5m ephemeral cache writes are priced differently; `cache_creation_tokens` stays their sum for the existing cost/token panels, these two are the breakdown. |
 
 There's no request-level "reasoning effort" field anywhere in the payload (checked - `grep`ed real captures for `effort`/`reasoning_effort`/`budget`, none exist).
-Model choice (`agent_usage.model`) is the closest proxy: cheaper/faster models are already picked per-agent via `model:` in an agent's frontmatter (e.g. `.claude/agents/test-coder.md` uses `claude-haiku-4-5`), and panels 16/17 already break cost/tokens down by model.
+Model choice (`agent_usage.model`) is the closest proxy: cheaper/faster models are already picked per-agent via `model:` in an agent's frontmatter (e.g. `.claude/agents/litellm-tester.md` uses `claude-haiku-4-5`), and panels 16/17 already break cost/tokens down by model.
 
 ### Message-level text
 
@@ -423,11 +408,14 @@ Why this needs more than `forward_client_headers_to_llm_api`: unlike Anthropic, 
 
 ### Configuring via config files instead of shell exports
 
-`~/.zshrc`/`~/.bashrc` exports aren't actually required - both CLIs can read the exact same values straight from their own config file instead, including the two vars that only exist for `hooks/report_git_branch.py` (`AGENT_CLI_TRACKING_API_URL`, `LITELLM_VIRTUAL_KEY`). Once both blocks below are in place, there's nothing left for a shell rc file to provide.
+Model routing itself doesn't need a shell rc file - both CLIs can read it straight from their own config file instead. Whether the *shell exports* can also be retired depends on the CLI, since that's really about `hooks/report_git_branch.py`'s two vars (`AGENT_CLI_TRACKING_API_URL`, `LITELLM_VIRTUAL_KEY`), not routing:
 
-`make env` prints all of this pre-filled - both blocks below, plus the shell-export form - substituting your real values from `.env` (`LITELLM_PORT`/`AGENT_CLI_TRACKING_API_URL` if set, `LITELLM_VIRTUAL_KEY` if you've added it there, see `.env.example`) wherever they're already known, so there's normally nothing to hand-type from this section at all - just run it and merge the relevant block in.
+- **Claude Code** hooks are spawned by the Claude Code process itself, and inherit whatever it was given - including a settings file's `env` block. So putting all four vars there (below) genuinely replaces `~/.zshrc`/`~/.bashrc` for Claude Code.
+- **Codex** hooks (`.codex/hooks.json`'s `SessionStart`) just inherit the environment of whatever shell launched `codex` - there's no config.toml equivalent of Claude's `env` block that injects vars into Codex's own process or its hooks. (`shell_environment_policy` looks like it might do this but doesn't - it only filters what the *agent's own shell tool calls* see, a separate mechanism from hooks entirely.) So the `export AGENT_CLI_TRACKING_API_URL=...`/`export LITELLM_VIRTUAL_KEY=...` lines still need to land in your shell rc for Codex, config.toml or not.
 
-**Claude Code** reads an `env` block straight out of its settings file and applies it to every session, including subprocesses it spawns - hooks inherit it too, so this alone covers everything:
+`make env` prints all of this pre-filled - the shell-export lines, plus a block per CLI below - substituting your real values from `.env` (`LITELLM_PORT`/`AGENT_CLI_TRACKING_API_URL` if set, `LITELLM_VIRTUAL_KEY` if you've added it there, see `.env.example`) wherever they're already known, so there's normally nothing to hand-type from this section at all.
+
+**Claude Code**:
 
 ```json
 {
@@ -442,7 +430,7 @@ Why this needs more than `forward_client_headers_to_llm_api`: unlike Anthropic, 
 
 Put this in `~/.claude/settings.json` to route *every* Claude Code session on the machine through litellm, or in this repo's `.claude/settings.local.json` (gitignored - real keys should never land in the committed `.claude/settings.json`) to scope it to just this project. Either way, **merge** the `env` block into the file - don't replace it wholesale. Both the global file and this repo's own `.claude/settings.json`/`.codex/hooks.json` already carry hooks and MCP-server config (`SessionStart`/`CwdChanged`/`PreToolUse` entries, `enabledMcpjsonServers`, etc.) that a full overwrite would silently drop - open those files and see what sections are already there before writing.
 
-**Codex** needs two blocks in `~/.codex/config.toml` - routing, and (separately) the env vars for its own `SessionStart` hook, since `model_providers`/`[profile]` only configures the model provider, not arbitrary env vars for subprocesses:
+**Codex** (routing only - the shell exports above are still required separately, see above):
 
 ```toml
 model_provider = "litellm"
@@ -453,14 +441,9 @@ base_url = "http://localhost:4000"
 wire_api = "responses"
 requires_openai_auth = true
 env_http_headers = { "x-litellm-api-key" = "LITELLM_AUTH_HEADER" }
-
-[shell_environment_policy.set]
-LITELLM_AUTH_HEADER = "Bearer <virtual key>"
-AGENT_CLI_TRACKING_API_URL = "http://localhost:8010"
-LITELLM_VIRTUAL_KEY = "<virtual key>"
 ```
 
-This has to go in the *global* `~/.codex/config.toml` - a project-level `.codex/config.toml` (this repo has one, currently just `mcp_servers.clickhouse`) can't take over any of this even in a trusted project. Codex silently ignores `model_provider`/`model_providers`/`profile` set at that layer (so a repo can't redirect your traffic on its own), and `shell_environment_policy` isn't one of the keys project config can set either. Check what's already in your global `~/.codex/config.toml` (and this repo's own `.codex/hooks.json`) before merging these blocks in, rather than overwriting.
+This has to go in the *global* `~/.codex/config.toml` - a project-level `.codex/config.toml` (this repo has one, currently just `mcp_servers.clickhouse`) can't take over routing even in a trusted project. Codex silently ignores `model_provider`/`model_providers`/`profile` set at that layer, precisely so a repo can't redirect your traffic on its own. Check what's already in your global `~/.codex/config.toml` (and this repo's own `.codex/hooks.json`) before merging this block in, rather than overwriting.
 
 ### Inspecting captured traffic
 
