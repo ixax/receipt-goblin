@@ -15,6 +15,14 @@ CLICKHOUSE_USER = os.environ["CLICKHOUSE_USER"]
 CLICKHOUSE_PASSWORD = os.environ["CLICKHOUSE_PASSWORD"]
 CLICKHOUSE_DATABASE = os.environ["CLICKHOUSE_DATABASE"]
 
+# Only set on clickhouse-migrate (see docker-compose.yml) - used solely by
+# migrate.py's _ensure_app_user bootstrap step to create/refresh
+# CLICKHOUSE_USER above via SQL. Optional here (unlike the vars above) so
+# importing this module doesn't crash webhook/webhook-worker/mcp-server/
+# reparse, none of which receive these env vars.
+CLICKHOUSE_BOOTSTRAP_USER = os.environ.get("CLICKHOUSE_BOOTSTRAP_USER")
+CLICKHOUSE_BOOTSTRAP_PASSWORD = os.environ.get("CLICKHOUSE_BOOTSTRAP_PASSWORD")
+
 REDIS_HOST = os.environ["REDIS_HOST"]
 REDIS_PORT = int(os.environ["REDIS_PORT"])
 

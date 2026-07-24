@@ -1,0 +1,40 @@
+<clickhouse>
+    <!-- Server-level resource-shaping settings ported from an older
+         project's ClickHouse config, tuned for a container capped at
+         mem_limit: 2g with limited CPU (see docker-compose.yml's
+         `clickhouse` service). Memory-ratio capping itself lives in
+         memory.xml - kept separate on purpose. Per-user/profile settings
+         (max_threads, max_execution_time, etc.) live in
+         ../users.d/tuning.xml instead - config.d only merges into
+         config.xml, not users.xml, so profile settings placed here are
+         silently ignored. -->
+    <!-- Server-wide settings, not per-user profile settings in this
+         ClickHouse version (24.8) - belong in config.xml, not users.xml. -->
+    <!-- The old project's value (4) came from a single-panel setup and
+         throws TOO_MANY_SIMULTANEOUS_QUERIES here - Grafana dashboards
+         (services/grafana/dashboards/agents_overview.json) fire many panel
+         queries in parallel on load, on top of mcp-server/webhook-worker/
+         backup/migrate traffic sharing the same instance. Raised to give
+         headroom for that without going back to ClickHouse's unbounded
+         default (100). -->
+    <max_concurrent_queries>30</max_concurrent_queries>
+
+    <!-- background pools sized down to match the container's CPU budget,
+         not the host's -->
+    <background_pool_size>2</background_pool_size>
+    <background_move_pool_size>2</background_move_pool_size>
+    <background_merges_mutations_concurrency>1</background_merges_mutations_concurrency>
+
+    <mark_cache_size>1073741824</mark_cache_size>
+    <uncompressed_cache_size>3221225472</uncompressed_cache_size>
+    <compress_default_codec>lz4</compress_default_codec>
+    <max_part_loading_threads>2</max_part_loading_threads>
+
+    <!-- lets mutations/optimize keep making progress with
+         background_pool_size trimmed down in users.d/tuning.xml -->
+    <merge_tree>
+        <number_of_free_entries_in_pool_to_execute_mutation>2</number_of_free_entries_in_pool_to_execute_mutation>
+        <number_of_free_entries_in_pool_to_execute_optimize_entire_partition>3</number_of_free_entries_in_pool_to_execute_optimize_entire_partition>
+        <number_of_free_entries_in_pool_to_lower_max_size_of_merge>3</number_of_free_entries_in_pool_to_lower_max_size_of_merge>
+    </merge_tree>
+</clickhouse>
