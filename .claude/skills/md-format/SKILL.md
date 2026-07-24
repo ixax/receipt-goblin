@@ -1,7 +1,7 @@
 ---
 name: md-format
 description: >
-  <skill_version>1.0.0</skill_version> Formatting conventions for markdown prose and tables in this repo.
+  <skill_version>1.1.0</skill_version> Formatting conventions for markdown prose and tables in this repo.
   TRIGGER - read BEFORE writing a new .md file or editing prose/tables in an existing one, anywhere in the project (README, AGENTS.md, SKILL.md bodies, any other .md file).
   Covers: line wrapping, one-sentence-per-line, table pipe alignment.
   SKIP for non-markdown files, and for .md files where only code blocks or frontmatter are touched.
@@ -15,13 +15,12 @@ alignment - only to prose paragraphs and table pipe formatting.
 
 ## Line wrapping
 
-Don't hard-wrap prose at ~80 characters. Write lines at least twice that
-long.
+Never wrap a line by character count - not at ~80 chars, not at ~160. A
+line runs however long the sentence needs; use the full width.
 
-Better still: when a paragraph has more than one sentence, put each
-sentence on its own line (semantic line breaks) instead of wrapping by
-character count. A paragraph becomes one line per sentence, not one
-ragged block of short lines.
+When a paragraph has more than one sentence, put each sentence on its own
+line (semantic line breaks) instead. A paragraph becomes one line per
+sentence, not a ragged block of short, character-wrapped lines.
 
 This applies to prose only - not to code blocks, table cells, or
 frontmatter.
