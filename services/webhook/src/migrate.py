@@ -19,12 +19,51 @@ import logging
 import os
 from pathlib import Path
 
+import clickhouse_connect
+
 from .clickhouse_ingest import get_client
+from .config import (
+    CLICKHOUSE_BOOTSTRAP_PASSWORD,
+    CLICKHOUSE_BOOTSTRAP_USER,
+    CLICKHOUSE_DATABASE,
+    CLICKHOUSE_HOST,
+    CLICKHOUSE_PASSWORD,
+    CLICKHOUSE_PORT,
+    CLICKHOUSE_USER,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("clickhouse.migrate")
 
 MIGRATIONS_DIR = Path(os.environ.get("MIGRATIONS_DIR", "/app/migrations"))
+
+
+def _ensure_app_user() -> None:
+    """Creates/refreshes the SQL-managed app user (CLICKHOUSE_USER, stored in
+    ClickHouse's local_directory access storage - see system.users) using the
+    bootstrap superuser the image provisions (see docker-compose.yml's
+    x-clickhouse-bootstrap-* anchors and CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT).
+    OR REPLACE makes this idempotent on every stack start - including picking
+    up a changed CLICKHOUSE_PASSWORD in .env - and unlike the migrations/*.sql
+    files below, the password never touches disk or schema_migrations.
+    Grants are database-scoped, not instance-wide.
+    """
+    bootstrap_client = clickhouse_connect.get_client(
+        host=CLICKHOUSE_HOST,
+        port=CLICKHOUSE_PORT,
+        username=CLICKHOUSE_BOOTSTRAP_USER,
+        password=CLICKHOUSE_BOOTSTRAP_PASSWORD,
+    )
+    try:
+        bootstrap_client.command(
+            f"CREATE USER OR REPLACE {CLICKHOUSE_USER} IDENTIFIED BY {{password:String}} "
+            f"DEFAULT DATABASE {CLICKHOUSE_DATABASE}",
+            parameters={"password": CLICKHOUSE_PASSWORD},
+        )
+        bootstrap_client.command(f"GRANT ALL ON {CLICKHOUSE_DATABASE}.* TO {CLICKHOUSE_USER}")
+    finally:
+        bootstrap_client.close()
+    logger.info("ensured app user %s exists (database %s)", CLICKHOUSE_USER, CLICKHOUSE_DATABASE)
 
 
 def _already_replacing_mergetree(client) -> bool:
@@ -89,6 +128,7 @@ def run_migration(client, path: Path) -> None:
 
 
 def main() -> None:
+    _ensure_app_user()
     client = get_client()
     client.command(
         "CREATE TABLE IF NOT EXISTS schema_migrations "

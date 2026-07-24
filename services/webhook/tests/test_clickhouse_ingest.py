@@ -214,6 +214,26 @@ def test_group_alias_unsuccess_no_team_falls_back_to_empty():
 
 
 # ---------------------------------------------------------------------------
+# _issue_id_from_branch
+# ---------------------------------------------------------------------------
+
+def test_issue_id_from_branch_success_ticket_at_start():
+    assert ci._issue_id_from_branch("VIEW-12345-my-super-branch") == "VIEW-12345"
+
+
+def test_issue_id_from_branch_success_ticket_at_end():
+    assert ci._issue_id_from_branch("my-super-branch-VIEW-12345") == "VIEW-12345"
+
+
+def test_issue_id_from_branch_success_normalizes_case():
+    assert ci._issue_id_from_branch("fix-view-12345-typo") == "VIEW-12345"
+
+
+def test_issue_id_from_branch_unsuccess_no_ticket_returns_empty():
+    assert ci._issue_id_from_branch("my-super-branch") == ""
+
+
+# ---------------------------------------------------------------------------
 # _agent_invocations_from_messages / _agent_id_from_tool_result
 # ---------------------------------------------------------------------------
 

@@ -14,11 +14,15 @@
 # talk to.
 FROM debian:bookworm-slim
 
+# Single source of truth is CLICKHOUSE_VERSION in .env, passed as a build
+# arg from docker-compose.yml's `backup` service - same value used to build
+# the `clickhouse` service's own image (services/clickhouse/Dockerfile), so
+# this apt-pinned client version never drifts from the server it talks to.
+ARG CLICKHOUSE_VERSION
+
 RUN apt-get update && \
     apt-get install --no-install-recommends -y ca-certificates curl gnupg sqlite3 && \
-    # ClickHouse apt repo (see https://clickhouse.com/docs/install#available-installation-options) -
-    # 24.8.* pins the same major.minor already used by the `clickhouse`
-    # service's image tag in docker-compose.yml.
+    # ClickHouse apt repo (see https://clickhouse.com/docs/install#available-installation-options)
     curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg arch=$(dpkg --print-architecture)] https://packages.clickhouse.com/deb stable main" \
         > /etc/apt/sources.list.d/clickhouse.list && \
@@ -28,7 +32,7 @@ RUN apt-get update && \
     echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
         > /etc/apt/sources.list.d/pgdg.list && \
     apt-get update && \
-    apt-get install --no-install-recommends -y clickhouse-client=24.8.14.39 clickhouse-common-static=24.8.14.39 postgresql-client-16 && \
+    apt-get install --no-install-recommends -y clickhouse-client=${CLICKHOUSE_VERSION} clickhouse-common-static=${CLICKHOUSE_VERSION} postgresql-client-16 && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

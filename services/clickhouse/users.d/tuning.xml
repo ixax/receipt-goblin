@@ -1,0 +1,32 @@
+<clickhouse>
+    <!-- Per-user profile settings ported from an older project's ClickHouse
+         config, tuned for a container capped at mem_limit: 2g with limited
+         CPU (see docker-compose.yml's `clickhouse` service). Must live under
+         users.d, not config.d - ClickHouse only merges config.d into
+         config.xml and users.d into users.xml, and profiles belong to the
+         latter. Server-level settings (mark_cache_size, background pools,
+         etc.) live in ../config.d/tuning.xml instead. Applies to every user
+         via the "default" profile, including the SQL-managed app user
+         created by migrate.py's _ensure_app_user - CREATE USER with no
+         explicit SETTINGS PROFILE falls back to this profile.
+
+         Dropped from the source config as invalid/nonexistent in this
+         stack's pinned CLICKHOUSE_VERSION (24.8) - confirmed against a
+         plain 24.8.14.39 container's system.settings:
+         max_uncompressed_block_size (no such setting), and the CPU-wait
+         throw settings (min_os_cpu_wait_time_ratio_to_throw,
+         max_os_cpu_wait_time_ratio_to_throw, os_cpu_wait_probability_to_throw
+         - added in a later ClickHouse release than this one). -->
+    <profiles>
+        <default>
+            <max_threads>4</max_threads>
+            <max_compress_block_size>262144</max_compress_block_size>
+
+            <max_execution_time>600</max_execution_time>
+
+            <!-- spill to disk instead of OOMing under the 2g cap -->
+            <max_bytes_before_external_sort>50000000</max_bytes_before_external_sort>
+            <max_bytes_before_external_group_by>50000000</max_bytes_before_external_group_by>
+        </default>
+    </profiles>
+</clickhouse>

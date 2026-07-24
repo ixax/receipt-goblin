@@ -1,3 +1,9 @@
+# The application-facing identity - SQL-managed (CREATE USER, stored in
+# ClickHouse's local_directory access storage / system.users), created and
+# kept in sync on every `docker compose up` by clickhouse-migrate's
+# bootstrap step (see services/webhook/src/migrate.py's _ensure_app_user)
+# using the bootstrap identity below. webhook/webhook-worker/mcp-server/
+# grafana/clickhouse-migrate/backup all connect as this one shared user.
 x-clickhouse-user: &clickhouse-user ${CLICKHOUSE_USER:?set CLICKHOUSE_USER, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-password: &clickhouse-password ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-database: &clickhouse-database ${CLICKHOUSE_DATABASE:?set CLICKHOUSE_DATABASE, e.g. in a .env file next to docker-compose.yml}
@@ -5,6 +11,16 @@ x-clickhouse-host: &clickhouse-host ${CLICKHOUSE_HOST:-clickhouse}
 x-clickhouse-port: &clickhouse-port ${CLICKHOUSE_PORT:-8123}
 x-clickhouse-http-port: &clickhouse-http-port ${CLICKHOUSE_HTTP_PORT:-8123}
 x-clickhouse-native-port: &clickhouse-native-port ${CLICKHOUSE_NATIVE_PORT:-9000}
+# Version pin shared by the `clickhouse` service's own image build and the
+# `backup` service's apt-installed clickhouse-client, so the two never
+# drift apart (see services/clickhouse/Dockerfile, services/backup/Dockerfile).
+x-clickhouse-version: &clickhouse-version ${CLICKHOUSE_VERSION:-24.8.14.39}
+# XML/env-defined superuser the ClickHouse image itself creates at
+# container start (access_management=1, see CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+# below) - exists only to bootstrap the real *clickhouse-user above via SQL
+# on every startup. No application service ever connects as this user.
+x-clickhouse-bootstrap-user: &clickhouse-bootstrap-user ${CLICKHOUSE_BOOTSTRAP_USER:?set CLICKHOUSE_BOOTSTRAP_USER, e.g. in a .env file next to docker-compose.yml}
+x-clickhouse-bootstrap-password: &clickhouse-bootstrap-password ${CLICKHOUSE_BOOTSTRAP_PASSWORD:?set CLICKHOUSE_BOOTSTRAP_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 
 x-mcp-server-port: &mcp-server-port ${MCP_SERVER_PORT:-8001}
 x-grafana-port: &grafana-port ${GRAFANA_PORT:-3000}
@@ -60,15 +76,28 @@ x-langfuse-base-url: &langfuse-base-url http://langfuse-web:3000
 
 services:
   clickhouse:
-    image: clickhouse/clickhouse-server:24.8
+    # Config (schema.sql, config.d/*.xml) is baked in at build time - see
+    # services/clickhouse/Dockerfile - not bind-mounted, so a config change
+    # needs `docker compose build clickhouse`, not just an edit+restart.
+    build:
+      context: ./services/clickhouse
+      args:
+        CLICKHOUSE_VERSION: *clickhouse-version
     container_name: receipt-goblin-clickhouse
     environment:
-      CLICKHOUSE_USER: *clickhouse-user
-      CLICKHOUSE_PASSWORD: *clickhouse-password
+      # Bootstrap superuser only (see the x-clickhouse-bootstrap-* anchors
+      # above) - not the identity application services connect as.
+      # CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 grants it CREATE USER/GRANT so
+      # clickhouse-migrate's bootstrap step can provision *clickhouse-user
+      # via SQL on every startup (system.users, not users.xml). The image's
+      # entrypoint drops the "default" account entirely in this mode.
+      CLICKHOUSE_USER: *clickhouse-bootstrap-user
+      CLICKHOUSE_PASSWORD: *clickhouse-bootstrap-password
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
       CLICKHOUSE_DB: *clickhouse-database
     # 3.6x real observed peak (419MiB) - heaviest CPU user of the stack, the
     # analytical CTE/window-function panels can spike higher than idle usage.
-    mem_limit: 2g
+    mem_limit: 4g
     ports:
       - target: 8123
         published: *clickhouse-http-port
@@ -76,16 +105,11 @@ services:
         published: *clickhouse-native-port
     volumes:
       - clickhouse-data:/var/lib/clickhouse
-      # Runs automatically on first container start (empty data dir only) -
-      # this is how schema.sql gets applied without a manual step.
-      - ./services/clickhouse/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
-      # Caps ClickHouse's own memory usage at 85% of the mem_limit above
-      # (see services/clickhouse/config.d/memory.xml) instead of the host's RAM.
-      - ./services/clickhouse/config.d/memory.xml:/etc/clickhouse-server/config.d/memory.xml:ro
       # Backing disk for native BACKUP/RESTORE statements (see
       # services/backup/scripts/backup_clickhouse.sh) - the server process
       # itself writes/reads here, bind-mounted so files land on the host.
-      - ./services/clickhouse/config.d/backups.xml:/etc/clickhouse-server/config.d/backups.xml:ro
+      # Data, not config - the config.d/backups.xml pointing at this path is
+      # baked into the image (see services/clickhouse/Dockerfile).
       - ${BACKUP_DIR:-.backups}/clickhouse:/backups/clickhouse
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
@@ -97,13 +121,15 @@ services:
 
   clickhouse-migrate:
     # Runs services/webhook/src/migrate.py once per `docker compose up` and
-    # exits - applies every services/clickhouse/migrations/*.sql file that
-    # isn't already recorded in schema_migrations, then exits 0. Safe to run
-    # on every startup (idempotent - see migrate.py's docstring): a brand-new
-    # volume already has the final shape from schema.sql and each migration
-    # self-skips via a structural check, an existing volume actually gets
-    # migrated the first time this runs, and every subsequent run is a no-op
-    # once schema_migrations has the version recorded. webhook/webhook-worker
+    # exits - first provisions the SQL-managed application user (see
+    # migrate.py's _ensure_app_user, using the bootstrap creds below), then
+    # applies every services/clickhouse/migrations/*.sql file that isn't
+    # already recorded in schema_migrations. Safe to run on every startup
+    # (idempotent - see migrate.py's docstring): a brand-new volume already
+    # has the final shape from schema.sql and each migration self-skips via
+    # a structural check, an existing volume actually gets migrated the
+    # first time this runs, and every subsequent run is a no-op once
+    # schema_migrations has the version recorded. webhook/webhook-worker
     # both wait on this completing successfully so they never race a
     # migration with live inserts.
     build: ./services/webhook
@@ -117,9 +143,14 @@ services:
     environment:
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
+      # Target app user this bootstraps into existence via SQL (see above).
       CLICKHOUSE_USER: *clickhouse-user
       CLICKHOUSE_PASSWORD: *clickhouse-password
       CLICKHOUSE_DATABASE: *clickhouse-database
+      # Bootstrap superuser used only to run CREATE USER/GRANT for the app
+      # user above - see the x-clickhouse-bootstrap-* anchors.
+      CLICKHOUSE_BOOTSTRAP_USER: *clickhouse-bootstrap-user
+      CLICKHOUSE_BOOTSTRAP_PASSWORD: *clickhouse-bootstrap-password
       LITELLM_MASTER_KEY: *litellm-master-key
       LITELLM_BASE_URL: *litellm-base-url
       # Never used (migrate.py has no Redis path), but config.py is shared
@@ -372,7 +403,10 @@ services:
     # Docker socket: clickhouse/litellm-db are reached over the network,
     # grafana-data is mounted directly as the same named volume the
     # `grafana` service uses.
-    build: ./services/backup
+    build:
+      context: ./services/backup
+      args:
+        CLICKHOUSE_VERSION: *clickhouse-version
     container_name: receipt-goblin-backup
     profiles:
       - tools
