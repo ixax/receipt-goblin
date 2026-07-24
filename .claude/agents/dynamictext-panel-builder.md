@@ -279,24 +279,35 @@ its parent, since `agent_spawn_events` only looks at orchestrator-level
   silently truncates at byte boundaries if content runs longer than N chars,
   breaking the later `replaceOne(padded, plain_substring, span_wrapped)`
   substring match and leaving arguments unstyled. The fix (now implemented):
-  pre-truncate arguments to a safe cap (~55 chars, with `…` suffix if longer)
-  *before* padding, so the content can never overflow the pad width, ensuring
-  `replaceOne()` always finds its target substring intact. This allows
-  re-introducing fixed-width alignment (rightPadUTF8 to 100 chars for
-  tool-call lines) so stats columns line up vertically across all nesting
-  depths, without the silent-failure risk. The gap problem (huge space after
-  short args) is avoided because the 100-char budget is per-row (not per
-  nesting level) - deeply nested rows still get 100 chars total, not 100 +
-  indent_size.
-- **Per-field truncation caps don't need to match anymore.** Since there's
-  no shared fixed-width column to protect, each `tool_render` preference
-  branch has its own cap sized to what that field actually needs: paths
-  get the most room (currently 120 chars - a real filesystem path is a
-  single meaningful unit that reads badly cut off), `command`/`query` get
-  70, `url` gets 90. These are current user-tuned values, not fundamental
-  constants - if asked to change them, there's no cross-branch consistency
-  requirement to maintain, just update the specific branch(es) named and
-  this doc.
+  pre-truncate arguments to a safe cap (currently 90 chars, uniformly
+  across every `tool_render` argument-preference branch - see the next
+  bullet) *before* padding, so the content can never overflow the pad
+  width, ensuring `replaceOne()` always finds its target substring intact.
+  This allows fixed-width alignment (padding tool-call content out to the
+  shared `${trace_width_budget}` total-line budget, currently 120/117 -
+  see "Pad width must be a total-line budget" below) so stats columns line
+  up vertically across all nesting depths, without the silent-failure
+  risk. The gap problem (huge space after short args) is avoided because
+  the budget is per-row (not per nesting level) - deeply nested rows still
+  get the same total width, just with `- 3` carved out for the indent, not
+  budget + indent_size.
+- **Per-field truncation caps are now unified to 90 chars.** All of
+  `tool_render`'s argument-preference branches (`file_path`, `command`,
+  `sql`, `url`, `query`, `description`, `summary`, and the raw-JSON
+  fallback) truncate to the same 90-char cap via `substringUTF8(..., 1,
+  90)` before HTML-escaping and padding. This replaced an earlier scheme
+  where each branch had its own cap sized to what that field "needed"
+  (120 for `file_path`, 70 for `command`/`query`, 100 for `sql`, 90 for
+  `url`) - that per-branch variance is what caused misalignment between
+  row types (e.g. a short `mcp__clickhouse__whatsup {}` row padding to a
+  different target than a long `command` row next to it). If asked to
+  retune this, change all branches together, not just the one named -
+  that's the whole point of unifying them. (Two things are deliberately
+  NOT part of this unified cap: the Agent-spawn/failure branch's own
+  `description` field, which stays at its own 50-char cap since it isn't
+  one of the `tool_render` argument branches; and `AskUserQuestion`'s
+  per-question text, capped separately at 120 chars in its own unbounded
+  nested-line rendering path, not the padded-column system at all.)
 - **Escaping order matters**: escape `&`/`<`/`>` on a piece of dynamic text
   *first*, then apply your own `<b>`/`<span>`/`<code>` wrapping on top -
   never the other way round, or your own tags get escaped into visible
@@ -499,17 +510,97 @@ any future tools with array-valued arguments.
 
 ## Column alignment with overflow safety: fixed-width safe truncation
 
-Fixed-width column alignment (rightPadUTF8 to 100 chars for tool-call content,
-so stats columns line up vertically) has been re-introduced, but now safely:
-tool-call arguments are pre-truncated to a safe cap (~55 chars, with ellipsis
-`…` suffix if longer) before being padded. This prevents the silent failure
-mode of the previous attempt: if content overflows, it's already been shortened,
-so the later `replaceOne()` substring match for span-wrapping always succeeds
-(in the old code, rightPadUTF8 would silently truncate at a byte boundary,
-breaking the regex match and leaving arguments unstyled). Total width budget
-is 100 chars for the padded content line, leaving room for the right-hand stats
-(duration/tokens/cost) to appear in a consistent column across all nested
-indentation levels.
+Fixed-width column alignment (padding tool-call content out to the shared
+`${trace_width_budget}` total, currently 120 top-level / 117 nested, so
+stats columns line up vertically) is done safely: tool-call arguments are
+pre-truncated to a uniform 90-char cap (see "Per-field truncation caps are
+now unified to 90 chars" above) before being padded. This prevents the
+silent failure mode of an earlier attempt: if content overflows, it's
+already been shortened, so the later `replaceOne()` substring match for
+span-wrapping always succeeds (an early version used `rightPadUTF8`
+directly on unbounded content, which silently truncates at a byte
+boundary, breaking the regex match and leaving arguments unstyled).
+Padding itself is applied as literal spaces via `repeat()` appended to the
+already-built HTML, not via `rightPadUTF8` on the HTML string directly -
+`rightPadUTF8` measuring against escaped (entity-inflated) content was
+the other half of that same historical bug. Total width budget is
+`${trace_width_budget}` (see next section) for the padded content line,
+leaving room for the right-hand stats (duration/tokens/cost) to appear in
+a consistent column across all nested indentation levels.
+
+## Pad width must be a total-line budget, not a flat per-branch constant
+
+The `agent_invocation_id != ''` nesting indent (`'   '`, 3 chars, prepended
+before `├─`/`└─` on a subagent's own rows - see "Concurrent subagent
+ordering" above) is EXTRA width added on top of whatever comes after it,
+not carved out of some already-fixed content width. Any branch that pads
+its content to a target column (so the right-hand duration/tokens/cost
+stats line up vertically) must therefore compute its pad target as
+`(shared total-line budget) - (indent width)`, not use one flat constant
+for all rows regardless of depth - otherwise nested rows end up wider
+overall than top-level rows and the stats columns drift right with depth.
+The regular tool-call branch (`tool_render`/tie=3) already got this right
+by construction: its pad targets are `(${trace_width_budget} - 3)` for
+nested rows and `${trace_width_budget}` for top-level - the shared budget
+defaults to 120, indent is 3, so nested rows pad to 117.
+
+**Single source of truth: `${trace_width_budget}` is a hidden Grafana
+dashboard variable, not a hardcoded SQL literal or a CTE constant.** It's
+a `TextVariable` in `spec.variables` (same `hide: "hideVariable"` pattern
+as the existing `trace_ts` variable - Grafana converts this to classic
+`type: "textbox"`, `hide: 2` at read time), with `current: {"text":
+"120", "value": "120"}`. It's referenced *unquoted* (bare number, no
+`:singlequote` modifier) throughout panel-76's rawSql, including inside
+arithmetic like `(${trace_width_budget} - 3)` - Grafana's client-side
+template substitution resolves this to a plain number before the query
+ever reaches ClickHouse, exactly like the panel's existing
+`${__dashboard.uid}` and `${session_id:singlequote}` usages already
+prove works for this exact panel. A Grafana variable was chosen over a
+CTE-level SQL constant (e.g. `SELECT 120 AS trace_width_budget` in an
+early CTE) specifically because it's tunable from the dashboard UI/URL
+without editing rawSql at all - retuning the width is now a one-field
+edit on the variable, not a hunt through 5+ scattered SQL locations. If
+you need to retune this width, edit the `trace_width_budget` variable's
+`current.text`/`current.value` in `spec.variables`, not any literal
+inside `rawSql` - there should be no bare `120`/`117`/`90`/`87` width
+literals left in the SQL for this purpose; if you find one, it's a
+regression, not an intentional exception.
+
+**A second branch handling the same tie=3 tool-call row set (the Agent-
+spawn/tool-failure branch, `if(sr.status = 'failure', ..., 'Agent
+spawned: ...')`) used to skip this arithmetic entirely and just append a
+flat `'          '` (10 literal spaces) regardless of content length** -
+since Agent-spawn descriptions were also shown fully unbounded (no
+truncation cap, unlike every tool-arg field), that flat pad could never
+actually align these rows with the formula-padded tool-call rows around
+them; the more the description ran on, the further right the stats
+column drifted, and comparing a bounded row to an unbounded one made the
+whole tree look "jumbled" regardless of the indent-budget fix. This is
+now fixed the same way as the tool-call branch, using the same
+`${trace_width_budget}` reference - but note the Agent-spawn
+`description` field itself is still capped at 50 chars, not unified to
+the 90-char tool-arg cap, since it isn't one of the `tool_render`
+argument-preference branches (see the per-field-cap note above). The
+general rule when adding or auditing ANY row-rendering branch that
+appends stats after content: (1) give the content field an actual
+truncation cap (currently 90 chars is the standard for tool-arg-like
+fields, but there's no fixed constant required across branches - see the
+per-field-cap note above) so its length is a true bound, not unbounded;
+(2) compute pad target as `${trace_width_budget} - (indent width, 0 or 3
+via `if(agent_invocation_id != '', 3, 0)`)`; (3) measure against RAW
+(unescaped, already-truncated) content length via `lengthUTF8`, not the
+HTML-escaped/tagged length (same "escaped length inflates without
+inflating rendered width" rule documented below for `tool_render`'s
+`raw_args` vs `escaped_args` - this was already fixed once for the
+tool-call branch and must not be reintroduced in any new branch); (4)
+only pad when content already fits under the target (skip padding
+entirely on overflow, never truncate after the fact) - same pattern as
+the tool-call branch's `repeat(' ', greatest(0, target - length))`. The
+reply/reasoning row (`sr.tool_name = ''`, marked `└─ ●`) is deliberately
+exempt from all of this - it has no padding/width-budget logic at all,
+by design, and must stay that way; its text is capped separately at 1500
+chars (see "Display conventions" in the panel's own inline SQL
+documentation), not the 90-char tool-arg cap.
 
 ## Editing the panel JSON
 

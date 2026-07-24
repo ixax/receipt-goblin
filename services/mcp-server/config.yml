@@ -10,7 +10,13 @@ allowed_tables:
   - agent_events
   - agent_usage
   - agent_messages
+  - agent_invocations
   - session_git_branch
+  - ai_gateway_users
+  - ai_gateway_groups
+  - event_sources
+  - plan_proposals
+  - schema_migrations
 
 # Word-boundary matched against the uppercased query - catches these
 # anywhere (subqueries, CTEs), not just as the first keyword.

@@ -16,6 +16,7 @@ This split exists because ClickHouse handles a few large batched inserts far bet
 | `services/litellm/config.yaml`                     | LiteLLM proxy config - model list, virtual-key auth, the `metrics_webhook` `generic_api` callback that feeds `webhook`, and the native `langfuse` success/failure callback that feeds the optional Langfuse stack (see below and README "Langfuse").                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `services/litellm/custom_callbacks.py`             | `SessionIdHandler`, a `CustomLogger` pre-call hook (`litellm_settings.callbacks: custom_callbacks.session_id_handler`) that copies the `x-claude-code-session-id` header into `metadata.session_id` so Langfuse groups traces into sessions the same way ClickHouse does (`_session_and_trace_id` below). `docker-entrypoint.sh` copies it next to the merged effective config so LiteLLM's bare `custom_callbacks.` module path resolves.                                                                                                                                                                                                                                                                                                                                                     |
 | `services/redis/redis.conf`                        | `maxmemory`/`maxmemory-policy`/`appendonly` - not in `docker-compose.yml`'s `command:`, since `redis-server` is pointed at this file directly.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `services/backup/`                                 | Backup/restore for `clickhouse`/`litellm-db`/`grafana-data` via the `backup` tools-profile service - see `services/backup/README.md` for the playbook, and "Backup & restore" below for the rules.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `services/webhook/src/server.py`                   | Receives LiteLLM's webhook POSTs, optionally captures the raw body to `services/webhook/captures/` (off by default, see `config.CAPTURE_ENABLED`), and calls `queue_client.enqueue()` - never touches ClickHouse for `/api/v1/metrics` (still does for `/api/v1/session-git-branch` and `/api/v1/plan-proposal`, see below). That route also verifies the caller's `Authorization: Bearer <virtual key>` against LiteLLM's own `/key/info` (`config.LITELLM_MASTER_KEY`/`LITELLM_BASE_URL`) before accepting the report, rejecting with 401 otherwise.                                                                                                                                                                                                                                              |
 | `services/webhook/config.yml`                      | Queue-mechanics tunables loaded by `src/config.py`: `stream_key`, `consumer_group`, `maxlen`, `batch_size`, `flush_interval_ms`, `stale_idle_ms` - the sizing rationale for each lives here now, since it's the file you actually edit to tune them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `services/webhook/src/config.py`                   | Single place for every tunable value across `webhook`/`webhook-worker`: `CLICKHOUSE_*`/`REDIS_*`/`CAPTURE_DIR`/`CAPTURE_ENABLED` (env-derived, no in-code defaults for the required ones) plus the queue-mechanics constants (`STREAM_KEY`, `CONSUMER_GROUP`, `MAXLEN`, `BATCH_SIZE`, `FLUSH_INTERVAL_MS`, `STALE_IDLE_MS`), loaded from `config.yml`. Every other module imports from here rather than reading `os.environ`/hardcoding its own constants - see the rule below.                                                                                                                                                                                                                                                                                                                     |
@@ -80,6 +81,29 @@ change, new table) happens in the main conversation with Bash, the same way
   to a brand-new empty volume, so also update `schema.sql` to match the new
   end state - migrations are for existing stacks, `schema.sql` is what a
   fresh stack gets.
+
+## Backup & restore (`services/backup/`)
+
+Full playbook lives in `services/backup/README.md`. Rules that live here
+instead, since they're about when/how to touch this, not the mechanics:
+
+- **Backup is always safe to run against a live stack** (ClickHouse's own
+  `BACKUP` statement, a consistent `pg_dump` snapshot, SQLite's backup API -
+  none of the three `backup_*.sh` scripts need any container stopped).
+  **Restore is always destructive** - it drops/overwrites the live target,
+  and for `litellm`/`grafana` specifically requires that service stopped
+  first (documented per-service in `services/backup/README.md`, not
+  automated - the `backup` container never gets Docker API/socket access,
+  so it can't stop/start sibling containers itself).
+- **Cron only ever calls `make backup-all`.** Never point a cron job at a
+  `restore-*` target - restore stays a manual, deliberate action taken by a
+  human who's read the README first.
+- **No automatic pruning/retention** - `.backups/` (or `$BACKUP_DIR` if set)
+  accumulates every backup file until removed by hand. Don't add a
+  retention/cleanup step without being asked; it was deliberately left out.
+- **`services/clickhouse/config.d/backups.xml` changes require recreating
+  the `clickhouse` container** (`docker compose up -d --build clickhouse`)
+  to take effect - same one-time-setup note as `services/backup/README.md`.
 
 ## Running tests
 
