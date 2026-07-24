@@ -26149,6 +26149,107 @@
             "version": "9.1.4"
           }
         }
+      },
+      "panel-251": {
+        "kind": "Panel",
+        "spec": {
+          "id": 251,
+          "title": "Data Size by Database",
+          "description": "Per-table compressed/uncompressed size and row counts from system.tables, sorted by database then table name.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 1,
+                        "rawSql": "SELECT\n    concat(database, '.', name) AS table,\n    total_rows AS rows,\n    total_bytes AS size_bytes,\n    total_bytes_uncompressed AS uncompressed_bytes,\n    round(total_bytes / nullif(total_bytes_uncompressed, 0), 3) AS compression_ratio\nFROM system.tables\nORDER BY database, name"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "",
+            "spec": {
+              "options": {
+                "sortBy": []
+              },
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "size_bytes"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "bytes"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "uncompressed_bytes"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "bytes"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "rows"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "locale"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "compression_ratio"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "percentunit"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
       }
     },
     "layout": {
@@ -27651,6 +27752,19 @@
                                   "width": 12,
                                   "x": 12,
                                   "y": 24
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-251"
+                                  },
+                                  "height": 8,
+                                  "width": 24,
+                                  "x": 0,
+                                  "y": 32
                                 }
                               }
                             ]
