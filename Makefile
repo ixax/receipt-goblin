@@ -141,6 +141,7 @@ test: check-env
 # is a placeholder unless LITELLM_VIRTUAL_KEY is already set in .env, in
 # which case it's substituted everywhere below.
 env: check-env
+	@echo '# --- ~/.zshrc / ~/.bashrc (paste as-is, or use the config blocks below instead) ---'
 	@echo 'export LITELLM_VIRTUAL_KEY="$(VKEY)"'
 	@echo 'export LITELLM_AUTH_HEADER="Bearer $(VKEY)"'
 	@echo 'export ANTHROPIC_BASE_URL="$(URI)"'
