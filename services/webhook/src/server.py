@@ -1,13 +1,14 @@
 """
-Receives LiteLLM's generic_api webhook payloads: captures each raw POST body
-to disk (for offline inspection), then hands the contained
-StandardLoggingPayload entries to queue_client.enqueue() - a fast, DB-free
-push onto Redis. webhook-worker (worker.py) is what actually parses/inserts
-into ClickHouse, in batches - see AGENTS.md.
+Receives LiteLLM's generic_api webhook payloads: captures each individual
+StandardLoggingPayload event to disk under a per-session subfolder (for
+offline inspection), then hands them to queue_client.enqueue() - a fast,
+DB-free push onto Redis. webhook-worker (worker.py) is what actually
+parses/inserts into ClickHouse, in batches - see AGENTS.md.
 """
 
 import json
 import logging
+import re
 import urllib.error
 import urllib.request
 import uuid
@@ -15,7 +16,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Request
 
-from .clickhouse_ingest import get_client, ingest_git_branch, ingest_plan_proposal
+from .clickhouse_ingest import _session_and_trace_id, get_client, ingest_git_branch, ingest_plan_proposal
 from .config import CAPTURE_DIR, CAPTURE_ENABLED, LITELLM_BASE_URL, LITELLM_MASTER_KEY
 from .queue_client import enqueue, get_async_redis
 
@@ -25,6 +26,17 @@ app = FastAPI()
 
 if CAPTURE_ENABLED:
     CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
+
+_UNSAFE_SESSION_ID_CHARS = re.compile(r"[^A-Za-z0-9_.-]")
+
+
+def _safe_session_dir_name(session_id: str) -> str:
+    # session_id ultimately comes from a client-supplied header
+    # (x-claude-code-session-id) - strip it down to a safe folder-name
+    # charset so a crafted header can't escape CAPTURE_DIR via path
+    # separators or "..".
+    cleaned = _UNSAFE_SESSION_ID_CHARS.sub("_", session_id).strip("._")
+    return cleaned or "unknown"
 
 
 @app.get("/health")
@@ -40,17 +52,23 @@ async def health():
 @app.post("/api/v1/metrics")
 async def receive_metrics(request: Request):
     body = await request.json()
+    # log_format: json_array in litellm/config.yaml means `body` is usually a
+    # list of StandardLoggingPayload objects, not a single one.
+    payloads = body if isinstance(body, list) else [body]
 
-    # One file per POST, raw as received - log_format: json_array in
-    # litellm/config.yaml means `body` is usually a list of
-    # StandardLoggingPayload objects, not a single one. Off by default, see
+    # One file per event (not per POST - a single POST can bundle several
+    # events), grouped into a per-session subfolder, named so a plain `ls |
+    # sort` replays them in creation order. Off by default, see
     # config.CAPTURE_ENABLED.
     if CAPTURE_ENABLED:
-        now = datetime.now(timezone.utc)
-        filename = f"{now.strftime('%Y%m%dT%H%M%S%f')}-{uuid.uuid4().hex[:8]}.json"
-        (CAPTURE_DIR / filename).write_text(json.dumps(body, indent=2, default=str))
+        for event in payloads:
+            session_id, _ = _session_and_trace_id(event if isinstance(event, dict) else {})
+            session_dir = CAPTURE_DIR / _safe_session_dir_name(session_id)
+            session_dir.mkdir(parents=True, exist_ok=True)
+            now = datetime.now(timezone.utc)
+            filename = f"{now.strftime('%Y%m%dT%H%M%S%f')}-{uuid.uuid4().hex[:8]}.json"
+            (session_dir / filename).write_text(json.dumps(event, indent=2, default=str))
 
-    payloads = body if isinstance(body, list) else [body]
     await enqueue(payloads)
 
     return {"status": "queued"}

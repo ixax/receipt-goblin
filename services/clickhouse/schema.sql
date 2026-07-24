@@ -249,7 +249,7 @@ CREATE TABLE IF NOT EXISTS agent_events
     -- (`WHERE calculated_type = 'unknown'`) and iterated on, not an error.
     -- Rows ingested before this column existed keep the 'unknown' default
     -- permanently - they predate event_sources, so there's nothing left to
-    -- reparse them from (see event_sources below for why .capture/*.json
+    -- reparse them from (see event_sources below for why captures/<session_id>/*.json
     -- is never a substitute).
     calculated_type    LowCardinality(String) DEFAULT 'unknown',
     -- Structured, classifier-specific detail (e.g. {"subagent_type":...}
@@ -447,7 +447,7 @@ ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS user_key_hash LowCardinality
 -- rewritten and rerun later against real historical payloads without
 -- needing the original webhook call again.
 --
--- Deliberately separate from .capture/*.json: that's a CAPTURE_ENABLED-
+-- Deliberately separate from captures/<session_id>/*.json: that's a CAPTURE_ENABLED-
 -- gated, off-by-default debug aid with no retention policy and no place in
 -- the actual data model - no ingest or reparse code path may ever read from
 -- it, now or in the future, including as a one-time historical backfill
