@@ -35,6 +35,11 @@ URI := $(if $(strip $(LITELLM_URI)),$(LITELLM_URI),http://localhost:$(PORT))
 WEBHOOK_PORT := $(if $(strip $(WEBHOOK_PORT)),$(WEBHOOK_PORT),8010)
 # Same override pattern as URI above, for hosts where webhook isn't on localhost.
 INGEST_URI := $(if $(strip $(AGENT_CLI_TRACKING_API_URL)),$(AGENT_CLI_TRACKING_API_URL),http://localhost:$(WEBHOOK_PORT))
+
+# Optional - if you've already put your personal virtual key in .env (see
+# .env.example), `make env` substitutes it in below instead of printing a
+# `<virtual key>` placeholder to hand-edit.
+VKEY := $(if $(strip $(LITELLM_VIRTUAL_KEY)),$(LITELLM_VIRTUAL_KEY),<virtual key>)
 .PHONY: check-env start stop restart env test langfuse-up langfuse-down langfuse-logs reparse reparse-all \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
@@ -127,17 +132,45 @@ test: check-env
 # AGENT_CLI_TRACKING_API_URL/LITELLM_VIRTUAL_KEY for hooks/report_git_branch.py
 # (neither has a fallback - the hook crashes if they aren't exported;
 # LITELLM_VIRTUAL_KEY also authenticates that hook's report, checked by
-# webhook against LiteLLM's own /key/info). Not stored in .env, so the
-# printed `<virtual key>` is a placeholder - copy the output, replace it
-# with your personal key, and paste the result into ~/.zshrc / ~/.bashrc
-# (see README "Routing Claude Code through it").
+# webhook against LiteLLM's own /key/info), followed by ready-to-paste config
+# blocks for Codex's ~/.codex/config.toml and Claude Code's settings.json, so
+# nothing here needs re-typing by hand (see README "Configuring via config
+# files instead of shell exports"). `<virtual key>` is a placeholder unless
+# LITELLM_VIRTUAL_KEY is already set in .env, in which case it's substituted
+# everywhere below - add it there once and every future `make env` is fully
+# filled in, no shell rc edits needed at all.
 env: check-env
-	@echo 'export LITELLM_VIRTUAL_KEY="<virtual key>"'
-	@echo 'export LITELLM_AUTH_HEADER="Bearer $(URI)"'
+	@echo 'export LITELLM_VIRTUAL_KEY="$(VKEY)"'
+	@echo 'export LITELLM_AUTH_HEADER="Bearer $(VKEY)"'
 	@echo 'export ANTHROPIC_BASE_URL="$(URI)"'
 	@echo 'export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: $$LITELLM_AUTH_HEADER"'
 	@echo 'export OPENAI_API_BASE="$(URI)"'
 	@echo 'export AGENT_CLI_TRACKING_API_URL="$(INGEST_URI)"'
+	@echo ''
+	@echo '# --- ~/.codex/config.toml (merge in, keep any hooks/mcp_servers already there) ---'
+	@echo 'model_provider = "litellm"'
+	@echo ''
+	@echo '[model_providers.litellm]'
+	@echo 'name = "LiteLLM"'
+	@echo 'base_url = "$(URI)"'
+	@echo 'wire_api = "responses"'
+	@echo 'requires_openai_auth = true'
+	@echo 'env_http_headers = { "x-litellm-api-key" = "LITELLM_AUTH_HEADER" }'
+	@echo ''
+	@echo '[shell_environment_policy.set]'
+	@echo 'LITELLM_AUTH_HEADER = "Bearer $(VKEY)"'
+	@echo 'AGENT_CLI_TRACKING_API_URL = "$(INGEST_URI)"'
+	@echo 'LITELLM_VIRTUAL_KEY = "$(VKEY)"'
+	@echo ''
+	@echo '# --- ~/.claude/settings.json ("env" block - merge in, keep any hooks already there) ---'
+	@echo '{'
+	@echo '  "env": {'
+	@echo '    "ANTHROPIC_BASE_URL": "$(URI)",'
+	@echo '    "ANTHROPIC_CUSTOM_HEADERS": "x-litellm-api-key: Bearer $(VKEY)",'
+	@echo '    "AGENT_CLI_TRACKING_API_URL": "$(INGEST_URI)",'
+	@echo '    "LITELLM_VIRTUAL_KEY": "$(VKEY)"'
+	@echo '  }'
+	@echo '}'
 
 # Reparses event_sources into agent_events/agent_usage/agent_messages/
 # agent_invocations using the current classification logic - see

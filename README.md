@@ -79,7 +79,7 @@ make logs
 2. **Models + Endpoints** (http://localhost:4000/ui/models-and-endpoints) → check the model you need is actually listed. If it isn't, don't add it here - go set it up under "Remote model sources" / "Model name mapping" under "LiteLLM" below instead, then come back.
 3. **Teams** (http://localhost:4000/ui/teams) → **Create New Team**, if none exists yet - a key can't be created without a team to belong to.
 4. **Keys** → **Create New Key** → pick the team from step 3 → restrict `Models` to whichever names the agent(s) you use need → copy the generated `sk-...` key.
-5. Run `make env`, copy its output, replace the `<virtual key>` placeholders with the key from step 4, and paste the result into `~/.zshrc`/`~/.bashrc` so every new shell picks it up - see "Routing Claude Code through it" / "Routing Codex CLI through it" under "LiteLLM" below for what it exports.
+5. Run `make env` and either paste its shell-export lines into `~/.zshrc`/`~/.bashrc`, or merge its Codex/Claude Code config blocks into `~/.codex/config.toml`/`~/.claude/settings.json` instead (no shell rc edit needed) - see "Routing Claude Code through it" / "Routing Codex CLI through it" / "Configuring via config files instead of shell exports" under "LiteLLM" below. Add the key from step 4 as `LITELLM_VIRTUAL_KEY` in `.env` first (see `.env.example`) and `make env` fills it in everywhere automatically; otherwise replace the printed `<virtual key>` placeholders by hand.
 
 To confirm the proxy is actually seeing traffic: **Usage** (http://localhost:4000/ui/usage) for per-key/per-model spend and request counts, **Logs** (http://localhost:4000/ui/logs) for individual request/response payloads.
 
@@ -405,21 +405,62 @@ Without an OpenAI API key, `gpt-5.6-sol`/`gpt-5.6-terra`/`gpt-5.6-luna` give the
 
 1. `~/.codex/config.toml`: point the `litellm` model provider at the proxy and require it to always send a live subscription token as `Authorization` -
    ```toml
+   model_provider = "litellm"
+
    [model_providers.litellm]
+   name = "LiteLLM"
    base_url = "http://localhost:4000"
    wire_api = "responses"
    requires_openai_auth = true
    env_http_headers = { "x-litellm-api-key" = "LITELLM_AUTH_HEADER" }
-
-   [profile]
-   model_provider = "litellm"
-   model = "gpt-5.6-luna"
    ```
+   `model_provider` at the top level sets the default for every profile/session; use a `[profile]` block instead (`model_provider = "litellm"` plus `model = "gpt-5.6-luna"`) if you only want this active under a named profile rather than by default.
    `LITELLM_AUTH_HEADER` here is the same personal virtual key already exported for Claude Code (see "Routing Claude Code through it" above) - one key, both CLIs.
 2. `codex login` (ChatGPT subscription OAuth) as usual.
 
 Why this needs more than `forward_client_headers_to_llm_api`: unlike Anthropic, litellm has no built-in way to recognize a ChatGPT/Codex OAuth token (confirmed against litellm's own docs and two of its open GitHub issues - [BerriAI/litellm#23777](https://github.com/BerriAI/litellm/issues/23777), [#24500](https://github.com/BerriAI/litellm/issues/24500) - both ask for exactly this, unresolved upstream), so its `clean_headers()` proxy internals silently drop a Codex caller's `Authorization` header the same way they'd drop any other unrecognized bearer token. `services/litellm/custom_callbacks.py` closes this the same way the Anthropic case is special-cased in litellm itself: it broadens `is_anthropic_oauth_key()` (monkeypatched at callback-load time) to also recognize a ChatGPT JWT by its `https://api.openai.com/auth` claim, then a pre-call hook (`ChatGPTAuthForwardHandler`) reads the now-surviving header and sets it as `extra_headers` so the caller's own token (and derived `ChatGPT-Account-Id`) - not litellm's own single logged-in identity - is what actually authenticates to `chatgpt.com`, per call.
 `docker-entrypoint.sh` seeds a static, non-functional `auth.json` for litellm's built-in `chatgpt` provider on every container start, purely so a call that arrives with no forwarded token fails cleanly with a real auth error instead of hanging on an interactive device-code login.
+
+### Configuring via config files instead of shell exports
+
+`~/.zshrc`/`~/.bashrc` exports aren't actually required - both CLIs can read the exact same values straight from their own config file instead, including the two vars that only exist for `hooks/report_git_branch.py` (`AGENT_CLI_TRACKING_API_URL`, `LITELLM_VIRTUAL_KEY`). Once both blocks below are in place, there's nothing left for a shell rc file to provide.
+
+`make env` prints all of this pre-filled - both blocks below, plus the shell-export form - substituting your real values from `.env` (`LITELLM_PORT`/`AGENT_CLI_TRACKING_API_URL` if set, `LITELLM_VIRTUAL_KEY` if you've added it there, see `.env.example`) wherever they're already known, so there's normally nothing to hand-type from this section at all - just run it and merge the relevant block in.
+
+**Claude Code** reads an `env` block straight out of its settings file and applies it to every session, including subprocesses it spawns - hooks inherit it too, so this alone covers everything:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:4000",
+    "ANTHROPIC_CUSTOM_HEADERS": "x-litellm-api-key: Bearer <virtual key>",
+    "AGENT_CLI_TRACKING_API_URL": "http://localhost:8010",
+    "LITELLM_VIRTUAL_KEY": "<virtual key>"
+  }
+}
+```
+
+Put this in `~/.claude/settings.json` to route *every* Claude Code session on the machine through litellm, or in this repo's `.claude/settings.local.json` (gitignored - real keys should never land in the committed `.claude/settings.json`) to scope it to just this project. Either way, **merge** the `env` block into the file - don't replace it wholesale. Both the global file and this repo's own `.claude/settings.json`/`.codex/hooks.json` already carry hooks and MCP-server config (`SessionStart`/`CwdChanged`/`PreToolUse` entries, `enabledMcpjsonServers`, etc.) that a full overwrite would silently drop - open those files and see what sections are already there before writing.
+
+**Codex** needs two blocks in `~/.codex/config.toml` - routing, and (separately) the env vars for its own `SessionStart` hook, since `model_providers`/`[profile]` only configures the model provider, not arbitrary env vars for subprocesses:
+
+```toml
+model_provider = "litellm"
+
+[model_providers.litellm]
+name = "LiteLLM"
+base_url = "http://localhost:4000"
+wire_api = "responses"
+requires_openai_auth = true
+env_http_headers = { "x-litellm-api-key" = "LITELLM_AUTH_HEADER" }
+
+[shell_environment_policy.set]
+LITELLM_AUTH_HEADER = "Bearer <virtual key>"
+AGENT_CLI_TRACKING_API_URL = "http://localhost:8010"
+LITELLM_VIRTUAL_KEY = "<virtual key>"
+```
+
+This has to go in the *global* `~/.codex/config.toml` - a project-level `.codex/config.toml` (this repo has one, currently just `mcp_servers.clickhouse`) can't take over any of this even in a trusted project. Codex silently ignores `model_provider`/`model_providers`/`profile` set at that layer (so a repo can't redirect your traffic on its own), and `shell_environment_policy` isn't one of the keys project config can set either. Check what's already in your global `~/.codex/config.toml` (and this repo's own `.codex/hooks.json`) before merging these blocks in, rather than overwriting.
 
 ### Inspecting captured traffic
 
