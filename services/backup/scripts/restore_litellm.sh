@@ -4,7 +4,7 @@
 #
 # DESTRUCTIVE, and litellm writes to this DB continuously - stop the
 # `litellm` container first (litellm-db itself must stay up, this script
-# connects to it). See services/backup/README.md.
+# connects to it). See README.md's "Backup & restore" section.
 #
 # Usage: restore_litellm.sh <filename> --yes
 set -euo pipefail

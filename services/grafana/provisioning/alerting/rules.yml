@@ -56,7 +56,15 @@ groups:
             model:
               refId: A
               instant: true
-              expr: 'up{job="webhook"} + on() probe_success{job="blackbox", instance=~".*webhook.*"}'
+              # min(), not a bare `job="webhook"` match: that job now scrapes
+              # two instances (webhook-1/webhook-2, see prometheus.yml), and
+              # the blackbox side probes both individually too - without
+              # aggregating each side down to a single series first, `+ on()`
+              # would cross-join them into up to 4 series instead of the one
+              # this alert (and its single stat panel in infra_overview.json)
+              # expects. min() means "alert if ANY replica looks down",
+              # same semantics the single old `webhook` container had.
+              expr: 'min(up{job="webhook"}) + on() min(probe_success{job="blackbox", instance=~".*webhook.*"})'
           - refId: B
             datasourceUid: __expr__
             model:
@@ -72,6 +80,43 @@ groups:
               expression: B
               conditions:
                 - evaluator: {type: lt, params: [2]}
+                  operator: {type: and}
+                  query: {params: [B]}
+                  reducer: {type: last, params: []}
+                  type: query
+
+      - uid: alert-load-balancer-down
+        title: Load balancer is down
+        condition: C
+        for: 30s
+        noDataState: NoData
+        execErrState: Error
+        # No own /metrics scrape job for load-balancer (plain nginx, no
+        # exporter) - same pattern as alert-grafana-down below: blackbox
+        # probe_success is the only signal.
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{job="blackbox", instance=~".*load-balancer.*"}'
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: lt, params: [1]}
                   operator: {type: and}
                   query: {params: [B]}
                   reducer: {type: last, params: []}

@@ -40,10 +40,30 @@ INGEST_URI := $(if $(strip $(AGENT_CLI_TRACKING_API_URL)),$(AGENT_CLI_TRACKING_A
 # .env.example), `make env` substitutes it in below instead of printing a
 # `<virtual key>` placeholder to hand-edit.
 VKEY := $(if $(strip $(LITELLM_VIRTUAL_KEY)),$(LITELLM_VIRTUAL_KEY),<virtual key>)
-.PHONY: check-env start stop restart env test langfuse-up langfuse-down langfuse-logs reparse reparse-all \
+
+# One <SERVICE>_TAG env var per VERSION.yml key (see that file's own
+# comment for the templating rules), exported so docker-compose.yml's
+# per-service `image: ...:${..._TAG:-latest}` lines all interpolate -
+# scripts/resolve_image_version.py is the single source of truth for the
+# resolution logic, shared with `make build` below rather than
+# reimplemented in Make.
+#
+# Regenerated via a `$(shell ... > file)` side effect (not captured into a
+# Make variable) specifically so the real newlines between each
+# `export FOO_TAG=...` line survive onto disk - `$(shell ...)`'s return
+# value collapses every newline into a space, so a direct
+# `$(eval $(shell resolve_image_version.py))` mangles all but the first
+# line into that one variable's value instead of exporting each
+# separately (confirmed: only the first var ever came through, the rest
+# silently got swallowed as extra tokens in its value). `include`ing a
+# real file has no such collapsing - each line is its own statement.
+$(shell python3 scripts/resolve_image_version.py > .image-tags.mk)
+include .image-tags.mk
+
+.PHONY: check-env start stop restart env test build langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
-	observability-up observability-down observability-logs observability-status
+	observability-up observability-down observability-logs observability-status loadtest
 
 # The six langfuse-* services (see docker-compose.yml) all carry
 # `profiles: [langfuse]`, so `docker compose down` doesn't accept a bare
@@ -62,9 +82,20 @@ OBSERVABILITY_SERVICES := prometheus blackbox redis-exporter loki alloy cadvisor
 # vice versa), so this can't be easy to miss.
 check-env:
 	@echo "⚠️  ENVIRONMENT=$(ENVIRONMENT)"
+	@python3 scripts/resolve_image_version.py | sed 's/^export /⚠️  /'
 
 start up: check-env
 	docker compose $(COMPOSE_FILES) up -d --build --force-recreate
+
+# Builds one service by name, e.g. `make build SERVICE=redis` or
+# `make build SERVICE=webhook-1` - resolve_image_version.py's export up top
+# already put every image group's tag in this recipe's environment, so
+# `docker compose build` just needs pointing at the one service; it
+# resolves that service's own `image: ...:${..._TAG:-latest}` the same way
+# `make start` would for all of them.
+build: check-env
+	@if [ -z "$(SERVICE)" ]; then echo "usage: make build SERVICE=<service-name>"; exit 1; fi
+	docker compose $(COMPOSE_FILES) build $(SERVICE)
 
 status: check-env
 	docker compose $(COMPOSE_FILES) ps
@@ -176,15 +207,53 @@ env: check-env
 # services/webhook/src/reparse.py. ReplacingMergeTree-safe to re-run any
 # number of times. Requires SESSION=<session_id>; use `make reparse-all` to
 # reparse everything instead.
+#
+# Each reparse re-inserts a fresh row per event, so until ClickHouse merges
+# the old+new parts, dashboards reading these tables without FINAL (e.g. the
+# Trace panel) can show transient duplicate rows - print-reparse-final-hint
+# reminds to collapse them explicitly instead of waiting on a background merge.
 reparse: check-env
 	@if [ -z "$(SESSION)" ]; then echo "usage: make reparse SESSION=<session_id>"; exit 1; fi
 	docker compose $(COMPOSE_FILES) run --rm -e SESSION_ID=$(SESSION) webhook-reparse
+	@$(MAKE) print-reparse-final-hint
 
 reparse-all: check-env
 	docker compose $(COMPOSE_FILES) run --rm webhook-reparse
+	@$(MAKE) print-reparse-final-hint
+
+print-reparse-final-hint:
+	@echo ''
+	@echo 'Reparse re-inserted rows into ReplacingMergeTree tables - until the'
+	@echo 'next background merge, dashboards reading them without FINAL can show'
+	@echo 'transient duplicate rows. To collapse them now, run:'
+	@echo ''
+	@echo '  docker exec receipt-goblin-clickhouse clickhouse-client -q "OPTIMIZE TABLE agent_events FINAL; OPTIMIZE TABLE agent_usage FINAL; OPTIMIZE TABLE agent_messages FINAL; OPTIMIZE TABLE agent_invocations FINAL; OPTIMIZE TABLE ai_gateway_users FINAL; OPTIMIZE TABLE ai_gateway_groups FINAL"'
+	@echo ''
+	@echo '(event_sources is deliberately excluded - it is large and OPTIMIZE FINAL on it risks OOM.)'
+
+# Replays real captured traffic (.capture/) against webhook's own
+# POST /api/v1/metrics at a ramping concurrency profile, to see how
+# webhook-worker/redis/clickhouse cope - see services/webhook/src/loadtest.py
+# for the full model. Bypasses LiteLLM/the real Claude API entirely.
+# Defaults reproduce loadtest.py's own defaults (ramp 10->100 users over 10
+# steps/1 min each, then hold 5 min) if no vars are set - override any of
+# them, e.g.:
+#   make loadtest END_USERS=250 DURATION_MINUTES=30 SPEED=5
+#   make loadtest TARGET_URL=https://staging.example.com/api/v1/metrics
+loadtest: check-env
+	docker compose $(COMPOSE_FILES) run --rm \
+	  -e TARGET_URL=$(or $(TARGET_URL),http://load-balancer:8000/api/v1/metrics) \
+	  -e START_USERS=$(or $(START_USERS),10) \
+	  -e END_USERS=$(or $(END_USERS),100) \
+	  -e RAMP_STEPS=$(or $(RAMP_STEPS),10) \
+	  -e RAMP_STEP_MINUTES=$(or $(RAMP_STEP_MINUTES),1) \
+	  -e HOLD_MINUTES=$(or $(HOLD_MINUTES),5) \
+	  -e DURATION_MINUTES=$(or $(DURATION_MINUTES),0) \
+	  -e SPEED=$(or $(SPEED),1.0) \
+	  webhook-loadtest
 
 # Backup/restore for clickhouse, litellm-db, and grafana-data - see
-# services/backup/README.md for the full playbook, including why restore
+# README.md's "Backup & restore" section for the full playbook, including why restore
 # needs the target container stopped first (not automated here - the
 # backup container never touches the Docker socket, see docker-compose.yml's
 # `backup` service comment). Files land under $BACKUP_DIR (default
@@ -202,7 +271,7 @@ backup-grafana: check-env
 backup-all: check-env
 	docker compose $(COMPOSE_FILES) run --rm backup ./scripts/backup_all.sh
 
-# DESTRUCTIVE - see services/backup/README.md before running any of these.
+# DESTRUCTIVE - see README.md's "Backup & restore" section before running any of these.
 # Requires FILE=<name under $BACKUP_DIR/<service>/> and stopping the
 # relevant container first for litellm/grafana (clickhouse can stay up).
 restore-clickhouse: check-env

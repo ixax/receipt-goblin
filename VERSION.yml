@@ -1,0 +1,36 @@
+# Per-service-image-group version templates, resolved by
+# scripts/resolve_image_version.py into <MAKE_VAR>_TAG env vars that
+# docker-compose.yml's `image: ...:${..._TAG:-latest}` lines interpolate.
+#
+# `{build}` in a template is replaced with the current commit's short git
+# hash - bump SEMVER by hand here on a real change to that image group, the
+# hash then gives every commit touching it its own tag automatically instead
+# of overwriting `latest` and orphaning the previous build as a dangling
+# image (see git history for why this file exists at all). Every group
+# outside the `observability`/`langfuse` profiles gets `{build}` - those two
+# stay static (rarely-touched baked config on top of a public tool, see
+# AGENTS.md "Dev/prod split") since there's no reason a commit to unrelated
+# core-stack code should mint a new tag for e.g. loki and force a
+# rebuild/repull of its base layers. Bump the SEMVER by hand instead, the
+# same day you actually change one of those two groups' Dockerfile/config.
+#
+# Key -> compose var: "foo-bar" becomes FOO_BAR_TAG. One key can (and for
+# the six services sharing services/webhook/Dockerfile, does) back several
+# compose services at once - see docker-compose.yml's `image:` lines for
+# which services use which key.
+
+webhook: 0.1.0-{build}
+mcp-server: 0.1.0-{build}
+load-balancer: 0.1.0-{build}
+litellm: 0.1.0-{build}
+clickhouse: 0.1.0-{build}
+grafana: 0.1.0-{build}
+redis: 0.1.0-{build}
+backup: 0.1.0-{build}
+prometheus: 0.1.0
+blackbox: 0.1.0
+node-exporter: 0.1.0
+loki: 0.1.0
+alloy: 0.1.0
+langfuse-minio: 0.1.0
+langfuse-redis: 0.1.0

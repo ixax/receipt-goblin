@@ -1,0 +1,53 @@
+[
+  {
+    "id": "9c1a2b3d-4e5f-6789-abcd-ef0123456789",
+    "litellm_call_id": "9c1a2b3d-4e5f-6789-abcd-ef0123456789",
+    "trace_id": "1a2b3c4d-5e6f-7890-abcd-ef1234567890",
+    "call_type": "aresponses",
+    "cache_hit": null,
+    "stream": true,
+    "status": "success",
+    "custom_llm_provider": "chatgpt",
+    "model": "chatgpt/gpt-5.6-luna",
+    "model_group": "gpt-5.6-luna",
+    "response_cost": 0.0,
+    "cost_breakdown": {"input_cost": 0, "output_cost": 0, "total_cost": 0.0},
+    "startTime": 1753372800.0,
+    "endTime": 1753372803.5,
+    "metadata": {
+      "requester_custom_headers": {
+        "x-codex-turn-metadata": "{\"session_id\": \"019f8f18-0972-7110-bded-703a93ad9d6d\", \"thread_id\": \"019f8f18-0972-7110-bded-703a93ad9d6d\", \"turn_id\": \"turn-2\"}"
+      }
+    },
+    "messages": [
+      {
+        "type": "message",
+        "role": "user",
+        "content": [
+          {"type": "input_text", "text": "what's in this directory?"}
+        ]
+      },
+      {
+        "type": "message",
+        "role": "assistant",
+        "content": [
+          {"type": "output_text", "text": "It has two files."}
+        ],
+        "phase": "final_answer"
+      }
+    ],
+    "response": {
+      "output": [],
+      "usage": {
+        "prompt_tokens": 19167,
+        "completion_tokens": 42,
+        "total_tokens": 19209,
+        "prompt_tokens_details": {
+          "cached_tokens": 17920,
+          "cache_write_tokens": 0,
+          "cache_creation_tokens": 0
+        }
+      }
+    }
+  }
+]

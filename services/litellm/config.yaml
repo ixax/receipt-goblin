@@ -66,6 +66,10 @@ litellm_settings:
     # Forwards a Codex caller's own ChatGPT token to gpt-5.6-* models
     # instead of a shared login.
     - custom_callbacks.chatgpt_auth_forward_handler
+    # Recovers Codex/ChatGPT streamed tool-call output that litellm's own
+    # streaming iterator drops (BerriAI/litellm#25429) so
+    # StandardLoggingPayload.response.output isn't empty for metrics_webhook.
+    - custom_callbacks.chatgpt_responses_output_recovery_handler
     # Exposes /metrics on this proxy port (4000); scraped by Prometheus's
     # litellm job.
     - prometheus

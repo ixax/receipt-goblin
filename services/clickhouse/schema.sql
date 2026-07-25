@@ -89,7 +89,7 @@ ORDER BY (session_id, captured_at);
 -- team gets renamed in the LiteLLM UI, without rewriting historical fact
 -- rows. Populated by webhook/src/clickhouse_ingest.py
 -- (_group_row/_insert_ai_gateway_dims) on every ingest, and backfilled from
--- event_sources by webhook/src/reparse.py - see AGENTS.md.
+-- ingest_raw by webhook/src/reparse.py - see AGENTS.md.
 CREATE TABLE IF NOT EXISTS ai_gateway_groups
 (
     group_id   LowCardinality(String),
@@ -191,7 +191,7 @@ CREATE TABLE IF NOT EXISTS agent_events
     trace_id          String,
     turn_id           UInt32,
     -- Unique per LiteLLM call (confirmed) - the real identity of a row, and
-    -- the join key event_sources.litellm_call_id uses to pair a row back to
+    -- the join key ingest_raw.litellm_call_id uses to pair a row back to
     -- its full original payload.
     litellm_call_id   String DEFAULT '',
     event_type        LowCardinality(String),
@@ -221,7 +221,7 @@ CREATE TABLE IF NOT EXISTS agent_events
     -- Set when this call's incoming "messages" ends with a tool_result
     -- marked is_error - i.e. this call is reacting to a tool that just
     -- failed. Recovered at ingest time only (from "messages", which never
-    -- lands in this table - see event_sources for the full original
+    -- lands in this table - see ingest_raw for the full original
     -- payload) - not backfillable from already-ingested rows the way
     -- tool_name/cost were, since the source data is gone once ingested.
     -- Distinct from this row's own tool_name, which is whatever tool (if
@@ -234,13 +234,13 @@ CREATE TABLE IF NOT EXISTS agent_events
     -- suggestion_mode/transcript_handoff/title_gen/interrupted/
     -- webpage_content/llm_answer/unknown), computed once at ingest by
     -- clickhouse_ingest.py:_classify_event and re-computable later by
-    -- webhook/src/reparse.py against event_sources.raw_payload_full -
+    -- webhook/src/reparse.py against ingest_raw.raw_payload_full -
     -- see AGENTS.md/the schema-sql-capture plan for the full category
     -- list. 'unknown' is a real, expected bucket meant to be searched
     -- (`WHERE calculated_type = 'unknown'`) and iterated on, not an error.
     -- Rows ingested before this column existed keep the 'unknown' default
-    -- permanently - they predate event_sources, so there's nothing left to
-    -- reparse them from (see event_sources below for why captures/<session_id>/*.json
+    -- permanently - they predate ingest_raw, so there's nothing left to
+    -- reparse them from (see ingest_raw below for why captures/<session_id>/*.json
     -- is never a substitute).
     calculated_type    LowCardinality(String) DEFAULT 'unknown',
     -- Structured, classifier-specific detail (e.g. {"subagent_type":...}
@@ -416,14 +416,40 @@ ORDER BY (session_id, litellm_call_id);
 -- agent_events above for the existing DETACH PARTITION pattern) - not
 -- building that MinIO move now, just not painting this table's layout into
 -- a corner that would need reshaping later to support it.
-CREATE TABLE IF NOT EXISTS event_sources
+CREATE TABLE IF NOT EXISTS ingest_raw
 (
     litellm_call_id  String,
     session_id       String,
     ingested_at      DateTime64(3) DEFAULT now64(3),
-    raw_payload_full String CODEC(ZSTD(19)),
+    -- ZSTD(3), not (19): level 19 measured at ~17s avg / ~44s max per
+    -- 500-row insert batch under a 50-concurrent-user load test (vs
+    -- single-digit ms for every other table) - this column alone was the
+    -- entire ingest bottleneck, backing up the Redis queue past its
+    -- maxlen and silently dropping ~85% of events. ZSTD(3) trades some
+    -- storage size for insert throughput that doesn't block the queue.
+    raw_payload_full String CODEC(ZSTD(3)),
     INDEX idx_session_id session_id TYPE set(1000) GRANULARITY 4
 )
 ENGINE = ReplacingMergeTree(ingested_at)
 PARTITION BY concat(toString(toYear(ingested_at)), '-H', toString(intDiv(toMonth(ingested_at) - 1, 6) + 1))
 ORDER BY (litellm_call_id);
+
+-- Dead-letter table for ingest_events_batch (clickhouse_ingest.py): a row
+-- that a table's client.insert() rejects (bad column value, e.g. the
+-- ttft_ms UInt32-overflow class of bug) is isolated by re-inserting that
+-- table's rows one at a time, and whichever row(s) fail land here instead
+-- of silently vanishing with the rest of their batch. TTL keeps this small -
+-- it's a triage/alerting feed, not a permanent store (the row's own table
+-- insert, if later fixed and replayed, is the real source of truth).
+CREATE TABLE IF NOT EXISTS ingest_dlq
+(
+    occurred_at     DateTime64(3) DEFAULT now64(3),
+    stage           LowCardinality(String), -- target table name, e.g. 'agent_usage'
+    error           String,
+    litellm_call_id String DEFAULT '',
+    session_id      String DEFAULT '',
+    raw_row         String DEFAULT '' CODEC(ZSTD(3)) -- JSON of the offending row, for triage
+)
+ENGINE = MergeTree
+ORDER BY (occurred_at)
+TTL toDateTime(occurred_at) + INTERVAL 30 DAY;

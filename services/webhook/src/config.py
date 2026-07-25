@@ -27,7 +27,11 @@ LITELLM_MASTER_KEY = os.environ["LITELLM_MASTER_KEY"]
 LITELLM_BASE_URL = os.environ["LITELLM_BASE_URL"]
 
 # webhook-worker's own /metrics port; not read by webhook/mcp-server/reparse.
-WORKER_METRICS_PORT = int(os.environ.get("WORKER_METRICS_PORT", "9200"))
+# Fixed, not env-configurable: docker-compose.yml never passes
+# WORKER_METRICS_PORT into webhook-worker's environment, so an env var here
+# would be dead weight - prometheus.yml's scrape target is hardcoded to
+# match (webhook-worker:9200).
+WORKER_METRICS_PORT = 9200
 
 CAPTURE_DIR = Path(os.environ.get("CAPTURE_DIR", "/app/captures"))
 # Off by default: raw bodies contain real prompt/response content and

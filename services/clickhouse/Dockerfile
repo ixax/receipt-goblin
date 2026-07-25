@@ -9,3 +9,9 @@ COPY schema.sql /docker-entrypoint-initdb.d/schema.sql
 
 COPY config.d/ /etc/clickhouse-server/config.d/
 COPY users.d/ /etc/clickhouse-server/users.d/
+
+# Admin CLI tooling - not WORKDIR (the base image's own entrypoint has
+# opinions about that) - run via
+# `docker compose exec clickhouse /scripts/<name>.sh`.
+COPY scripts/ /scripts/
+RUN chmod +x /scripts/*.sh

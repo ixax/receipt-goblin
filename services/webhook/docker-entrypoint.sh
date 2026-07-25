@@ -28,8 +28,11 @@ case "${APP_ROLE:-server}" in
   migrate)
     exec python -m src.migrate
     ;;
+  loadtest)
+    exec python -m src.loadtest
+    ;;
   *)
-    echo "docker-entrypoint.sh: unknown APP_ROLE '${APP_ROLE}' (expected server|worker|reparse|migrate)" >&2
+    echo "docker-entrypoint.sh: unknown APP_ROLE '${APP_ROLE}' (expected server|worker|reparse|migrate|loadtest)" >&2
     exit 1
     ;;
 esac

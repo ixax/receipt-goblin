@@ -1,10 +1,10 @@
 """CLI-only reparse tool - recomputes agent_events/agent_usage/agent_messages/
 agent_invocations/ai_gateway_users/ai_gateway_groups for events already in
-event_sources, reusing clickhouse_ingest.py's classification logic directly.
+ingest_raw, reusing clickhouse_ingest.py's classification logic directly.
 Run via `make reparse-all` or `make reparse SESSION=<session_id>`; no HTTP
 API, one-shot `python -m src.reparse` only.
 
-event_sources is the only source read; .capture/*.json is out of scope
+ingest_raw is the only source read; .capture/*.json is out of scope
 (see AGENTS.md).
 
 Safe to re-run any number of times: the target tables are all
@@ -45,7 +45,7 @@ def _reparse_one(client, litellm_call_id: str, source_session_id: str, raw_paylo
     try:
         payload = json.loads(raw_payload_full)
     except (TypeError, ValueError):
-        logger.exception("failed to decode event_sources.raw_payload_full (litellm_call_id=%s)", litellm_call_id)
+        logger.exception("failed to decode ingest_raw.raw_payload_full (litellm_call_id=%s)", litellm_call_id)
         return
 
     now = datetime.now(timezone.utc)
@@ -95,7 +95,7 @@ def _reparse_one(client, litellm_call_id: str, source_session_id: str, raw_paylo
 
 
 def reparse(session_id: str = "") -> int:
-    """session_id="" reparses every row in event_sources. Returns rows
+    """session_id="" reparses every row in ingest_raw. Returns rows
     processed.
 
     Pages REPARSE_CHUNK_SIZE rows at a time (keyset pagination on
@@ -104,7 +104,7 @@ def reparse(session_id: str = "") -> int:
     """
     client = get_client()
     query = (
-        "SELECT litellm_call_id, session_id, raw_payload_full FROM event_sources "
+        "SELECT litellm_call_id, session_id, raw_payload_full FROM ingest_raw "
         "WHERE ({session_id:String} = '' OR session_id = {session_id:String}) "
         "AND litellm_call_id > {cursor:String} "
         "ORDER BY litellm_call_id "
@@ -143,7 +143,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--session-id", default="",
-        help="Reparse only this session_id's events. Omit (or set SESSION_ID='') to reparse all of event_sources.",
+        help="Reparse only this session_id's events. Omit (or set SESSION_ID='') to reparse all of ingest_raw.",
     )
     args = parser.parse_args()
 

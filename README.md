@@ -18,6 +18,20 @@ See `AGENTS.md` for architecture and schema details.
 5. Grafana on `:3000` queries ClickHouse directly for every panel; there's no caching layer, so a dashboard refresh always reflects current table state.
 6. Reads go the other way: `webhook`/`webhook-worker` are write-only, so a CLI session reads data back out (e.g. `/whatsup` in Claude Code) via the `mcp-server` MCP server on `:8001`, registered in `.mcp.json`.
 
+### Services at a glance
+
+All of these are published by the single `load-balancer` (nginx) service now, not by each service's own container - see "Configuration" under "Reference" below.
+`http://localhost:<port>` still works exactly as before either way.
+
+| Service      | Base URL              | Admin/UI                                                                                                                                                                                                                                                      |
+| ------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `webhook`    | http://localhost:8010 | none - POST-only ingest API, nothing to open in a browser.                                                                                                                                                                                                    |
+| `litellm`    | http://localhost:4000 | `/ui` (http://localhost:4000/ui) - keys/teams/usage/logs, log in with `admin` / your `LITELLM_MASTER_KEY`. See "Issue yourself a personal key" below.                                                                                                         |
+| `grafana`    | http://localhost:3000 | root is the dashboard itself (http://localhost:3000/d/agents-overview/agents-overview) - anonymous viewer access is enabled by default, no login needed.                                                                                                      |
+| `clickhouse` | http://localhost:8123 | `/play` (http://localhost:8123/play) - SQL query UI; `/dashboard` (http://localhost:8123/dashboard) - ClickHouse's built-in dashboards. Both need `system.*` SELECT - `admin` already has it, see "Create additional ClickHouse users" below for anyone else. |
+| `mcp-server` | http://localhost:8001 | none - MCP endpoint only (`/whatsup` etc. in Claude Code, via `.mcp.json`), nothing to open in a browser.                                                                                                                                                     |
+| `langfuse`   | http://localhost:3001 | root is the login UI. Optional - only up when the `langfuse` compose profile is enabled, see "Langfuse" below.                                                                                                                                                |
+
 ## Getting started
 
 ### Environment variables
@@ -89,6 +103,28 @@ http://localhost:3000/d/agents-overview/agents-overview
 
 Anonymous viewer access is enabled by default - no login needed.
 
+### Create additional ClickHouse users (optional)
+
+Nothing here is required on first startup - `clickhouse-migrate` already provisions the app user (`CLICKHOUSE_USER`/`CLICKHOUSE_PASSWORD` from `.env`, `admin`/`changeme` by default) automatically on every `docker compose up`, and every service in this stack (webhook, mcp-server, grafana) already connects as that user.
+Only reach for this if you want a *different* ClickHouse login - e.g. a personal one for the `/play` web UI, or one scoped to read a single table.
+
+```bash
+docker compose exec clickhouse /scripts/create_user.sh
+```
+
+It prompts for a username and password (leave the password blank to have one generated for you), then asks:
+
+- **Grant Play/Dashboard UI access?** - read-only `SELECT` on `system.*`.
+  Needed for the schema-browser sidebar on `http://localhost:8123/play` and ClickHouse's built-in `/dashboard` page to list tables/queries at all.
+  Without it those pages load but stay empty - the app user (`admin`) deliberately doesn't have this, since it doesn't need to introspect the server, only query `CLICKHOUSE_DATABASE`.
+- **Create a new database for this user?** - optional.
+  Say yes and give it a name, and the script creates that database and then asks specifically whether this user should get full (not just read-only) access to it - no need to separately name it in the next question.
+- **Database or table for full data access** - only asked if you didn't just create one above.
+  Blank skips this (UI-only user); otherwise pick `default` (the whole database) or something narrower like `default.agent_events`, then say whether that access should include writes or stay read-only.
+
+Every `CREATE USER`/`GRANT` statement it's about to run is printed before anything executes, with a final `y/N` confirmation - nothing is granted implicitly.
+The script runs as the bootstrap superuser (see "Configuration" under "Reference" below for what that account is) - only that identity can create users or grant access.
+
 ## Usage
 
 ### Check spend from Claude Code
@@ -111,29 +147,125 @@ To also delete the ClickHouse data volume (next `up` re-applies `schema.sql` fro
 
 ## Backup & restore
 
-`clickhouse`, `litellm-db`, and `grafana`'s `grafana.db` all hold state
-that isn't reproducible from the repo. Full playbook (including one-time
-setup and the restore procedure per service) is in
-`services/backup/README.md`; quick reference:
+Backs up and restores the three services in this stack that hold state not
+reproducible from the repo: `clickhouse` (all tracking data), `litellm-db`
+(LiteLLM's virtual keys/budgets/spend logs), and `grafana`'s `grafana.db`
+(users/orgs, API keys, alert rules - dashboards themselves are already
+source-controlled JSON, see `services/grafana/dashboards/`).
+
+Everything runs through the `backup` tools-profile service
+(`docker-compose.yml`) - it never uses `docker exec` or the Docker socket:
+`clickhouse`/`litellm-db` are reached over the `receipt-goblin` network,
+`grafana-data` is mounted directly as the same named volume the `grafana`
+service itself uses. Files land under `$BACKUP_DIR` (`.env`, default
+`.backups/` at the repo root) as `.backups/clickhouse/`,
+`.backups/litellm/`, `.backups/grafana/`. **No automatic pruning** - backups
+accumulate until you remove them by hand.
+
+**One-time setup.** `clickhouse`'s BACKUP/RESTORE disk
+(`services/clickhouse/config.d/backups.xml`) and its `$BACKUP_DIR/clickhouse`
+bind mount only take effect once that container is recreated:
 
 ```bash
-make backup-all           # clickhouse + litellm-db + grafana - safe on a live stack, no downtime
-make backup-clickhouse    # just one of the three
-make backup-litellm
-make backup-grafana
-
-make restore-clickhouse FILE=clickhouse_default_20260724-030000.zip   # DESTRUCTIVE, see the playbook first
-make restore-litellm    FILE=litellm_20260724-030000.dump
-make restore-grafana    FILE=grafana_20260724-030000.db
+docker compose up -d --build clickhouse
 ```
 
-Files land under `.backups/` at the repo root (override with `BACKUP_DIR`
-in `.env`), kept until removed by hand - no automatic pruning. For cron,
-point it at `make backup-all` (never at a `restore-*` target):
+This briefly restarts `clickhouse` only - unlike `litellm`, nothing else
+depends on avoiding a restart here, but it's still worth doing at a quiet
+moment since Grafana panels will show gaps for the few seconds it's down.
+
+**Manual backup.**
+
+```bash
+make backup-clickhouse   # BACKUP DATABASE via clickhouse-client, safe on a live server
+make backup-litellm      # pg_dump against litellm-db, safe on a live server
+make backup-grafana      # sqlite3 .backup against grafana.db, safe on a live server
+make backup-all          # all three - this is what cron should call
+```
+
+None of the three needs any container stopped - each uses a mechanism
+that's safe to run against a live, in-use service (ClickHouse's own
+`BACKUP` statement, a consistent `pg_dump` snapshot, SQLite's backup API).
+
+**Restore. Destructive.** Each restore drops/overwrites the live target -
+don't run these against anything but a throwaway/verification target unless
+you actually mean to roll back to that snapshot. List available files first:
+`ls .backups/clickhouse/`, `ls .backups/litellm/`, `ls .backups/grafana/`
+(or under `$BACKUP_DIR` if you set one).
+
+- *ClickHouse* - safe to run with `clickhouse` still up (drops and recreates
+  the database as part of the restore, so any query mid-flight during the
+  restore will simply fail, not corrupt anything):
+
+  ```bash
+  make restore-clickhouse FILE=clickhouse_default_20260724-030000.zip
+  ```
+
+- *LiteLLM* - `litellm` writes to `litellm-db` continuously, so stop it
+  first so the restore isn't racing live writes (`litellm-db` itself must
+  stay up, the restore connects to it):
+
+  ```bash
+  docker compose stop litellm
+  make restore-litellm FILE=litellm_20260724-030000.dump
+  docker compose start litellm
+  ```
+
+- *Grafana* - swapping `grafana.db` under a live server isn't safe, so stop
+  `grafana` first:
+
+  ```bash
+  docker compose stop grafana
+  make restore-grafana FILE=grafana_20260724-030000.db
+  docker compose start grafana
+  ```
+
+**Cron.** Point cron at `make backup-all` from the repo root (needs
+`docker`/`make` on `PATH` for cron's environment, which is usually sparser
+than an interactive shell - use absolute paths or source your shell profile
+if `make`/`docker` aren't found):
 
 ```
 0 3 * * * cd /path/to/receipt-goblin && make backup-all >> .backups/cron.log 2>&1
 ```
+
+Never point cron at a `restore-*` target - restore is a manual, deliberate
+operation only.
+
+## Load testing
+
+`make loadtest` replays real captured traffic from `.capture/` (see "Inspecting captured traffic" below) straight at `webhook`'s own `POST /api/v1/metrics`, at a ramping concurrency profile - for answering "how does `webhook-worker`/`redis`/`clickhouse` cope under N concurrent Claude users?" without spending any API budget. It deliberately bypasses LiteLLM and the real Claude/Anthropic API entirely: `/api/v1/metrics` needs no LiteLLM virtual key (unlike `/api/v1/session-git-branch` and `/api/v1/plan-proposal`), so this only exercises `webhook -> redis -> webhook-worker -> clickhouse`.
+
+One "virtual user" repeatedly picks a random real captured session and replays its whole event sequence in order, waiting the real (or `--speed`-scaled) gap between events, before picking another session and continuing - modeling one person's continuous usage, not a single request. Each event file's bytes are sent completely unmodified (no `id`/`trace_id` rewriting, no timestamp shifting) - this is a load test, not a data-integrity test, so concurrent replays of the same captured session will collide on `ingest_raw`' `ReplacingMergeTree` key and under-report actual replayed volume there; treat the tool's own final report (requests sent, status codes, latency) as the real throughput signal, not ClickHouse row growth.
+
+The load profile ramps rather than starting flat: it begins at `START_USERS`, adds more every `RAMP_STEP_MINUTES`, up to `END_USERS`, then holds. `DURATION_MINUTES=0` (default) means "figure out the total yourself" (`ramp time + HOLD_MINUTES`); any positive value is the total length outright, with the hold portion derived from it instead. The fully resolved schedule (every step's target user-count and firing time) prints to the console before anything runs, and each step's ramp-up logs live as it happens.
+
+```bash
+make loadtest                                              # defaults: ramp 10->100 users over 10 steps/1 min each, then hold 5 min
+make loadtest END_USERS=250 DURATION_MINUTES=30 SPEED=5     # 250 users, 30 min total, 5x faster than real cadence
+make loadtest TARGET_URL=https://staging.example.com/api/v1/metrics
+```
+
+All variables are passed as `make loadtest VAR=value` (or exported in the shell before calling `make`):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `TARGET_URL` | `http://load-balancer:8000/api/v1/metrics` | Where captured events get POSTed - point it at any reachable host, including staging/prod. |
+| `START_USERS` | `10` | Concurrent virtual users running from t=0. |
+| `END_USERS` | `100` | Ceiling the ramp climbs to and then holds at. |
+| `RAMP_STEPS` | `10` | How many increments to split the `START_USERS -> END_USERS` climb into - the tool derives how many users each step adds (`ceil((END_USERS - START_USERS) / RAMP_STEPS)`), not a manual step-size flag. |
+| `RAMP_STEP_MINUTES` | `1` | Minutes between ramp steps. Together with `RAMP_STEPS`, fixes how long the ramp itself takes: `RAMP_STEPS * RAMP_STEP_MINUTES`. |
+| `HOLD_MINUTES` | `5` | Extra minutes to keep running at `END_USERS` after the ramp finishes. Only used to compute total length when `DURATION_MINUTES` is `0`. |
+| `DURATION_MINUTES` | `0` | `0` = auto-compute total as `ramp time + HOLD_MINUTES`. Any positive value is the total run length outright, and `HOLD_MINUTES` is derived from it instead (`DURATION_MINUTES - ramp time`; if that's shorter than the ramp needs, the run just ends mid-ramp, never reaching `END_USERS` - no error). |
+| `SPEED` | `1.0` | Divides all real inter-event gaps. `1.0` = realistic cadence, `>1` = faster/compressed, `0` = no waiting at all (max-throughput burst mode). |
+
+`services/webhook/src/loadtest.py`'s module docstring has the full model if you need more detail than this table.
+
+While a run is in flight, watch:
+- `worker_stream_depth` on `webhook-worker`'s `:9200/metrics` (Redis Stream backlog - the best "is the worker keeping up" signal), plus `worker_pending_count`, `worker_flush_latency_seconds`, `worker_decode_failures_total`.
+- `webhook`'s own FastAPI Instrumentator metrics on `:8000/metrics` (client-perceived POST latency doubles as "is the queue backpressuring").
+- `redis-exporter`'s stock Redis memory stats.
+- ClickHouse's `:9363` Prometheus endpoint, or the `clickhouse-analyst` agent, for `ingest_raw` row growth.
 
 ## Troubleshooting
 
@@ -167,17 +299,17 @@ Everything below is background/design detail, not needed day-to-day - see `AGENT
 | `CLICKHOUSE_BOOTSTRAP_PASSWORD` | required                           | clickhouse, clickhouse-migrate                                                                                                                                                                                                                                                                                                                                                                                         |
 | `CLICKHOUSE_VERSION`          | `24.8.14.39`                         | build arg for `services/clickhouse/Dockerfile` and `services/backup/Dockerfile` - single source of truth so the server image and the apt-pinned `clickhouse-client` in the backup image never drift apart                                                                                                                                                                                                            |
 | `CLICKHOUSE_HOST`             | `clickhouse`                         | webhook, mcp-server, grafana                                                                                                                                                                                                                                                                                                                                                                                         |
-| `CLICKHOUSE_PORT`             | `8123`                               | webhook, mcp-server, grafana                                                                                                                                                                                                                                                                                                                                                                                         |
+| `CLICKHOUSE_PORT`             | `8123` (fixed, not user-configurable) | webhook, mcp-server, grafana - internal docker-network connection to `clickhouse`, never proxied by nginx                                                                                                                                                                                                                                                                                                          |
 | `CLICKHOUSE_HTTP_PORT`        | `8123`                               | host port mapping for clickhouse's HTTP interface                                                                                                                                                                                                                                                                                                                                                                    |
 | `CLICKHOUSE_NATIVE_PORT`      | `9000`                               | host port mapping for clickhouse's native protocol                                                                                                                                                                                                                                                                                                                                                                   |
 | **Redis**                     |                                      |                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `REDIS_HOST`                  | `redis`                              | webhook, webhook-worker - queue between the two, see "How data flows" above                                                                                                                                                                                                                                                                                                                                          |
-| `REDIS_PORT`                  | `6379`                               | webhook, webhook-worker                                                                                                                                                                                                                                                                                                                                                                                              |
+| `REDIS_PORT`                  | `6379` (fixed, not user-configurable) | webhook, webhook-worker - `redis` has no `ports:`/`expose:` at all, never visible on the host                                                                                                                                                                                                                                                                                                                       |
 | **Webhook**                   |                                      |                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `CAPTURE_ENABLED`             | `false`                              | webhook - write every event to its own file under `CAPTURE_DIR`, see "Inspecting captured traffic" below. Off by default: real prompt/response content, and one file per event adds disk I/O to the hot path. **Not currently passed through by `docker-compose.yml`'s `webhook` service** - setting it in `.env` alone has no effect; add it under `webhook`'s `environment:` in `docker-compose.yml` to actually enable it. |
 | `CAPTURE_DIR`                 | `/app/captures`                      | webhook - only read when `CAPTURE_ENABLED=true`. Same caveat as above - not wired into `docker-compose.yml`'s `webhook` service today.                                                                                                                                                                                                                                                                               |
 | `WEBHOOK_PORT`                | `8010`                               | host port mapping for webhook                                                                                                                                                                                                                                                                                                                                                                                        |
-| `WEBHOOK_URL`                 | `http://webhook:8000/api/v1/metrics` | litellm - where it POSTs the `StandardLoggingPayload` for each call                                                                                                                                                                                                                                                                                                                                                  |
+| `WEBHOOK_URL`                 | `http://load-balancer:8000/api/v1/metrics` | litellm - where it POSTs the `StandardLoggingPayload` for each call                                                                                                                                                                                                                                                                                                                                                  |
 | **MCP server**                |                                      |                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `MCP_SERVER_PORT`             | `8001`                               | host port mapping for mcp-server                                                                                                                                                                                                                                                                                                                                                                                     |
 | **Grafana**                   |                                      |                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -207,6 +339,7 @@ Everything below is background/design detail, not needed day-to-day - see `AGENT
 
 ClickHouse auth is two-tier: `CLICKHOUSE_BOOTSTRAP_USER`/`CLICKHOUSE_BOOTSTRAP_PASSWORD` are provisioned by the ClickHouse image itself (`CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1` in `docker-compose.yml`'s `clickhouse` service) and used only to bootstrap the real app user; the `default` user is removed entirely (image behavior whenever a non-`default` user/password is configured). On every `clickhouse-migrate` run, that bootstrap user is used to `CREATE USER OR REPLACE` the SQL-managed app user named by `CLICKHOUSE_USER` (scoped to `CLICKHOUSE_DATABASE` only, not instance-wide) - this is the user `webhook`/`webhook-worker`/`mcp-server`/`grafana` actually connect as. All four `CLICKHOUSE_*`/`CLICKHOUSE_BOOTSTRAP_*` vars are required - `docker-compose.yml` refuses to start without them.
 `*_PORT` variables only change the **host** side of each port mapping - the container-internal port stays fixed, so services keep reaching each other over the `receipt-goblin` Docker network regardless of what you set these to.
+`WEBHOOK_PORT`/`LITELLM_PORT`/`GRAFANA_PORT`/`MCP_SERVER_PORT`/`CLICKHOUSE_HTTP_PORT`/`CLICKHOUSE_NATIVE_PORT`/`LANGFUSE_PORT` are all published by the single `load-balancer` (nginx) service now, not by `litellm`/`grafana`/`mcp-server`/`clickhouse`/`webhook-1`/`webhook-2`/`langfuse-web` themselves - see "Gateway (`load-balancer`)" in `AGENTS.md`. `http://localhost:<port>` for each still works exactly as before; only the internal routing changed. `CLICKHOUSE_PORT`/`REDIS_PORT` above are the exception - both are internal-only (never proxied by nginx, never visible on the host), so they're fixed defaults, not user-configurable.
 
 Each service also has a `mem_limit`: `clickhouse` 2g (paired with `services/clickhouse/config.d/memory.xml`'s 0.85 ratio so it respects the cgroup limit instead of trying to use host RAM), `litellm` 2g, `grafana` 512m (see the Grafana OOM row under "Troubleshooting" above), `redis` 768m (`--maxmemory 700mb` - see `AGENTS.md` "Why a queue in front of ClickHouse" for the sizing math), `mcp-server`/`webhook-worker` 256m each, `webhook` 128m, `litellm-db` 256m, `langfuse-web` 2g (see the langfuse-web OOM comment in `docker-compose.yml` - it's a full Next.js app, notably heavier than this stack's other services), `langfuse-worker` 768m, `langfuse-clickhouse` 1g, `langfuse-db`/`langfuse-minio`/`langfuse-redis` 256m each.
 
@@ -449,8 +582,8 @@ This has to go in the *global* `~/.codex/config.toml` - a project-level `.codex/
 
 ### Inspecting captured traffic
 
-`webhook` logs one line per captured/enqueued payload (or per exception, see "Debugging ingestion" above) - `docker compose logs -f webhook` while driving a session through either CLI.
-It listens on host port `8010` (container port `8000`), reachable inside the `receipt-goblin` Docker network as `webhook:8000`.
+`webhook` logs one line per captured/enqueued payload (or per exception, see "Debugging ingestion" above) - `docker compose logs -f webhook-1 webhook-2` while driving a session through either CLI.
+It listens on host port `8010` via `load-balancer` (nginx - see "Gateway (`load-balancer`)" in `AGENTS.md`), which load-balances across the two stateless `webhook-1`/`webhook-2` replicas; internally on the `receipt-goblin` Docker network that's `load-balancer:8000`, not a single `webhook:8000` hostname.
 
 Set `CAPTURE_ENABLED=true` under `webhook`'s `environment:` in `docker-compose.yml` (off by default, and **not** currently forwarded from `.env` - see "Configuration" below) to also have every event land as its own JSON file under `services/webhook/captures/` on the host (bind-mounted, not a Docker volume - `ls services/webhook/captures/` works directly, no `docker exec` needed), raw as received.
 `log_format: json_array` in `services/litellm/config.yaml` means a single POST is usually a list of several `StandardLoggingPayload` objects, not one - `server.py` splits that list apart and writes one file per event rather than one file per POST, so a bursty batch doesn't have to be buffered in memory as a single growing list before anything hits disk.

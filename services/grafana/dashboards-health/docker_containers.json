@@ -59,7 +59,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "count(node_cpu_seconds_total{mode=\"idle\"})",
+                        "expr": "sum(container_spec_cpu_quota{name=~\"$container\", name!=\"\"}) / 100000 or vector(0)",
                         "instant": true,
                         "format": "time_series",
                         "legendFormat": "total",
@@ -82,7 +82,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "100 * scalar(sum(sum(rate(container_cpu_usage_seconds_total{name=~\"$container\", name!=\"\"}[1m])))) / scalar(sum(count(node_cpu_seconds_total{mode=\"idle\"})))",
+                        "expr": "100 * scalar(sum(sum(rate(container_cpu_usage_seconds_total{name=~\"$container\", name!=\"\"}[1m])))) / scalar(sum(container_spec_cpu_quota{name=~\"$container\", name!=\"\"}) / 100000 or vector(1))",
                         "instant": true,
                         "format": "time_series",
                         "legendFormat": "used %",
@@ -569,7 +569,7 @@
         "kind": "Panel",
         "spec": {
           "id": 4,
-          "title": "CPU usage % per container (% of one core, can exceed 100% on multi-core)",
+          "title": "CPU (cores)",
           "description": "",
           "links": [],
           "transparent": false,
@@ -591,11 +591,35 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"$container\", name!=\"\"}[1m])) * 100",
+                        "expr": "rate(container_cpu_usage_seconds_total{name=~\"$container\", name!=\"\"}[1m])",
                         "instant": false,
                         "range": true,
                         "format": "time_series",
-                        "legendFormat": "{{name}}",
+                        "legendFormat": "used",
+                        "interval": ""
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "B",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "container_spec_cpu_quota{name=~\"$container\", name!=\"\"} / 100000",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "limit",
                         "interval": ""
                       }
                     }
@@ -657,7 +681,7 @@
                       }
                     ]
                   },
-                  "unit": "percent"
+                  "unit": "short"
                 },
                 "overrides": []
               },
@@ -669,7 +693,7 @@
                 "legend": {
                   "showLegend": true,
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "calcs": []
                 }
               }
@@ -707,7 +731,7 @@
                         "instant": false,
                         "range": true,
                         "format": "time_series",
-                        "legendFormat": "{{name}} used",
+                        "legendFormat": "used",
                         "interval": ""
                       }
                     }
@@ -731,7 +755,7 @@
                         "instant": false,
                         "range": true,
                         "format": "time_series",
-                        "legendFormat": "{{name}} limit",
+                        "legendFormat": "limit",
                         "interval": ""
                       }
                     }
@@ -805,7 +829,7 @@
                 "legend": {
                   "showLegend": true,
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "calcs": []
                 }
               }
@@ -843,7 +867,7 @@
                         "instant": false,
                         "range": true,
                         "format": "time_series",
-                        "legendFormat": "{{name}} rx",
+                        "legendFormat": "rx",
                         "interval": ""
                       }
                     }
@@ -867,7 +891,7 @@
                         "instant": false,
                         "range": true,
                         "format": "time_series",
-                        "legendFormat": "{{name}} tx",
+                        "legendFormat": "tx",
                         "interval": ""
                       }
                     }
@@ -941,7 +965,7 @@
                 "legend": {
                   "showLegend": true,
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "calcs": []
                 }
               }
@@ -979,7 +1003,7 @@
                         "instant": false,
                         "range": true,
                         "format": "time_series",
-                        "legendFormat": "{{name}} read",
+                        "legendFormat": "read",
                         "interval": ""
                       }
                     }
@@ -1003,7 +1027,7 @@
                         "instant": false,
                         "range": true,
                         "format": "time_series",
-                        "legendFormat": "{{name}} write",
+                        "legendFormat": "write",
                         "interval": ""
                       }
                     }
@@ -1077,7 +1101,7 @@
                 "legend": {
                   "showLegend": true,
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "calcs": []
                 }
               }
@@ -2418,111 +2442,130 @@
             "spec": {
               "title": "Containers",
               "layout": {
-                "kind": "GridLayout",
+                "kind": "RowsLayout",
                 "spec": {
-                  "items": [
+                  "rows": [
                     {
-                      "kind": "GridLayoutItem",
+                      "kind": "RowsLayoutRow",
                       "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-1"
-                        },
-                        "x": 0,
-                        "y": 0,
-                        "width": 8,
-                        "height": 4
+                        "title": "Overview",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-1"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 8,
+                                  "height": 4
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-2"
+                                  },
+                                  "x": 8,
+                                  "y": 0,
+                                  "width": 8,
+                                  "height": 4
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-3"
+                                  },
+                                  "x": 16,
+                                  "y": 0,
+                                  "width": 8,
+                                  "height": 4
+                                }
+                              }
+                            ]
+                          }
+                        }
                       }
                     },
                     {
-                      "kind": "GridLayoutItem",
+                      "kind": "RowsLayoutRow",
                       "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-2"
+                        "title": "$container",
+                        "collapse": false,
+                        "repeat": {
+                          "mode": "variable",
+                          "value": "container"
                         },
-                        "x": 8,
-                        "y": 0,
-                        "width": 8,
-                        "height": 4
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-3"
-                        },
-                        "x": 16,
-                        "y": 0,
-                        "width": 8,
-                        "height": 4
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-4"
-                        },
-                        "x": 0,
-                        "y": 4,
-                        "width": 12,
-                        "height": 8
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-5"
-                        },
-                        "x": 12,
-                        "y": 4,
-                        "width": 12,
-                        "height": 8
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-6"
-                        },
-                        "x": 0,
-                        "y": 12,
-                        "width": 12,
-                        "height": 8
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-7"
-                        },
-                        "x": 12,
-                        "y": 12,
-                        "width": 12,
-                        "height": 8
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-8"
-                        },
-                        "x": 0,
-                        "y": 20,
-                        "width": 12,
-                        "height": 8
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-4"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 6,
+                                  "height": 8
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-5"
+                                  },
+                                  "x": 6,
+                                  "y": 0,
+                                  "width": 6,
+                                  "height": 8
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-6"
+                                  },
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 6,
+                                  "height": 8
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-7"
+                                  },
+                                  "x": 18,
+                                  "y": 0,
+                                  "width": 6,
+                                  "height": 8
+                                }
+                              }
+                            ]
+                          }
+                        }
                       }
                     }
                   ]

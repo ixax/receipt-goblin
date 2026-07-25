@@ -141,6 +141,36 @@ def test_session_and_trace_id_unsuccess_falls_back_without_headers():
     assert trace_id == "call-123"
 
 
+def test_session_and_trace_id_success_uses_codex_turn_metadata():
+    payload = load_capture("chatgpt_responses_cached")
+    session_id, trace_id = ci._session_and_trace_id(payload)
+    assert session_id == "019f8f18-0972-7110-bded-703a93ad9d6d"
+    assert trace_id == payload["trace_id"]
+
+
+def test_session_and_trace_id_success_claude_header_wins_over_codex():
+    payload = {
+        "trace_id": "",
+        "litellm_call_id": "call-123",
+        "metadata": {
+            "requester_custom_headers": {
+                "x-claude-code-session-id": "claude-session",
+                "x-codex-turn-metadata": json.dumps({"session_id": "codex-session"}),
+            }
+        },
+    }
+    session_id, trace_id = ci._session_and_trace_id(payload)
+    assert session_id == "claude-session"
+
+
+def test_codex_session_id_unsuccess_malformed_json_returns_empty():
+    assert ci._codex_session_id({"x-codex-turn-metadata": "not-json"}) == ""
+
+
+def test_codex_session_id_unsuccess_no_header_returns_empty():
+    assert ci._codex_session_id({}) == ""
+
+
 # ---------------------------------------------------------------------------
 # _split_name_version
 # ---------------------------------------------------------------------------
@@ -437,6 +467,32 @@ def test_usage_row_unsuccess_no_billable_tokens_returns_none():
     assert ci._usage_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "") is None
 
 
+def test_usage_row_unsuccess_negative_ttft_clamps_to_zero():
+    # LiteLLM occasionally reports completionStartTime before startTime on
+    # streamed calls (same quirk as endTime<startTime for latency_ms) -
+    # observed in real .capture traffic; a negative value can't pack into
+    # ttft_ms's UInt32 column and used to crash the whole insert batch.
+    payload = load_capture("success_plain")
+    payload = dict(payload, startTime=100.5, completionStartTime=100.4)
+    row = ci._usage_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "")
+    assert row is not None
+    values = dict(zip(ci._USAGE_COLUMNS, row))
+    assert values["ttft_ms"] == 0
+
+
+def test_usage_row_success_falls_back_to_responses_api_cache_fields():
+    payload = load_capture("chatgpt_responses_cached")
+    row = ci._usage_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "")
+    assert row is not None
+    values = dict(zip(ci._USAGE_COLUMNS, row))
+    assert values["input_tokens"] == 19167
+    assert values["output_tokens"] == 42
+    assert values["cache_read_tokens"] == 17920
+    assert values["cache_creation_tokens"] == 0
+# cache_hit is None in this payload, but cached tokens were present - counts as a hit.
+    assert values["cache_hit"] == 1
+
+
 # ---------------------------------------------------------------------------
 # _message_row
 # ---------------------------------------------------------------------------
@@ -516,7 +572,7 @@ def test_ingest_events_batch_success_issues_one_insert_per_table(monkeypatch):
     ci.ingest_events_batch(events)
 
     tables = [table for table, _rows, _cols in fake_client.inserts]
-    assert tables.count("event_sources") == 1
+    assert tables.count("ingest_raw") == 1
     assert tables.count("agent_events") == 1
     assert tables.count("agent_usage") == 1
     assert tables.count("agent_messages") == 1
@@ -524,7 +580,7 @@ def test_ingest_events_batch_success_issues_one_insert_per_table(monkeypatch):
     event_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_events")
     assert len(event_rows) == 2
 
-    source_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "event_sources")
+    source_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "ingest_raw")
     assert len(source_rows) == 2
 
 
@@ -550,3 +606,50 @@ def test_ingest_events_batch_success_dedups_dimension_rows_by_id(monkeypatch):
 def test_ingest_events_batch_unsuccess_empty_list_skips_client_entirely(monkeypatch):
     monkeypatch.setattr(ci, "get_client", lambda: (_ for _ in ()).throw(AssertionError("get_client should not be called")))
     ci.ingest_events_batch([])
+
+
+class _PoisonRowClient(_FakeClient):
+    """Rejects the whole-batch agent_usage insert (like a real UInt32
+    range violation) but accepts single-row inserts for every row except
+    the one belonging to poison_call_id - mirrors what ClickHouse actually
+    does: the bad row sinks a bulk insert, individual rows recover."""
+    def __init__(self, poison_call_id):
+        super().__init__()
+        self.poison_call_id = poison_call_id
+
+    def insert(self, table, rows, column_names):
+        if table == "agent_usage" and len(rows) > 1:
+            raise ValueError("simulated column range violation")
+        if table == "agent_usage" and len(rows) == 1:
+            call_id_idx = column_names.index("litellm_call_id")
+            if rows[0][call_id_idx] == self.poison_call_id:
+                raise ValueError("simulated column range violation")
+        super().insert(table, rows, column_names)
+
+
+def test_ingest_events_batch_unsuccess_poison_row_isolated_to_ingest_dlq(monkeypatch):
+    good_payload = load_capture("success_plain")
+    poison_payload = load_capture("success_with_command")
+    events = [ci.build_event(good_payload), ci.build_event(poison_payload)]
+    fake_client = _PoisonRowClient(poison_call_id=poison_payload["litellm_call_id"])
+    monkeypatch.setattr(ci, "get_client", lambda: fake_client)
+
+    ci.ingest_events_batch(events)
+
+    usage_single_inserts = [rows for table, rows, _cols in fake_client.inserts if table == "agent_usage"]
+    # The failed bulk attempt (both rows) never lands in .inserts (it
+    # raised before appending); of the two per-row retries, only the
+    # non-poison one succeeds and gets recorded.
+    assert len(usage_single_inserts) == 1
+    assert len(usage_single_inserts[0]) == 1
+
+    failure_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "ingest_dlq")
+    assert len(failure_rows) == 1
+    failure_cols = next(cols for table, _rows, cols in fake_client.inserts if table == "ingest_dlq")
+    values = dict(zip(failure_cols, failure_rows[0]))
+    assert values["stage"] == "agent_usage"
+    assert values["litellm_call_id"] == poison_payload["litellm_call_id"]
+
+    # agent_events/agent_messages (unaffected tables) still got their rows.
+    event_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_events")
+    assert len(event_rows) == 2

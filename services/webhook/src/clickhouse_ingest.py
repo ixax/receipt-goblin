@@ -190,10 +190,32 @@ def _failed_tool_call(messages: Any) -> tuple[str, str, str]:
     return "", "", ""
 
 
+def _codex_session_id(headers: dict) -> str:
+    """Codex CLI's equivalent of x-claude-code-session-id: a JSON-encoded
+    header carrying session_id (stable across every turn of one Codex
+    conversation, confirmed against real captures), falling back to
+    thread_id for calls where session_id isn't set."""
+    raw = headers.get("x-codex-turn-metadata")
+    if not raw:
+        return ""
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    return data.get("session_id") or data.get("thread_id") or ""
+
+
 def _session_and_trace_id(payload: dict) -> tuple[str, str]:
     trace_id = payload.get("trace_id") or ""
     headers = ((payload.get("metadata") or {}).get("requester_custom_headers")) or {}
-    session_id = headers.get("x-claude-code-session-id") or trace_id or payload.get("litellm_call_id", "")
+    session_id = (
+        headers.get("x-claude-code-session-id")
+        or _codex_session_id(headers)
+        or trace_id
+        or payload.get("litellm_call_id", "")
+    )
     trace_id = trace_id or session_id
     return session_id, trace_id
 
@@ -597,7 +619,7 @@ def _classify_event(payload: dict) -> tuple[str, dict]:
 
 
 def _source_row(payload: dict, session_id: str, now: datetime) -> list:
-    """The event_sources row: full untouched original payload, written once
+    """The ingest_raw row: full untouched original payload, written once
     per call so reparse.py can recompute calculated_type/provider without
     needing .capture/*.json."""
     return [
@@ -668,6 +690,7 @@ _MESSAGE_COLUMNS = [
 _SOURCE_COLUMNS = ["litellm_call_id", "session_id", "ingested_at", "raw_payload_full"]
 _GIT_BRANCH_COLUMNS = ["session_id", "git_branch", "git_repo", "issue_id", "captured_at"]
 _PLAN_PROPOSAL_COLUMNS = ["session_id", "plan_text", "captured_at"]
+_FAILURE_COLUMNS = ["occurred_at", "stage", "error", "litellm_call_id", "session_id", "raw_row"]
 
 _INVOCATION_SPAWNED_AT_IDX = _INVOCATION_COLUMNS.index("spawned_at")
 _EVENT_TIMESTAMP_IDX = _EVENT_COLUMNS.index("timestamp")
@@ -685,6 +708,12 @@ _USER_UPDATED_AT_IDX = _USER_COLUMNS.index("updated_at")
 _EVENT_INGESTED_AT_IDX = _EVENT_COLUMNS.index("ingested_at")
 _USAGE_INGESTED_AT_IDX = _USAGE_COLUMNS.index("ingested_at")
 _MESSAGE_INGESTED_AT_IDX = _MESSAGE_COLUMNS.index("ingested_at")
+_EVENT_CALL_ID_IDX = _EVENT_COLUMNS.index("litellm_call_id")
+_EVENT_SESSION_ID_IDX = _EVENT_COLUMNS.index("session_id")
+_USAGE_CALL_ID_IDX = _USAGE_COLUMNS.index("litellm_call_id")
+_USAGE_SESSION_ID_IDX = _USAGE_COLUMNS.index("session_id")
+_MESSAGE_CALL_ID_IDX = _MESSAGE_COLUMNS.index("litellm_call_id")
+_MESSAGE_SESSION_ID_IDX = _MESSAGE_COLUMNS.index("session_id")
 
 
 def _agent_invocation_rows(session_id: str, messages: Any, now: Optional[datetime] = None) -> list[list]:
@@ -715,7 +744,7 @@ def _insert_message(client, row: list) -> None:
 
 
 def _insert_source(client, row: list) -> None:
-    client.insert("event_sources", [row], column_names=_SOURCE_COLUMNS)
+    client.insert("ingest_raw", [row], column_names=_SOURCE_COLUMNS)
 
 
 def _insert_git_branch(client, row: list) -> None:
@@ -868,6 +897,22 @@ def _usage_row(
     choices = response.get("choices") or []
     stop_reason = (choices[0].get("finish_reason") if choices else "") or ""
 
+    # Responses-API shape (the "chatgpt" provider) has no top-level
+    # cache_creation_input_tokens/cache_read_input_tokens - its cache hit
+    # lives in usage.prompt_tokens_details instead, and payload["cache_hit"]
+    # is left None rather than False, so a missing flag with cached tokens
+    # present still counts as a hit. response_cost/cost_breakdown stay 0 for
+    # this provider regardless (no LiteLLM pricing entry registered yet).
+    cache_read_tokens = usage.get("cache_read_input_tokens") or prompt_details.get("cached_tokens") or 0
+    cache_creation_tokens = (
+        usage.get("cache_creation_input_tokens")
+        or prompt_details.get("cache_write_tokens")
+        or prompt_details.get("cache_creation_tokens")
+        or 0
+    )
+    cache_hit_flag = payload.get("cache_hit")
+    cache_hit = 1 if (cache_hit_flag or (cache_hit_flag is None and cache_read_tokens)) else 0
+
     completion_start = payload.get("completionStartTime")
     start_time = payload.get("startTime")
     ttft_ms = (
@@ -875,6 +920,11 @@ def _usage_row(
         if isinstance(completion_start, (int, float)) and isinstance(start_time, (int, float))
         else 0
     )
+    # Same LiteLLM streaming quirk as latency_ms above (completionStartTime
+    # occasionally precedes startTime) - a negative value can't pack into
+    # UInt32 and used to crash the whole batch's insert.
+    if ttft_ms < 0:
+        ttft_ms = 0
 
     called_tool = _first_tool_call_name(payload)
     mcp_tool_name = called_tool if called_tool.startswith("mcp__") else ""
@@ -900,15 +950,15 @@ def _usage_row(
         mcp_tool_name,
         prompt_tokens,
         completion_tokens,
-        usage.get("cache_creation_input_tokens") or 0,
-        usage.get("cache_read_input_tokens") or 0,
+        cache_creation_tokens,
+        cache_read_tokens,
         stop_reason,
         ephemeral.get("ephemeral_1h_input_tokens") or 0,
         ephemeral.get("ephemeral_5m_input_tokens") or 0,
         payload.get("response_cost") or 0,
         cost_breakdown.get("input_cost") or 0,
         cost_breakdown.get("output_cost") or 0,
-        1 if payload.get("cache_hit") else 0,
+        cache_hit,
         ttft_ms,
         payload.get("litellm_call_id", ""),
         _provider_for_model(model),
@@ -1166,7 +1216,7 @@ def ingest_events_batch(events: list[dict]) -> None:
             if (row := _deserialize_row(event.get("source_row"), _SOURCE_INGESTED_AT_IDX)) is not None
         ]
         if source_rows:
-            client.insert("event_sources", source_rows, column_names=_SOURCE_COLUMNS)
+            client.insert("ingest_raw", source_rows, column_names=_SOURCE_COLUMNS)
 
         # Dedup by id within the batch (last wins); ReplacingMergeTree would
         # collapse duplicates on merge anyway, this just skips redundant inserts.
@@ -1216,11 +1266,41 @@ def ingest_events_batch(events: list[dict]) -> None:
                 message_row[_MESSAGE_AGENT_VERSION_IDX] = agent_version
                 message_rows.append(message_row)
 
-        if event_rows:
-            client.insert("agent_events", event_rows, column_names=_EVENT_COLUMNS)
-        if usage_rows:
-            client.insert("agent_usage", usage_rows, column_names=_USAGE_COLUMNS)
-        if message_rows:
-            client.insert("agent_messages", message_rows, column_names=_MESSAGE_COLUMNS)
+        # Each table inserted independently, past this point: one table
+        # rejecting the whole batch (e.g. a value out of a column's numeric
+        # range) must not also drop the other two tables' otherwise-good
+        # rows for this same set of events. On a rejected batch, fall back to
+        # inserting row-by-row so only the actual poison row(s) are lost -
+        # those go to ingest_dlq (see schema.sql) for triage instead of
+        # silently vanishing with the rest of a good batch.
+        for table, rows, columns, call_id_idx, session_id_idx in (
+            ("agent_events", event_rows, _EVENT_COLUMNS, _EVENT_CALL_ID_IDX, _EVENT_SESSION_ID_IDX),
+            ("agent_usage", usage_rows, _USAGE_COLUMNS, _USAGE_CALL_ID_IDX, _USAGE_SESSION_ID_IDX),
+            ("agent_messages", message_rows, _MESSAGE_COLUMNS, _MESSAGE_CALL_ID_IDX, _MESSAGE_SESSION_ID_IDX),
+        ):
+            if not rows:
+                continue
+            try:
+                client.insert(table, rows, column_names=columns)
+                continue
+            except Exception:
+                logger.exception("failed to insert into %s (n=%d) - retrying row-by-row", table, len(rows))
+
+            failure_rows = []
+            for row in rows:
+                try:
+                    client.insert(table, [row], column_names=columns)
+                except Exception as exc:
+                    failure_rows.append([
+                        datetime.now(timezone.utc), table, str(exc),
+                        row[call_id_idx], row[session_id_idx],
+                        json.dumps(row, default=str),
+                    ])
+            if failure_rows:
+                logger.error("dropped %d row(s) into ingest_dlq (stage=%s)", len(failure_rows), table)
+                try:
+                    client.insert("ingest_dlq", failure_rows, column_names=_FAILURE_COLUMNS)
+                except Exception:
+                    logger.exception("failed to record ingest_dlq (stage=%s, n=%d)", table, len(failure_rows))
     except Exception:
         logger.exception("failed to ingest event batch (n=%d)", len(events))

@@ -6,6 +6,7 @@ DB-free push onto Redis. webhook-worker (worker.py) is what actually
 parses/inserts into ClickHouse, in batches - see AGENTS.md.
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -13,6 +14,7 @@ import urllib.error
 import urllib.request
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -49,6 +51,18 @@ async def health():
         return {"status": "error", "detail": str(exc)}
 
 
+def _write_capture_file(event: Any) -> None:
+    session_id, _ = _session_and_trace_id(event if isinstance(event, dict) else {})
+    session_dir = CAPTURE_DIR / _safe_session_dir_name(session_id)
+    session_dir.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(timezone.utc)
+    filename = f"{now.strftime('%Y%m%dT%H%M%S%f')}-{uuid.uuid4().hex[:8]}.json"
+    # No indent - this is a dev-only debugging aid, not something a human
+    # reads inline; pretty-printing large (~600KB) payloads on every request
+    # was measurable CPU on the request path for no benefit.
+    (session_dir / filename).write_text(json.dumps(event, default=str))
+
+
 @app.post("/api/v1/metrics")
 async def receive_metrics(request: Request):
     body = await request.json()
@@ -56,15 +70,12 @@ async def receive_metrics(request: Request):
     payloads = body if isinstance(body, list) else [body]
 
     # One file per event (a POST can bundle several), per-session
-    # subfolder, named so `ls | sort` replays creation order.
+    # subfolder, named so `ls | sort` replays creation order. Offloaded to a
+    # thread - synchronous mkdir/write_text on the request's own event loop
+    # would block every other in-flight request on this worker's disk I/O.
     if CAPTURE_ENABLED:
         for event in payloads:
-            session_id, _ = _session_and_trace_id(event if isinstance(event, dict) else {})
-            session_dir = CAPTURE_DIR / _safe_session_dir_name(session_id)
-            session_dir.mkdir(parents=True, exist_ok=True)
-            now = datetime.now(timezone.utc)
-            filename = f"{now.strftime('%Y%m%dT%H%M%S%f')}-{uuid.uuid4().hex[:8]}.json"
-            (session_dir / filename).write_text(json.dumps(event, indent=2, default=str))
+            await asyncio.to_thread(_write_capture_file, event)
 
     await enqueue(payloads)
 

@@ -5,7 +5,13 @@ x-clickhouse-user: &clickhouse-user ${CLICKHOUSE_USER:?set CLICKHOUSE_USER, e.g.
 x-clickhouse-password: &clickhouse-password ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-database: &clickhouse-database ${CLICKHOUSE_DATABASE:?set CLICKHOUSE_DATABASE, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-host: &clickhouse-host ${CLICKHOUSE_HOST:-clickhouse}
-x-clickhouse-port: &clickhouse-port ${CLICKHOUSE_PORT:-8123}
+# Internal-only - webhook/clickhouse-migrate/mcp-server/grafana dial
+# `clickhouse` directly over the Docker network, never through nginx, and
+# that container's actual listen port is already hardcoded (`expose:
+# "8123"` below) - so this isn't user-configurable. CLICKHOUSE_HTTP_PORT/
+# CLICKHOUSE_NATIVE_PORT below are the ones that control the public,
+# nginx-published port.
+x-clickhouse-port: &clickhouse-port 8123
 x-clickhouse-http-port: &clickhouse-http-port ${CLICKHOUSE_HTTP_PORT:-8123}
 x-clickhouse-native-port: &clickhouse-native-port ${CLICKHOUSE_NATIVE_PORT:-9000}
 # Pins clickhouse's image and backup's apt-installed clickhouse-client to
@@ -21,14 +27,18 @@ x-mcp-server-port: &mcp-server-port ${MCP_SERVER_PORT:-8001}
 x-grafana-port: &grafana-port ${GRAFANA_PORT:-3000}
 
 # Host root dir backup/restore scripts read/write ($BACKUP_DIR, default
-# .backups - see services/backup/README.md). Used directly as
+# .backups - see README.md's "Backup & restore" section). Used directly as
 # ${BACKUP_DIR:-.backups} below, not via an anchor, since anchors can't be
 # concatenated into a bind mount's host-side path.
 
 x-redis-host: &redis-host ${REDIS_HOST:-redis}
-x-redis-port: &redis-port ${REDIS_PORT:-6379}
+# Internal-only - `redis` has no `ports:`/`expose:` at all, never visible on
+# the host, so this isn't user-configurable.
+x-redis-port: &redis-port 6379
 
-x-webhook-url: &webhook-url ${WEBHOOK_URL:-http://webhook:8000/api/v1/metrics}
+# Points at load-balancer (nginx), not a single webhook replica - see that
+# service below for why (two stateless replicas, load-balanced).
+x-webhook-url: &webhook-url ${WEBHOOK_URL:-http://load-balancer:8000/api/v1/metrics}
 x-webhook-port: &webhook-port ${WEBHOOK_PORT:-8010}
 
 x-litellm-port: &litellm-port ${LITELLM_PORT:-4000}
@@ -39,6 +49,20 @@ x-litellm-db-url: &litellm-db-url postgresql://litellm:${LITELLM_DB_PASSWORD:?se
 # regardless of LITELLM_PORT, which only remaps the host side. Used by
 # webhook to call /key/info when verifying report_git_branch.py's key.
 x-litellm-base-url: &litellm-base-url http://litellm:4000
+
+# Shared by both webhook replicas (webhook-1/webhook-2) below.
+x-webhook-env: &webhook-env
+  CLICKHOUSE_HOST: *clickhouse-host
+  CLICKHOUSE_PORT: *clickhouse-port
+  CLICKHOUSE_USER: *clickhouse-user
+  CLICKHOUSE_PASSWORD: *clickhouse-password
+  CLICKHOUSE_DATABASE: *clickhouse-database
+  CAPTURE_ENABLED: "true"
+  REDIS_HOST: *redis-host
+  REDIS_PORT: *redis-port
+  # For /key/info lookups verifying report_git_branch.py's auth header.
+  LITELLM_MASTER_KEY: *litellm-master-key
+  LITELLM_BASE_URL: *litellm-base-url
 
 # Langfuse (LLM tracing, fed by litellm's callbacks in config.yaml) - its
 # own Postgres/ClickHouse/Redis/MinIO, kept separate so schemas never collide
@@ -70,6 +94,7 @@ services:
       context: ./services/clickhouse
       args:
         CLICKHOUSE_VERSION: *clickhouse-version
+    image: receipt-goblin-clickhouse:${CLICKHOUSE_TAG:-latest}
     container_name: receipt-goblin-clickhouse
     environment:
       # Bootstrap superuser only (see x-clickhouse-bootstrap-* above), not
@@ -83,13 +108,19 @@ services:
     # 3.6x observed peak (419MiB) - heaviest CPU user; analytical
     # CTE/window-function panels can spike well above idle.
     mem_limit: 4g
+    # Generous, not tight - a hard CFS quota that's too low turns into
+    # throttling-induced query latency, which would defeat the point.
+    # Sized so ClickHouse alone can't starve everything else sharing the
+    # VM's cores (see webhook-loadtest below for why that matters).
+    cpus: 3.0
     restart: always
-    ports:
-      - target: 8123
-        published: *clickhouse-http-port
-      - target: 9000
-        published: *clickhouse-native-port
     expose:
+      # HTTP (people/tools querying ClickHouse directly - e.g. clickhouse-client,
+      # DBeaver, ad-hoc curl) and native protocol - both published via
+      # load-balancer below now, not directly, so they go through the same
+      # gateway as everything else.
+      - "8123"
+      - "9000"
       # Metrics endpoint (config.d/prometheus.xml) - internal only, scraped
       # by Prometheus's `clickhouse` job.
       - "9363"
@@ -117,6 +148,7 @@ services:
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
+    image: receipt-goblin-webhook:${WEBHOOK_TAG:-latest}
     container_name: receipt-goblin-clickhouse-migrate
     restart: "no"
     environment:
@@ -148,10 +180,8 @@ services:
     # `docker compose build grafana` in prod; docker-compose.dev.yml
     # bind-mounts them back for live editing.
     build: ./services/grafana
+    image: receipt-goblin-grafana:${GRAFANA_TAG:-latest}
     container_name: receipt-goblin-grafana
-    ports:
-      - target: 3000
-        published: *grafana-port
     environment:
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
@@ -180,10 +210,8 @@ services:
     # bind-mounts ./src over /app/src and adds `command: --reload` for live
     # editing; requirements.txt changes still need a rebuild either way.
     build: ./services/mcp-server
+    image: receipt-goblin-mcp-server:${MCP_SERVER_TAG:-latest}
     container_name: receipt-goblin-mcp-server
-    ports:
-      - target: 8001
-        published: *mcp-server-port
     environment:
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
@@ -210,10 +238,15 @@ services:
     # queue_client.py. Tuning lives in redis.conf, baked in at build time -
     # no dev override for this one, rarely edited live.
     build: ./services/redis
+    image: receipt-goblin-redis:${REDIS_TAG:-latest}
     container_name: receipt-goblin-redis
     # Above redis.conf's maxmemory (1024mb) - headroom for Redis's own
     # overhead beyond the dataset.
     mem_limit: 1200m
+    # Redis is single-threaded for command execution - 1 core is already
+    # generous headroom, and capping it stops one runaway XADD/XREADGROUP
+    # burst from crowding out webhook/webhook-worker's own CPU share.
+    cpus: 1.0
     restart: always
     volumes:
       - redis-data:/data
@@ -225,7 +258,13 @@ services:
     networks:
       - receipt-goblin
 
-  webhook:
+  # Two stateless replicas (webhook only produces onto Redis - see
+  # queue_client.py - so any request can land on either) behind load-balancer
+  # below, instead of one instance. Duplicated instead of `docker compose up
+  # --scale`: fixed names + static IPs (below) are what load-balancer's
+  # nginx.conf upstream block needs for real least_conn balancing, and each
+  # replica keeps its own container_name/healthcheck.
+  webhook-1: &webhook-service
     # Prod image is self-contained (config.yml baked in; build context is
     # the repo root - see services/webhook/Dockerfile). docker-compose.dev.yml
     # bind-mounts ./src over /app/src and adds `command: --reload` for live
@@ -233,28 +272,26 @@ services:
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
-    container_name: receipt-goblin-webhook
+    # Shared by every service built from services/webhook/Dockerfile
+    # (webhook-1/2, webhook-worker, webhook-reparse, webhook-loadtest,
+    # clickhouse-migrate - see AGENTS.md, "one image, APP_ROLE picks the
+    # role") - one explicit tag here means one build gets reused by all six
+    # instead of compose's default per-service image naming giving each its
+    # own identical copy (confirmed duplicating ~214MB x6 before this).
+    image: receipt-goblin-webhook:${WEBHOOK_TAG:-latest}
+    container_name: receipt-goblin-webhook-1
     volumes:
       # Captured payloads land on the host too, not just in-container - see
       # server.py's CAPTURE_DIR. Runtime output, so this stays mounted in
-      # prod too (unlike source/config).
+      # prod too (unlike source/config). Both replicas write here - safe,
+      # filenames are unique per event (timestamp+uuid, see server.py).
       - ./.capture:/app/captures
-    ports:
-      - target: 8000
-        published: *webhook-port
-    environment:
-      CLICKHOUSE_HOST: *clickhouse-host
-      CLICKHOUSE_PORT: *clickhouse-port
-      CLICKHOUSE_USER: *clickhouse-user
-      CLICKHOUSE_PASSWORD: *clickhouse-password
-      CLICKHOUSE_DATABASE: *clickhouse-database
-      CAPTURE_ENABLED: "true"
-      REDIS_HOST: *redis-host
-      REDIS_PORT: *redis-port
-      # For /key/info lookups verifying report_git_branch.py's auth header.
-      LITELLM_MASTER_KEY: *litellm-master-key
-      LITELLM_BASE_URL: *litellm-base-url
-    mem_limit: 128m
+    environment: *webhook-env
+    # Was 128m - too tight under concurrent load (100 concurrent 600KB
+    # payloads plus CAPTURE_ENABLED's per-event disk write); bumped after
+    # observing near-OOM behavior in load testing.
+    mem_limit: 256m
+    cpus: 1.0
     restart: always
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
@@ -268,6 +305,66 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    # Static IP - see load-balancer/nginx.conf's upstream block, which
+    # addresses this replica directly by IP (not hostname) so its least_conn
+    # balancing survives a recreate without needing DNS re-resolution.
+    networks:
+      receipt-goblin:
+        ipv4_address: 172.28.1.11
+
+  webhook-2:
+    <<: *webhook-service
+    container_name: receipt-goblin-webhook-2
+    networks:
+      receipt-goblin:
+        ipv4_address: 172.28.1.12
+
+  load-balancer:
+    # Load-balances the two webhook replicas above (real least_conn - see
+    # nginx.conf) and gateways litellm/grafana/mcp-server/clickhouse/
+    # langfuse-web too - see AGENTS.md "Gateway (`load-balancer`)". Only this
+    # service publishes host ports; the backends it fronts are
+    # internal-network-only.
+    build: ./services/load-balancer
+    image: receipt-goblin-load-balancer:${LOAD_BALANCER_TAG:-latest}
+    container_name: receipt-goblin-load-balancer
+    ports:
+      - target: 8000
+        published: *webhook-port
+      - target: 4000
+        published: *litellm-port
+      - target: 3000
+        published: *grafana-port
+      - target: 8001
+        published: *mcp-server-port
+      - target: 8123
+        published: *clickhouse-http-port
+      - target: 9000
+        published: *clickhouse-native-port
+      # langfuse-web (opt-in `langfuse` profile) - see nginx.conf's `listen
+      # 3001` block for why the target isn't 3000 (already grafana's).
+      - target: 3001
+        published: *langfuse-port
+    mem_limit: 64m
+    cpus: 0.5
+    restart: always
+    healthcheck:
+      # 127.0.0.1, not localhost - nginx.conf only binds IPv4 here, and
+      # localhost resolves to ::1 first (same issue as langfuse-web above).
+      # Checks the webhook port only - representative of the gateway process
+      # itself being up, not a per-backend check (each backend already has
+      # its own healthcheck + depends_on below).
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    # Deliberately no depends_on at all: nginx doesn't need any backend up
+    # to start (it just 502s a request until one's reachable, self-healing
+    # via the `resolver`/stream blocks + the webhook_backend upstream's
+    # passive checks in nginx.conf), and load-balancer shouldn't force
+    # anyone to bring up webhook-1/2/litellm/grafana/mcp-server/clickhouse
+    # just to start it, or vice versa - each of those should be startable
+    # (or skippable) on its own.
     networks:
       - receipt-goblin
 
@@ -278,6 +375,7 @@ services:
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
+    image: receipt-goblin-webhook:${WEBHOOK_TAG:-latest}
     container_name: receipt-goblin-webhook-worker
     environment:
       APP_ROLE: worker
@@ -294,7 +392,12 @@ services:
       LITELLM_BASE_URL: *litellm-base-url
     expose:
       - "9200"
-    mem_limit: 256m
+    # Was 256m - steady-state usage already sat at ~75% of that; batches
+    # backing up under load (growing toward BATCH_SIZE) pushed it into
+    # silent OOM kills (no python traceback, container just restarted -
+    # confirmed via docker inspect RestartCount + logs stopping mid-batch).
+    mem_limit: 512m
+    cpus: 1.0
     restart: always
     healthcheck:
       test: ["CMD", "python", "-c", "from src.queue_client import get_redis; get_redis().ping()"]
@@ -319,6 +422,7 @@ services:
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
+    image: receipt-goblin-webhook:${WEBHOOK_TAG:-latest}
     container_name: receipt-goblin-webhook-reparse
     profiles:
       - tools
@@ -348,9 +452,82 @@ services:
     networks:
       - receipt-goblin
 
+  webhook-loadtest:
+    # Same image as webhook/webhook-worker/webhook-reparse, CLI-only.
+    # Replays real captured traffic from .capture/ against webhook's own
+    # POST /api/v1/metrics at a ramping concurrency profile - see
+    # src/loadtest.py. Not started by `docker compose up` (profiles: tools) -
+    # run via `make loadtest`.
+    build:
+      context: .
+      dockerfile: services/webhook/Dockerfile
+    image: receipt-goblin-webhook:${WEBHOOK_TAG:-latest}
+    container_name: receipt-goblin-webhook-loadtest
+    profiles:
+      - tools
+    environment:
+      APP_ROLE: loadtest
+      # Not *webhook-url - deliberately its own override (TARGET_URL, not
+      # WEBHOOK_URL) so this can point at a different host (staging/prod)
+      # without touching the webhook service's own URL var. Defaults at
+      # load-balancer, same as litellm's real traffic, so the load test
+      # exercises the balancer too - not just one replica directly.
+      TARGET_URL: ${TARGET_URL:-http://load-balancer:8000/api/v1/metrics}
+      START_USERS: ${START_USERS:-10}
+      END_USERS: ${END_USERS:-100}
+      RAMP_STEPS: ${RAMP_STEPS:-10}
+      RAMP_STEP_MINUTES: ${RAMP_STEP_MINUTES:-1}
+      HOLD_MINUTES: ${HOLD_MINUTES:-5}
+      DURATION_MINUTES: ${DURATION_MINUTES:-0}
+      SPEED: ${SPEED:-1.0}
+      # loadtest.py never touches ClickHouse/Redis/LiteLLM directly, but
+      # config.py is shared with webhook and reads these with no fallback -
+      # unset would crash on import.
+      CLICKHOUSE_HOST: *clickhouse-host
+      CLICKHOUSE_PORT: *clickhouse-port
+      CLICKHOUSE_USER: *clickhouse-user
+      CLICKHOUSE_PASSWORD: *clickhouse-password
+      CLICKHOUSE_DATABASE: *clickhouse-database
+      REDIS_HOST: *redis-host
+      REDIS_PORT: *redis-port
+      LITELLM_MASTER_KEY: *litellm-master-key
+      LITELLM_BASE_URL: *litellm-base-url
+    volumes:
+      # Read-only - this is the replay corpus, no writes needed (unlike
+      # webhook's own read-write mount for capturing new traffic).
+      - ./.capture:/app/captures:ro
+    # Previously unbounded on both counts - loadtest.py's aiohttp.TCPConnector
+    # uses limit=0 (deliberately, its own docstring says so, to not become
+    # the bottleneck itself) and nothing here capped the container underneath
+    # it. At END_USERS=80+/SPEED=5 that pinned every core on the host VM hard
+    # enough to stall the Docker daemon itself, not just this stack - not a
+    # webhook/worker problem, a "this one tool had no ceiling" problem. Caps
+    # here, not in loadtest.py: the whole point of a load *generator* is to
+    # push as hard as it can up to some limit - the limit just needs to be
+    # "this container", not "the whole host".
+    # Actual process heap stays flat (~40-50MB, confirmed via
+    # resource.getrusage) regardless of END_USERS/corpus size - what used to
+    # climb straight to any mem_limit and trip the OOM killer was page cache
+    # from re-reading the (multi-GB, still growing) ./.capture bind mount,
+    # charged to this cgroup and never dropped since _read_bytes() never
+    # revisits a file. Fixed at the source with posix_fadvise(DONTNEED) after
+    # each read (see _read_bytes) - this limit is now just a sane ceiling,
+    # not load-bearing the way it was before that fix.
+    mem_limit: 768m
+    cpus: 6.0
+    depends_on:
+      load-balancer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - receipt-goblin
+
   backup:
     # Backup/restore for clickhouse, litellm-db, grafana-data - see
-    # services/backup/README.md. Not started by `docker compose up`
+    # README.md's "Backup & restore" section. Not started by `docker compose up`
     # (profiles: tools) - run via `make backup-*`/`restore-*` or cron.
     # No docker exec/socket: clickhouse/litellm-db go over the network,
     # grafana-data is the same named volume the `grafana` service uses.
@@ -358,6 +535,7 @@ services:
       context: ./services/backup
       args:
         CLICKHOUSE_VERSION: *clickhouse-version
+    image: receipt-goblin-backup:${BACKUP_TAG:-latest}
     container_name: receipt-goblin-backup
     profiles:
       - tools
@@ -366,10 +544,19 @@ services:
       - grafana-data:/var/lib/grafana
     environment:
       CLICKHOUSE_HOST: *clickhouse-host
-      CLICKHOUSE_NATIVE_PORT: *clickhouse-native-port
+      # No CLICKHOUSE_NATIVE_PORT here, deliberately: backup_clickhouse.sh/
+      # restore_clickhouse.sh connect to `clickhouse` directly over the
+      # Docker network, never through nginx, so they shouldn't inherit the
+      # public/nginx-published port var above - they fall back to their own
+      # `${CLICKHOUSE_NATIVE_PORT:-9000}`, which matches clickhouse's actual
+      # (hardcoded) internal port regardless of what the public one is set to.
       CLICKHOUSE_USER: *clickhouse-user
       CLICKHOUSE_PASSWORD: *clickhouse-password
       CLICKHOUSE_DATABASE: *clickhouse-database
+      # restore_clickhouse.sh's DROP/RESTORE DATABASE need these, not the
+      # app user above - see that script's own comment for why.
+      CLICKHOUSE_BOOTSTRAP_USER: *clickhouse-bootstrap-user
+      CLICKHOUSE_BOOTSTRAP_PASSWORD: *clickhouse-bootstrap-password
       LITELLM_DB_PASSWORD: *litellm-db-password
     mem_limit: 256m
     depends_on:
@@ -386,10 +573,8 @@ services:
     # live. user_configs/*.yaml stays bind-mounted below even in prod
     # (gitignored, may hold real secrets/hosts).
     build: ./services/litellm
+    image: receipt-goblin-litellm:${LITELLM_TAG:-latest}
     container_name: receipt-goblin-litellm
-    ports:
-      - target: 4000
-        published: *litellm-port
     environment:
       WEBHOOK_URL: *webhook-url
       LITELLM_MASTER_KEY: *litellm-master-key
@@ -408,14 +593,20 @@ services:
       # prod: a new remote model source is just drop-file + restart, no rebuild.
       - ./services/litellm/user_configs:/app/litellm-config/user_configs:ro
     mem_limit: 2g
+    cpus: 2.0
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 20
+    # No dependency on load-balancer here even though litellm's WEBHOOK_URL
+    # points through it: load-balancer itself now depends on litellm being
+    # healthy (it proxies litellm's port), so the reverse would be a cycle.
+    # Not a functional problem either way - a webhook POST failing while
+    # load-balancer/webhook are still starting just logs a per-call callback
+    # error (same non-fatal pattern as the langfuse callback above), it
+    # doesn't block litellm from serving requests.
     depends_on:
-      webhook:
-        condition: service_healthy
       litellm-db:
         condition: service_healthy
     networks:
@@ -443,6 +634,7 @@ services:
   prometheus:
     # Config baked in at build time - see prometheus.yml for scrape jobs.
     build: ./services/prometheus
+    image: receipt-goblin-prometheus:${PROMETHEUS_TAG:-latest}
     container_name: receipt-goblin-prometheus
     profiles:
       - observability
@@ -464,6 +656,7 @@ services:
     # Config baked in at build time - see config.yml for the http_2xx
     # module Prometheus's blackbox job uses.
     build: ./services/blackbox
+    image: receipt-goblin-blackbox:${BLACKBOX_TAG:-latest}
     container_name: receipt-goblin-blackbox
     profiles:
       - observability
@@ -490,6 +683,28 @@ services:
       - "9121"
     depends_on:
       redis:
+        condition: service_healthy
+    networks:
+      - receipt-goblin
+
+  nginx-exporter:
+    # Stock image, scrapes load-balancer's internal stub_status endpoint
+    # (services/load-balancer/nginx.conf, port 8080 - not published to the
+    # host). Only gives connection-level counters (accepts/handled/requests),
+    # not per-handler rate or any latency - stub_status has no timing data,
+    # unlike webhook/litellm's own richer /metrics.
+    image: nginx/nginx-prometheus-exporter:1.3.0
+    container_name: receipt-goblin-nginx-exporter
+    profiles:
+      - observability
+    command:
+      - --nginx.scrape-uri=http://load-balancer:8080/stub_status
+    mem_limit: 64m
+    restart: unless-stopped
+    expose:
+      - "9113"
+    depends_on:
+      load-balancer:
         condition: service_healthy
     networks:
       - receipt-goblin
@@ -528,6 +743,7 @@ services:
     # host-mount rationale as cadvisor - reports on the Docker Desktop Linux
     # VM on macOS, the real host on Linux.
     build: ./services/node-exporter
+    image: receipt-goblin-node-exporter:${NODE_EXPORTER_TAG:-latest}
     container_name: receipt-goblin-node-exporter
     profiles:
       - observability
@@ -546,6 +762,7 @@ services:
     # Config baked in at build time. Single-binary, filesystem-backed - no
     # object storage needed at this scale.
     build: ./services/loki
+    image: receipt-goblin-loki:${LOKI_TAG:-latest}
     container_name: receipt-goblin-loki
     profiles:
       - observability
@@ -568,6 +785,7 @@ services:
     # system-socket exception to the no-config-volume-mounts convention -
     # needed for discovery.docker to tail every container's logs.
     build: ./services/alloy
+    image: receipt-goblin-alloy:${ALLOY_TAG:-latest}
     container_name: receipt-goblin-alloy
     profiles:
       - observability
@@ -639,6 +857,7 @@ services:
     # Startup logic (bucket precreate + minio invocation) baked into the
     # image - see Dockerfile + entrypoint.sh.
     build: ./services/langfuse-minio
+    image: receipt-goblin-langfuse-minio:${LANGFUSE_MINIO_TAG:-latest}
     container_name: receipt-goblin-langfuse-minio
     profiles:
       - langfuse
@@ -662,6 +881,7 @@ services:
     # REDIS_PASSWORD at runtime and execs redis-server, since the password
     # is a runtime secret and can't be baked in.
     build: ./services/langfuse-redis
+    image: receipt-goblin-langfuse-redis:${LANGFUSE_REDIS_TAG:-latest}
     container_name: receipt-goblin-langfuse-redis
     profiles:
       - langfuse
@@ -757,9 +977,11 @@ services:
     # this stack.
     mem_limit: 2g
     restart: always
-    ports:
-      - target: 3000
-        published: *langfuse-port
+    # No `ports:` - fronted by load-balancer (nginx) now, like every other
+    # public service, instead of publishing its own host port directly. See
+    # load-balancer's `ports:`/nginx.conf's `listen 3001` block; *langfuse-port
+    # still controls the host side, unchanged for anyone hitting
+    # http://localhost:$LANGFUSE_PORT.
     healthcheck:
       # 127.0.0.1, not localhost - no IPv6 listener here (see HOSTNAME
       # above), and localhost resolves to ::1 first.
@@ -783,6 +1005,20 @@ services:
 networks:
   receipt-goblin:
     driver: bridge
+    # Explicit subnet so webhook-1/webhook-2 (see their `networks:` blocks
+    # above) can be pinned to fixed IPs - load-balancer/nginx.conf's
+    # `upstream webhook_backend` addresses them by IP directly for real
+    # least_conn balancing. `ip_range` carves out .0.0/24 for Docker's own
+    # automatic allocation (every other service here) so it can never hand
+    # out the same address a static assignment below already claims from
+    # .1.0/24 - without this, whichever container happens to start first
+    # grabs the low addresses and can collide with the pinned ones
+    # (hit this in testing: litellm/mcp-server got 172.28.0.11/.12 before
+    # webhook-1/webhook-2 could claim them).
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+          ip_range: 172.28.0.0/24
 
 volumes:
   clickhouse-data:

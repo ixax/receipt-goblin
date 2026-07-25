@@ -8,10 +8,15 @@
 import base64
 import binascii
 import json
-from typing import Literal, Optional
+from collections import OrderedDict
+from typing import Any, Literal, Optional, Tuple
 
 import litellm.llms.anthropic.common_utils as _anthropic_common_utils
 from litellm.integrations.custom_logger import CustomLogger
+from litellm.responses.sse_output_recovery import (
+    record_output_item_chunk,
+    record_output_text_chunk,
+)
 
 
 class SessionIdHandler(CustomLogger):
@@ -119,3 +124,76 @@ class ChatGPTAuthForwardHandler(CustomLogger):
 
 
 chatgpt_auth_forward_handler = ChatGPTAuthForwardHandler()
+
+
+# --- ChatGPT/Codex streamed tool-call output recovery ---------------------
+#
+# For custom_llm_provider="chatgpt" (Codex CLI, OpenAI Responses API,
+# stream=True), BaseResponsesAPIStreamingIterator._process_chunk (litellm's
+# own responses/streaming_iterator.py) just overwrites self.completed_response
+# with each SSE event, ending on "response.completed" - which the ChatGPT
+# Codex backend sends with an empty output[] even when the turn made tool
+# calls. The real content only ever appeared in earlier
+# "response.output_item.done"/"response.output_text.done" events, which
+# litellm never accumulates for the streaming path (a non-streaming path
+# already does this via litellm.responses.sse_output_recovery, but nothing
+# wires it into the streaming iterator - see BerriAI/litellm#25429, unmerged
+# fix in PR #31332 as of writing). So StandardLoggingPayload.response.output
+# reaches our webhook empty, and the Trace panel/ClickHouse can't show what
+# Codex actually did.
+#
+# Fix: mirror the same recovery logic here, using the two hooks that
+# actually bracket the gap. async_post_call_streaming_iterator_hook sees
+# every already-parsed SSE chunk as it passes through to the client (pure
+# pass-through - we don't mutate it, litellm's own logging pipeline has
+# already captured a reference to the same completed_response by the time
+# this fires) and accumulates output items into a dict keyed by
+# litellm_call_id. async_logging_hook runs before any success_callback
+# dispatch (including metrics_webhook) and receives
+# kwargs["standard_logging_object"] as a mutable dict reference sharing the
+# same litellm_call_id - if its response.output is still empty, we inject
+# the recovered items there.
+_MAX_PENDING_OUTPUT_RECOVERIES = 500
+
+_pending_output_items: "OrderedDict[str, list]" = OrderedDict()
+
+
+class ChatGPTResponsesOutputRecoveryHandler(CustomLogger):
+    async def async_post_call_streaming_iterator_hook(
+        self,
+        user_api_key_dict,
+        response,
+        request_data: dict,
+    ):
+        call_id = request_data.get("litellm_call_id")
+        output_items: dict = {}
+        text_only_items: dict = {}
+        try:
+            async for chunk in response:
+                if call_id and hasattr(chunk, "model_dump"):
+                    parsed_chunk = chunk.model_dump()
+                    chunk_type = parsed_chunk.get("type")
+                    if chunk_type == "response.output_item.done":
+                        record_output_item_chunk(parsed_chunk, output_items)
+                    elif chunk_type == "response.output_text.done":
+                        record_output_text_chunk(parsed_chunk, output_items, text_only_items)
+                yield chunk
+        finally:
+            if call_id and (output_items or text_only_items):
+                merged = {**text_only_items, **output_items}
+                if len(_pending_output_items) >= _MAX_PENDING_OUTPUT_RECOVERIES:
+                    _pending_output_items.popitem(last=False)
+                _pending_output_items[call_id] = [merged[i] for i in sorted(merged)]
+
+    async def async_logging_hook(self, kwargs: dict, result: Any, call_type: str) -> Tuple[dict, Any]:
+        call_id = kwargs.get("litellm_call_id")
+        recovered = _pending_output_items.pop(call_id, None) if call_id else None
+        if recovered:
+            standard_logging_object = kwargs.get("standard_logging_object")
+            response = (standard_logging_object or {}).get("response") if isinstance(standard_logging_object, dict) else None
+            if isinstance(response, dict) and not response.get("output"):
+                response["output"] = recovered
+        return kwargs, result
+
+
+chatgpt_responses_output_recovery_handler = ChatGPTResponsesOutputRecoveryHandler()

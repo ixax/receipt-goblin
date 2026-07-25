@@ -4,7 +4,7 @@
 #
 # DESTRUCTIVE, and unsafe to run against a live server - stop the `grafana`
 # container first (`docker compose stop grafana`), run this, then start it
-# back up. See services/backup/README.md.
+# back up. See README.md's "Backup & restore" section.
 #
 # Usage: restore_grafana.sh <filename> --yes
 set -euo pipefail
