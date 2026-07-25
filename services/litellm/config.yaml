@@ -17,15 +17,36 @@ model_list:
   # Forwards the caller's own `codex login` OAuth token instead of a shared
   # ChatGPT login - see custom_callbacks.py's "Codex/ChatGPT subscription
   # passthrough" section for why plain forward_client_headers can't do this.
+  #
+  # model_info.*_cost_per_token below isn't in LiteLLM's built-in cost map
+  # (these model strings are Codex/ChatGPT-specific, not published OpenAI API
+  # model names), so response_cost/cost_breakdown came back $0 for every
+  # gpt-5.6-* call until this was added. Rates are OpenAI's public per-token
+  # API pricing for these models (developers.openai.com/api/docs/models/
+  # gpt-5.6-{sol,terra,luna}, confirmed 2026-07-25) - a cost proxy, not an
+  # actual charge: usage here rides the caller's ChatGPT subscription, which
+  # bills flat, not per token.
   - model_name: gpt-5.6-sol
     litellm_params:
       model: chatgpt/gpt-5.6-sol
+    model_info:
+      input_cost_per_token: 0.000005
+      output_cost_per_token: 0.00003
+      cache_read_input_token_cost: 0.0000005
   - model_name: gpt-5.6-terra
     litellm_params:
       model: chatgpt/gpt-5.6-terra
+    model_info:
+      input_cost_per_token: 0.0000025
+      output_cost_per_token: 0.000015
+      cache_read_input_token_cost: 0.00000025
   - model_name: gpt-5.6-luna
     litellm_params:
       model: chatgpt/gpt-5.6-luna
+    model_info:
+      input_cost_per_token: 0.000001
+      output_cost_per_token: 0.000006
+      cache_read_input_token_cost: 0.0000001
 
 general_settings:
   store_model_in_db: true

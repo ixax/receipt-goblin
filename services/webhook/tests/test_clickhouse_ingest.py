@@ -85,6 +85,75 @@ def test_last_user_text_unsuccess_skips_non_message_items():
 
 
 # ---------------------------------------------------------------------------
+# _codex_collaboration_mode_change
+# ---------------------------------------------------------------------------
+
+def _developer_message(text):
+    return {"type": "message", "role": "developer", "content": [{"type": "input_text", "text": text}]}
+
+
+def _user_message(text):
+    return {"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}
+
+
+def test_codex_collaboration_mode_change_success_finds_switch_notice():
+    messages = [
+        _developer_message("<collaboration_mode># Plan Mode (Conversational)\n\nYou work in 3 phases..."),
+        _user_message("как нам посчитать количество файлов"),
+        {"type": "reasoning"},
+        {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "..."}]},
+        _developer_message("<collaboration_mode># Collaboration Mode: Default\n\nYou are now in Default..."),
+        _user_message('<codex_internal_context source="goal">\n<objective>\ndo the thing\n</objective>'),
+    ]
+    assert ci._codex_collaboration_mode_change(messages) == "Collaboration Mode: Default"
+
+
+def test_codex_collaboration_mode_change_success_reports_starting_mode_on_first_call():
+    # The startup preamble sits several messages before the real first
+    # prompt (AGENTS.md/environment_context in between), so the "switch"
+    # adjacency check alone would miss it - but this is the session's first
+    # call (no assistant turn yet), so the starting mode should still be
+    # reported instead of silently saying nothing.
+    messages = [
+        _developer_message("<collaboration_mode># Plan Mode (Conversational)\n\nYou work in 3 phases..."),
+        _user_message("# AGENTS.md instructions..."),
+        _user_message("как нам посчитать количество файлов"),
+    ]
+    assert ci._codex_collaboration_mode_change(messages) == "Plan Mode (Conversational)"
+
+
+def test_codex_collaboration_mode_change_unsuccess_later_call_with_no_switch_stays_empty():
+    # Not the first call (an assistant turn already happened) and no fresh
+    # switch notice immediately precedes the latest prompt - must stay "".
+    messages = [
+        _developer_message("<collaboration_mode># Plan Mode (Conversational)\n\nYou work in 3 phases..."),
+        _user_message("как нам посчитать количество файлов"),
+        {"type": "reasoning"},
+        {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "..."}]},
+        _user_message("второй вопрос без переключения режима"),
+    ]
+    assert ci._codex_collaboration_mode_change(messages) == ""
+
+
+def test_codex_collaboration_mode_change_unsuccess_later_call_does_not_refire():
+    # Once more turns follow the switch, it no longer sits immediately
+    # before the latest user turn, so a later call must not re-report it.
+    messages = [
+        _developer_message("<collaboration_mode># Collaboration Mode: Default\n\n..."),
+        _user_message('<codex_internal_context source="goal">\n<objective>\nfirst\n</objective>'),
+        {"type": "reasoning"},
+        {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "..."}]},
+        _user_message('<codex_internal_context source="goal">\n<objective>\nsecond\n</objective>'),
+    ]
+    assert ci._codex_collaboration_mode_change(messages) == ""
+
+
+def test_codex_collaboration_mode_change_unsuccess_claude_code_payload_returns_empty():
+    payload = load_capture("success_plain")
+    assert ci._codex_collaboration_mode_change(payload["messages"]) == ""
+
+
+# ---------------------------------------------------------------------------
 # _active_command_name_and_version
 # ---------------------------------------------------------------------------
 
@@ -104,6 +173,38 @@ def test_active_command_name_and_version_success_recovers_version_marker():
 def test_active_command_name_and_version_unsuccess_freeform_prompt_returns_empty():
     payload = load_capture("success_with_command", index=0)
     assert ci._active_command_name_and_version(payload["messages"]) == ("", "")
+
+
+def test_active_command_name_and_version_success_recovers_codex_internal_context():
+    # Codex CLI's persistent-goal continuation wrapper - real capture shape.
+    text = (
+        '<codex_internal_context source="goal">\n'
+        "Continue working toward the active thread goal.\n"
+        "<objective>\nпосчитать количество файлов в папке hooks\n</objective>\n"
+        "</codex_internal_context>"
+    )
+    messages = [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}]
+    assert ci._active_command_name_and_version(messages) == ("goal", "")
+
+
+def test_active_command_name_and_version_success_recovers_arbitrary_codex_context_source():
+    # Not hardcoded to "goal" - any future context name is picked up as-is.
+    text = '<codex_internal_context source="plan">\n<objective>\ndo the thing\n</objective>\n</codex_internal_context>'
+    messages = [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}]
+    assert ci._active_command_name_and_version(messages) == ("plan", "")
+
+
+def test_prompt_kind_and_display_success_renders_codex_goal_context_as_command():
+    text = (
+        '<codex_internal_context source="goal">\n'
+        "Continue working toward the active thread goal.\n"
+        "<objective>\nпосчитать количество файлов в папке hooks\n</objective>\n"
+        "</codex_internal_context>"
+    )
+    prompt_kind, display_text, display_arg = ci._prompt_kind_and_display(text, "goal")
+    assert prompt_kind == "command"
+    assert display_text == "/goal посчитать количество файлов в папке hooks"
+    assert display_arg == ""
 
 
 # ---------------------------------------------------------------------------

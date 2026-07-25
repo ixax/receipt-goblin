@@ -22,6 +22,19 @@ from .config import (
 _AGENT_ID_RE = re.compile(r"agentId:\s*([0-9a-f]+)")
 _COMMAND_NAME_RE = re.compile(r"<command-name>/?(.*?)</command-name>")
 _COMMAND_VERSION_RE = re.compile(r"<command_version>(.*?)</command_version>")
+# Codex CLI's own persistent-context continuation wrapper - its equivalent
+# of this repo's Claude Code /goal Stop hook, re-injected as the "prompt" on
+# every turn the underlying context (goal, plan, ...) stays active. Its
+# "source" attribute names which one (e.g. "goal") - treated as a synthetic
+# command by that name (see _active_command_name_and_version/
+# _prompt_kind_and_display) so it rolls up into the same command_name
+# accounting as a real Claude Code slash command, with the <objective> text
+# standing in for <command-args>. Not hardcoded to "goal" specifically -
+# whatever Codex names a future context (e.g. "plan") is picked up as-is.
+_CODEX_INTERNAL_CONTEXT_RE = re.compile(r'<codex_internal_context\s+source="([^"]+)">')
+_OBJECTIVE_TAG_RE = re.compile(r"<objective>\s*(.*?)\s*</objective>", re.DOTALL)
+# Codex's collaboration-mode-switch notice - see _codex_collaboration_mode_change.
+_COLLABORATION_MODE_HEADER_RE = re.compile(r"<collaboration_mode>#\s*(.*?)\s*\n")
 
 # calculated_type prompt-prefix classifiers (category B), checked only
 # when the response made no tool call at all (category A, see _classify_event).
@@ -128,13 +141,77 @@ def _last_user_text(messages: Any) -> str:
     return ""
 
 
+def _codex_collaboration_mode_change(messages: Any) -> str:
+    """Codex CLI only - Codex occasionally injects a fresh role="developer"
+    message announcing a collaboration-mode switch (e.g. leaving Plan Mode
+    for "Collaboration Mode: Default") immediately before the next real
+    user turn. Returns that mode's header line (e.g. "Collaboration Mode:
+    Default") only on the call where the switch just happened - the notice
+    stays in `messages` history afterward, but on later calls it no longer
+    sits immediately before the latest user turn, so this won't re-fire for
+    the same switch. "" when no such notice preceded this turn (the normal
+    case, and always the case for Claude Code payloads, which have no
+    role="developer" messages at all).
+
+    Also covers the session's *starting* mode: the very first call has no
+    switch notice (the startup preamble's own <collaboration_mode> block
+    sits several messages before the first real user turn, separated by
+    AGENTS.md/environment_context - see _CODEX_INTERNAL_CONTEXT_RE's own
+    comment for that ordering), so without this the session would silently
+    start "in" a mode with no indication of which one. Detected by there
+    being no assistant turn yet anywhere in `messages` - true only for a
+    session's first call - in which case the first <collaboration_mode>
+    block found anywhere (the preamble's) is reported instead."""
+    if not isinstance(messages, list):
+        return ""
+    last_user_index = None
+    for i in range(len(messages) - 1, -1, -1):
+        message = messages[i]
+        if not isinstance(message, dict) or message.get("type", "message") != "message":
+            continue
+        if message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, list):
+            if content and all(isinstance(b, dict) and b.get("type") == "tool_result" for b in content):
+                continue
+        last_user_index = i
+        break
+    if not last_user_index:
+        return ""
+    previous = messages[last_user_index - 1]
+    if not isinstance(previous, dict) or previous.get("role") != "developer" or previous.get("type", "message") != "message":
+        is_first_call = not any(
+            isinstance(m, dict) and m.get("type", "message") == "message" and m.get("role") == "assistant"
+            for m in messages
+        )
+        if not is_first_call:
+            return ""
+        for message in messages:
+            if not isinstance(message, dict) or message.get("role") != "developer":
+                continue
+            match = _COLLABORATION_MODE_HEADER_RE.search(_flatten_content(message.get("content")))
+            if match:
+                return match.group(1)
+        return ""
+    match = _COLLABORATION_MODE_HEADER_RE.search(_flatten_content(previous.get("content")))
+    return match.group(1) if match else ""
+
+
 def _active_command_name_and_version(messages: Any) -> tuple[str, str]:
-    """Claude Code only - slash commands aren't a Codex CLI concept, so this
-    always returns ("", "") for a Codex payload. Walks back to the
-    human-originated turn that started this chain of calls, looking for
-    Claude Code's "<command-name>/foo</command-name>" tag (slash-command
-    invocation) and an optional "<command_version>" marker in the same
-    expanded body. Returns ("", "") for a freeform prompt too."""
+    """Walks back to the human-originated turn that started this chain of
+    calls, looking for Claude Code's "<command-name>/foo</command-name>" tag
+    (slash-command invocation) and an optional "<command_version>" marker in
+    the same expanded body. Returns ("", "") for a freeform prompt.
+
+    Also recognizes Codex CLI's "<codex_internal_context source=\"...\">"
+    continuation wrapper (see _CODEX_INTERNAL_CONTEXT_RE) as a synthetic
+    command named after its "source" attribute (e.g. "goal"), version
+    always "" - Codex's own equivalent of this repo's Claude Code /goal
+    Stop hook, re-injected as the prompt on every turn that context stays
+    active. Everything else here (a real Claude Code command, or no command
+    at all) still applies to Codex payloads exactly as documented - only
+    this one wrapper is Codex-specific."""
     if not isinstance(messages, list):
         return "", ""
     for message in reversed(messages):
@@ -147,6 +224,9 @@ def _active_command_name_and_version(messages: Any) -> tuple[str, str]:
         text = _flatten_content(content) if not isinstance(content, str) else content
         match = _COMMAND_NAME_RE.search(text)
         if not match:
+            codex_context_match = _CODEX_INTERNAL_CONTEXT_RE.search(text)
+            if codex_context_match:
+                return codex_context_match.group(1), ""
             return "", ""
         version_match = _COMMAND_VERSION_RE.search(text)
         return match.group(1), (version_match.group(1) if version_match else "")
@@ -540,6 +620,13 @@ def _prompt_kind_and_display(prompt_text: str, command_name: str, response_text:
     command_args = command_args_match.group(1) if command_args_match else ""
     if not command_args and command_name and not is_harness_echo and "</local-command-stdout>" in prompt_text:
         command_args = _LOCAL_STDOUT_STRIP_RE.sub("", prompt_text, count=1).strip()
+    if not command_args and command_name and not is_harness_echo:
+        # Codex CLI's <codex_internal_context> wrapper (see
+        # _CODEX_INTERNAL_CONTEXT_RE) - <objective> stands in for
+        # <command-args> here, whatever the context's "source" name is.
+        objective_match = _OBJECTIVE_TAG_RE.search(prompt_text)
+        if objective_match:
+            command_args = objective_match.group(1)
     if command_args:
         return "command", f"/{command_name} {_collapse_whitespace(command_args)[:_DISPLAY_TEXT_TRUNCATE]}", ""
 
@@ -901,6 +988,9 @@ def _event_row(
         error_type = _error_type(payload)
         if error_type:
             calculated_payload["error_type"] = error_type
+    collaboration_mode_change = _codex_collaboration_mode_change(payload.get("messages"))
+    if collaboration_mode_change:
+        calculated_payload["collaboration_mode_change"] = collaboration_mode_change
 
     return [
         _to_dt(payload.get("endTime") or payload.get("startTime")),
