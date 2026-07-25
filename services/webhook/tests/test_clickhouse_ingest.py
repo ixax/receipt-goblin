@@ -204,6 +204,17 @@ def test_prompt_kind_and_display_success_renders_codex_goal_context_as_command()
     prompt_kind, display_text, display_arg = ci._prompt_kind_and_display(text, "goal")
     assert prompt_kind == "command"
     assert display_text == "/goal посчитать количество файлов в папке hooks"
+
+
+def test_prompt_kind_and_display_success_classifies_away_recap():
+    text = (
+        "The user stepped away and is coming back. Recap in under 40 words, "
+        "1-2 plain sentences, no markdown. Lead with the overall goal and current "
+        "task, then the one next action."
+    )
+    prompt_kind, display_text, display_arg = ci._prompt_kind_and_display(text, "")
+    assert prompt_kind == "away_recap"
+    assert display_text == "[background] away recap"
     assert display_arg == ""
 
 

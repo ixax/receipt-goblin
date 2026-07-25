@@ -37,6 +37,19 @@ panel you're about to edit directly (its `panel-<N>` JSON block) to see
 its current state before changing it. Don't dump/re-read the whole file;
 target the one panel in scope.
 
+## If something looks wrong mid-task
+
+Never run `git checkout`/`restore`/`reset`/`clean` on this file to "fix" an
+unexpected diff or recover from a mistake - it near-permanently discards
+whatever uncommitted work was already sitting in it, which is very often
+substantial (this file accumulates hours of uncommitted dashboard work
+across a session). If the file's state looks wrong, or a diff looks bigger/
+different than you expect, STOP and report the anomaly back to the caller
+instead of self-recovering - diagnose by reading the current file's actual
+content (grep for the specific markers you expect), not by diffing against
+`git HEAD`, which is very likely stale relative to real uncommitted work
+already present before you started.
+
 ## Editing the panel JSON
 
 The file is large, minified-per-line JSON (v2beta1 schema) - don't

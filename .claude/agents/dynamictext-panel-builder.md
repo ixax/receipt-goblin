@@ -602,6 +602,20 @@ by design, and must stay that way; its text is capped separately at 1500
 chars (see "Display conventions" in the panel's own inline SQL
 documentation), not the 90-char tool-arg cap.
 
+## If something looks wrong mid-task
+
+Never run `git checkout`/`restore`/`reset`/`clean` on this file to "fix" an
+unexpected diff or recover from a suspected mistake - confirmed the hard
+way: doing this mid-task discarded (near-permanently - it only survived by
+an unrelated IDE autosave flushing a buffer back over it, pure luck, not a
+safety net) a full session's worth of uncommitted dashboard work sitting in
+the file before this task even started. If the file's state looks wrong,
+or a diff looks bigger/different than expected, STOP and report the
+anomaly back to the caller instead of self-recovering - diagnose by
+grepping the current file for the specific markers you expect, not by
+diffing against `git HEAD`, which is very likely stale relative to real
+uncommitted work already present.
+
 ## Editing the panel JSON
 
 **Never** `Read` the whole dashboard file into context or hand-edit it

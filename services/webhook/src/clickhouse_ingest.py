@@ -46,6 +46,9 @@ _TITLE_GEN_PREFIX = "<session>"
 _INTERRUPTED_PREFIX = "[Request interrupted by user]"
 _WEBPAGE_CONTENT_PREFIX = "Web page content"
 _STOP_HOOK_FEEDBACK_PREFIX = "Stop hook feedback:"
+# Claude Code's own auto-injected prompt asking the model to summarize
+# progress for an idle-then-returning user - never typed by a human.
+_AWAY_RECAP_PREFIX = "The user stepped away and is coming back."
 
 # Trace panel (panel-76) text-cleaning regexes, ported from its SQL CTEs
 # so display text is precomputed once at ingest instead of per dashboard load.
@@ -665,6 +668,8 @@ def _prompt_kind_and_display(prompt_text: str, command_name: str, response_text:
         return "webpage_content", f"{excerpt}...", ""
     if prompt_text.startswith(_STOP_HOOK_FEEDBACK_PREFIX):
         return "stop_hook_feedback", "[background] stop hook feedback", ""
+    if prompt_text.startswith(_AWAY_RECAP_PREFIX):
+        return "away_recap", "[background] away recap", ""
 
     return "real", _collapse_whitespace(cleaned)[:_DISPLAY_TEXT_TRUNCATE], ""
 
