@@ -2,8 +2,10 @@
 # switch): re-adds live source/config bind mounts + --reload so editing
 # services/*/src or config.yml takes effect without a rebuild.
 #
-# litellm and redis are NOT overridden - both always run the baked image;
-# editing their configs needs a rebuild even in dev.
+# redis is NOT overridden - it always runs the baked image; editing its
+# config needs a rebuild even in dev. litellm gets one narrow exception
+# below (user_configs/ only) - its own config.yaml/entrypoint still need a
+# rebuild like redis.
 services:
   clickhouse-migrate:
     volumes:
@@ -38,6 +40,13 @@ services:
       - ./services/mcp-server/src:/app/src:ro
       - ./services/mcp-server/config.yml:/app/config.yml:ro
     command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+
+  litellm:
+    # Only user_configs/ - gitignored, may hold real hosts/keys, added/edited
+    # far more often than config.yaml/custom_callbacks.py, which stay
+    # baked-in (rebuild) like prod - see services/litellm/Dockerfile.
+    volumes:
+      - ./services/litellm/user_configs:/app/litellm-config/user_configs:ro
 
   grafana:
     entrypoint: ["/bin/sh", "/docker-entrypoint-custom.sh"]

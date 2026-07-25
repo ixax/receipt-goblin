@@ -28,7 +28,7 @@
         }
       }
     ],
-    "cursorSync": "Crosshair",
+    "cursorSync": "Tooltip",
     "editable": true,
     "elements": {
       "panel-10": {

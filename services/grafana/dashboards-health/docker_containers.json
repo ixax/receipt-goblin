@@ -6,7 +6,7 @@
   },
   "spec": {
     "annotations": [],
-    "cursorSync": "Off",
+    "cursorSync": "Tooltip",
     "description": "Per-container CPU/memory/network/disk/process metrics (cAdvisor) with a container-picker variable, plus whole-host resource metrics (node_exporter). NOTE: on this dev machine (Colima + containerd-snapshotter storage driver), cAdvisor cannot track real containers - the Containers tab and $container variable will be empty here until Colima's containerd-snapshotter is disabled, or on a plain Linux Docker host in production. The Host tab works regardless.",
     "editable": true,
     "elements": {

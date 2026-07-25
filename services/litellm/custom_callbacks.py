@@ -5,6 +5,7 @@
 # the request, which nothing sets by default. This copies the
 # x-claude-code-session-id header into metadata["session_id"]/trace_user_id
 # so Langfuse sessions match the grouping ClickHouse already has.
+import asyncio
 import base64
 import binascii
 import json
@@ -12,6 +13,7 @@ from collections import OrderedDict
 from typing import Any, Literal, Optional, Tuple
 
 import litellm.llms.anthropic.common_utils as _anthropic_common_utils
+from litellm._logging import verbose_proxy_logger
 from litellm.integrations.custom_logger import CustomLogger
 from litellm.responses.sse_output_recovery import (
     record_output_item_chunk,
@@ -153,9 +155,33 @@ chatgpt_auth_forward_handler = ChatGPTAuthForwardHandler()
 # kwargs["standard_logging_object"] as a mutable dict reference sharing the
 # same litellm_call_id - if its response.output is still empty, we inject
 # the recovered items there.
+#
+# The two hooks race: async_logging_hook fires off litellm's own success
+# path, independent of whether the client has finished consuming the SSE
+# stream, while the iterator's `finally` (where recovery is written) only
+# runs once that consumption completes. Confirmed against live Codex CLI
+# traffic - a turn with a tool call had the iterator finish first
+# (recovery landed), a plain-text-reply turn had async_logging_hook fire
+# first (recovery arrived too late, silently dropped) - same SSE event
+# types present both times, so this is a timing race, not a chunk-type
+# mismatch. Each pending call_id therefore gets an asyncio.Event that the
+# iterator sets once its recovery (or lack of one) is decided, and
+# async_logging_hook waits on it briefly before giving up.
 _MAX_PENDING_OUTPUT_RECOVERIES = 500
+_RECOVERY_WAIT_TIMEOUT_S = 2.0
 
 _pending_output_items: "OrderedDict[str, list]" = OrderedDict()
+_recovery_ready: "OrderedDict[str, asyncio.Event]" = OrderedDict()
+
+
+def _recovery_event_for(call_id: str) -> asyncio.Event:
+    event = _recovery_ready.get(call_id)
+    if event is None:
+        event = asyncio.Event()
+        if len(_recovery_ready) >= _MAX_PENDING_OUTPUT_RECOVERIES:
+            _recovery_ready.popitem(last=False)
+        _recovery_ready[call_id] = event
+    return event
 
 
 class ChatGPTResponsesOutputRecoveryHandler(CustomLogger):
@@ -179,14 +205,26 @@ class ChatGPTResponsesOutputRecoveryHandler(CustomLogger):
                         record_output_text_chunk(parsed_chunk, output_items, text_only_items)
                 yield chunk
         finally:
-            if call_id and (output_items or text_only_items):
-                merged = {**text_only_items, **output_items}
-                if len(_pending_output_items) >= _MAX_PENDING_OUTPUT_RECOVERIES:
-                    _pending_output_items.popitem(last=False)
-                _pending_output_items[call_id] = [merged[i] for i in sorted(merged)]
+            if call_id:
+                if output_items or text_only_items:
+                    merged = {**text_only_items, **output_items}
+                    if len(_pending_output_items) >= _MAX_PENDING_OUTPUT_RECOVERIES:
+                        _pending_output_items.popitem(last=False)
+                    _pending_output_items[call_id] = [merged[i] for i in sorted(merged)]
+                _recovery_event_for(call_id).set()
 
     async def async_logging_hook(self, kwargs: dict, result: Any, call_type: str) -> Tuple[dict, Any]:
         call_id = kwargs.get("litellm_call_id")
+        if call_id:
+            event = _recovery_event_for(call_id)
+            try:
+                await asyncio.wait_for(event.wait(), timeout=_RECOVERY_WAIT_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                verbose_proxy_logger.warning(
+                    "chatgpt_responses_output_recovery_handler: timed out waiting for "
+                    "streamed output recovery (call_id=%s)", call_id,
+                )
+            _recovery_ready.pop(call_id, None)
         recovered = _pending_output_items.pop(call_id, None) if call_id else None
         if recovered:
             standard_logging_object = kwargs.get("standard_logging_object")

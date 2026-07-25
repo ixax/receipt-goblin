@@ -84,17 +84,19 @@ check-env:
 	@echo "⚠️  ENVIRONMENT=$(ENVIRONMENT)"
 	@python3 scripts/resolve_image_version.py | sed 's/^export /⚠️  /'
 
+# SERVICE is optional - `make up` (re)creates the whole stack, `make up
+# SERVICE=webhook` scopes --build/--force-recreate to just that one
+# service, same convention as `make build SERVICE=...` below.
 start up: check-env
-	docker compose $(COMPOSE_FILES) up -d --build --force-recreate
+	docker compose $(COMPOSE_FILES) up -d --build --force-recreate $(SERVICE)
 
-# Builds one service by name, e.g. `make build SERVICE=redis` or
-# `make build SERVICE=webhook-1` - resolve_image_version.py's export up top
-# already put every image group's tag in this recipe's environment, so
-# `docker compose build` just needs pointing at the one service; it
-# resolves that service's own `image: ...:${..._TAG:-latest}` the same way
-# `make start` would for all of them.
+# SERVICE is optional - `make build` builds every service, `make build
+# SERVICE=redis` (or webhook-1, etc.) scopes it to just that one.
+# resolve_image_version.py's export up top already put every image group's
+# tag in this recipe's environment, so `docker compose build` just needs
+# pointing at the target(s); it resolves each service's own
+# `image: ...:${..._TAG:-latest}` the same way `make up` would.
 build: check-env
-	@if [ -z "$(SERVICE)" ]; then echo "usage: make build SERVICE=<service-name>"; exit 1; fi
 	docker compose $(COMPOSE_FILES) build $(SERVICE)
 
 status: check-env

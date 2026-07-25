@@ -10,9 +10,11 @@ no LiteLLM virtual key (unlike /api/v1/session-git-branch and
 /api/v1/plan-proposal - see server.py), so this never touches LITELLM_*.
 
 Traffic model: each captured session directory under CAPTURE_DIR is one real
-Claude Code session's full sequence of StandardLoggingPayload events (agentic
-tool-call round trips, not standalone chat messages), with real inter-event
-gaps and real payload sizes/token counts. One "virtual user" here is a loop
+Claude Code session's status="success" StandardLoggingPayload events (agentic
+tool-call round trips, not standalone chat messages) - see
+load_session_corpus/_is_success_capture for why failed events are filtered
+out - with real inter-event gaps and real payload sizes/token counts. One
+"virtual user" here is a loop
 that repeatedly picks a random session, replays its events in order at the
 real (or --speed-scaled) cadence, then immediately picks another session and
 keeps going - modeling one person's continuous Claude usage, not a single
@@ -48,10 +50,12 @@ import logging
 import math
 import os
 import random
+import re
 import statistics
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Optional
 
 import aiohttp
 
@@ -90,19 +94,56 @@ def _filename_epoch(path: str) -> float:
         return time.time()
 
 
+_STATUS_PREFIX_BYTES = 512
+_SUCCESS_STATUS_RE = re.compile(rb'"status"\s*:\s*"success"')
+
+
+def _is_success_capture(path: str) -> bool:
+    """Peeks at a capture file's first _STATUS_PREFIX_BYTES to read its
+    `status` field without json.load-ing the whole payload - `status` sits
+    within the first ~150 bytes of every capture (server.py's write path
+    puts it right after id/litellm_call_id/trace_id/call_type), so a small
+    prefix read is enough. Matters because a completion's `messages`/
+    `response` fields can run tens of KB; loading every one of them just to
+    check one field would multiply indexing time and page-cache pressure
+    across a multi-GB corpus for no reason. Same posix_fadvise(DONTNEED)
+    reasoning as _read_bytes - don't let this prefix read accumulate in the
+    page cache either."""
+    try:
+        with open(path, "rb") as fh:
+            prefix = fh.read(_STATUS_PREFIX_BYTES)
+            try:
+                os.posix_fadvise(fh.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+            except (AttributeError, OSError):
+                pass
+    except OSError:
+        return False
+    return bool(_SUCCESS_STATUS_RE.search(prefix))
+
+
 def load_session_corpus(capture_dir: str, max_gap_seconds: float) -> list[SessionTrace]:
     """Scans capture_dir for session subdirectories (one per real Claude Code
     session) and indexes each one's event file paths, in filename order, into
     a SessionTrace with real inter-event gaps (from filename timestamps, not
     file content) clamped to max_gap_seconds so a rare multi-minute "human
-    stepped away" gap doesn't stall a virtual user for the whole test. No
-    file content is read here - just directory listings and filename parsing.
+    stepped away" gap doesn't stall a virtual user for the whole test.
+
+    Only status="success" events are kept (see _is_success_capture) - most of
+    a real .capture/ corpus is failed LiteLLM calls (expired/malformed proxy
+    keys, rate limits) that never reach agent_usage/agent_messages downstream
+    (see clickhouse_ingest.py's `if payload.get("status") == "success"`
+    gates), so replaying them unfiltered load-tests only the agent_events/
+    ingest_raw half of the pipeline. A session with zero success events is
+    dropped entirely; gaps are computed only across the events that survive
+    the filter, so a run of skipped failures between two kept successes
+    collapses into one (still real, still clamped) gap.
     """
     traces: list[SessionTrace] = []
     for session_dir in sorted(glob.glob(os.path.join(capture_dir, "*"))):
         if not os.path.isdir(session_dir):
             continue
         files = sorted(glob.glob(os.path.join(session_dir, "*.json")))
+        files = [path for path in files if _is_success_capture(path)]
         if not files:
             continue
         starts = [_filename_epoch(path) for path in files]
@@ -114,7 +155,7 @@ def load_session_corpus(capture_dir: str, max_gap_seconds: float) -> list[Sessio
     return traces
 
 
-def _read_bytes(path: str) -> bytes | None:
+def _read_bytes(path: str) -> Optional[bytes]:
     # Each file is read exactly once, never revisited - posix_fadvise(DONTNEED)
     # tells the kernel not to keep these pages cached, so the read-only
     # .capture bind mount's page cache (charged to this container's memory
@@ -125,7 +166,10 @@ def _read_bytes(path: str) -> bytes | None:
     try:
         with open(path, "rb") as fh:
             data = fh.read()
-            os.posix_fadvise(fh.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+            try:
+                os.posix_fadvise(fh.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+            except (AttributeError, OSError):
+                pass
             return data
     except OSError:
         logger.warning("skipping unreadable capture file %s", path)
@@ -142,7 +186,7 @@ class Stats:
     latencies: list = field(default_factory=list)
     bytes_sent: int = 0
 
-    def record(self, status: int | None, latency: float, size: int) -> None:
+    def record(self, status: Optional[int], latency: float, size: int) -> None:
         self.sent += 1
         self.bytes_sent += size
         self.latencies.append(latency)
@@ -254,7 +298,7 @@ def _print_schedule(schedule: Schedule) -> None:
     logger.info("==============================")
 
 
-async def _run_ramp(target_url: str, corpus: list, schedule: Schedule, speed: float, seed: int | None) -> Stats:
+async def _run_ramp(target_url: str, corpus: list, schedule: Schedule, speed: float, seed: Optional[int]) -> Stats:
     stats = Stats()
     rng = random.Random(seed)
     start = time.monotonic()

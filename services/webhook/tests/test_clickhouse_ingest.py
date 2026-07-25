@@ -342,6 +342,18 @@ def test_response_tool_calls_success_parses_function_call_output():
     assert ci._response_tool_calls(payload) == [("shell", {"command": "ls"})]
 
 
+def test_response_tool_calls_success_parses_custom_tool_call_output():
+    # Codex's "exec" tool: "input" is raw JS source, not a JSON arguments
+    # blob - real capture from a live session running `docker compose ps`.
+    payload = load_capture("chatgpt_responses_shape")
+    payload["response"]["output"] = [
+        {"type": "custom_tool_call", "name": "exec", "input": "await tools.exec_command({cmd: 'ls'})"}
+    ]
+    assert ci._response_tool_calls(payload) == [
+        ("exec", {"command": "await tools.exec_command({cmd: 'ls'})"})
+    ]
+
+
 def test_response_text_success_falls_back_to_responses_output():
     payload = load_capture("chatgpt_responses_shape")
     payload["response"]["output"] = [

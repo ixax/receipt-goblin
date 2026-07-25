@@ -15,6 +15,7 @@ from pathlib import Path
 import clickhouse_connect
 import yaml
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -25,8 +26,27 @@ CLICKHOUSE_PORT = int(os.environ["CLICKHOUSE_PORT"])
 CLICKHOUSE_USER = os.environ["CLICKHOUSE_USER"]
 CLICKHOUSE_PASSWORD = os.environ["CLICKHOUSE_PASSWORD"]
 CLICKHOUSE_DATABASE = os.environ["CLICKHOUSE_DATABASE"]
+MCP_SERVER_PORT = os.environ["MCP_SERVER_PORT"]
 
-mcp = FastMCP("clickhouse")
+# The mcp SDK's DNS-rebinding protection defaults to allowed_hosts=[] (rejects
+# every Host header) once transport_security is left unset - it used to be
+# opt-in, now it's opt-out. Clients reach this container through load-balancer
+# (nginx's `proxy_set_header Host $host` strips the port, so the Host header
+# arriving here is bare "localhost"/"127.0.0.1"); the ":*" wildcard entries
+# cover any client that connects with the port still on the Host header
+# (e.g. straight to the container, bypassing nginx).
+mcp = FastMCP(
+    "clickhouse",
+    transport_security=TransportSecuritySettings(
+        allowed_hosts=[
+            "localhost",
+            "localhost:*",
+            "127.0.0.1",
+            "127.0.0.1:*",
+            f"mcp-server:{MCP_SERVER_PORT}",
+        ],
+    ),
+)
 
 # Served directly as uvicorn's top-level app, not mounted under FastAPI:
 # mcp SDK's streamable_http_app() has a known bug when mounted as a sub-app

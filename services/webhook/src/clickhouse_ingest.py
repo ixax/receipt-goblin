@@ -129,10 +129,12 @@ def _last_user_text(messages: Any) -> str:
 
 
 def _active_command_name_and_version(messages: Any) -> tuple[str, str]:
-    """Walks back to the human-originated turn that started this chain of
-    calls, looking for Claude Code's "<command-name>/foo</command-name>" tag
-    (slash-command invocation) and an optional "<command_version>" marker in
-    the same expanded body. Returns ("", "") for a freeform prompt."""
+    """Claude Code only - slash commands aren't a Codex CLI concept, so this
+    always returns ("", "") for a Codex payload. Walks back to the
+    human-originated turn that started this chain of calls, looking for
+    Claude Code's "<command-name>/foo</command-name>" tag (slash-command
+    invocation) and an optional "<command_version>" marker in the same
+    expanded body. Returns ("", "") for a freeform prompt too."""
     if not isinstance(messages, list):
         return "", ""
     for message in reversed(messages):
@@ -152,7 +154,14 @@ def _active_command_name_and_version(messages: Any) -> tuple[str, str]:
 
 
 def _failed_tool_call(messages: Any) -> tuple[str, str, str]:
-    """If the last message is a tool_result marked is_error, find its paired
+    """Claude Code only - looks for Anthropic's explicit tool_result
+    is_error flag, which Codex's Responses-API shape has no equivalent for
+    (its custom_tool_call_output/function_call_output items carry no
+    structured success/failure signal, just an output string), so this
+    always returns ("", "", "") for a Codex payload - a failed Codex tool
+    call is currently invisible to failed_tool_name/args/error.
+
+    If the last message is a tool_result marked is_error, find its paired
     tool_use by tool_use_id and return (tool_name, arguments_json, error_text)
     - the failed invocation this call is reacting to, distinct from
     tool_name (whatever this call's own response invokes next, if anything)."""
@@ -208,11 +217,13 @@ def _codex_session_id(headers: dict) -> str:
 
 
 def _session_and_trace_id(payload: dict) -> tuple[str, str]:
+    """Shared dispatcher: tries Claude Code's session header first, then
+    Codex CLI's (_codex_session_id), before falling back to trace/call id."""
     trace_id = payload.get("trace_id") or ""
     headers = ((payload.get("metadata") or {}).get("requester_custom_headers")) or {}
     session_id = (
-        headers.get("x-claude-code-session-id")
-        or _codex_session_id(headers)
+        headers.get("x-claude-code-session-id")  # Claude Code
+        or _codex_session_id(headers)  # Codex CLI
         or trace_id
         or payload.get("litellm_call_id", "")
     )
@@ -221,8 +232,9 @@ def _session_and_trace_id(payload: dict) -> tuple[str, str]:
 
 
 def _split_name_version(value: str) -> tuple[str, str]:
-    """Splits on the last "_v" - the old naming convention (e.g.
-    "test-researcher_v1.0.0"), superseded by _version_marker_for_name.
+    """Claude Code only - subagents/skills are a Claude Code concept, Codex
+    CLI has neither. Splits on the last "_v" - the old naming convention
+    (e.g. "test-researcher_v1.0.0"), superseded by _version_marker_for_name.
     Kept as a fallback for subagent_type values with no version marker and
     for historical rows. Agents only; skills have no such suffix convention."""
     idx = value.rfind("_v")
@@ -248,9 +260,12 @@ def _flatten_messages_text(messages: Any) -> str:
 
 
 def _version_marker_for_name(text: str, name: str, tag: str) -> str:
-    """Finds "- <name>: <tag>version</tag>..." in an agent/skill listing
-    (see AGENTS.md for the marker convention). Takes the last match so a
-    mid-session refreshed listing wins over a stale one. "" if no marker."""
+    """Claude Code only - agent/skill listings with these markers are
+    injected by Claude Code, never by Codex CLI, so this always returns ""
+    against a Codex payload. Finds "- <name>: <tag>version</tag>..." in an
+    agent/skill listing (see AGENTS.md for the marker convention). Takes the
+    last match so a mid-session refreshed listing wins over a stale one.
+    "" if no marker."""
     if not name:
         return ""
     pattern = re.compile(rf"^- {re.escape(name)}: <{tag}>([^<]*)</{tag}>", re.MULTILINE)
@@ -313,10 +328,12 @@ def _user_agent(payload: dict) -> str:
 
 
 def _agent_invocations_from_messages(messages: Any) -> list[tuple[str, str, str, str]]:
-    """Scan messages for Agent tool_use blocks paired with the following
-    tool_result, pulling the spawned subagent's agent_id from its text (e.g.
-    "agentId: a04bd3c594bf74fb9"). agent_version comes from the
-    "<agent_version>" marker in the "Available agent types" listing,
+    """Claude Code only - subagent spawning (the "Agent" tool) is a Claude
+    Code concept, Codex CLI has no equivalent, so this always returns []
+    for a Codex payload. Scan messages for Agent tool_use blocks paired with
+    the following tool_result, pulling the spawned subagent's agent_id from
+    its text (e.g. "agentId: a04bd3c594bf74fb9"). agent_version comes from
+    the "<agent_version>" marker in the "Available agent types" listing,
     falling back to splitting a legacy "_v<version>" suffix off
     subagent_type (see _split_name_version). Returns (agent_id,
     subagent_type, agent_version, description) tuples, usually empty."""
@@ -348,6 +365,7 @@ def _agent_invocations_from_messages(messages: Any) -> list[tuple[str, str, str,
 
 
 def _agent_id_from_tool_result(messages: list, tool_use_index: int, tool_use_id: Optional[str]) -> str:
+    # Claude Code only - see _agent_invocations_from_messages, its only caller.
     if tool_use_index + 1 >= len(messages):
         return ""
     next_message = messages[tool_use_index + 1]
@@ -368,11 +386,15 @@ def _agent_id_from_tool_result(messages: list, tool_use_index: int, tool_use_id:
 
 
 def _response_tool_calls(payload: dict) -> list[tuple[str, dict]]:
-    """Whether this call's own completion invoked a tool. LiteLLM normalizes
-    the response to an OpenAI-style tool_calls list, so this reads
-    payload["response"], not "messages" (which stay Anthropic-shaped). Falls
-    back to Responses-API shape (the "chatgpt" provider) where there's no
-    "choices" - tool calls are "function_call" items in response["output"]."""
+    """Shared: Claude Code (Anthropic/chat-completions shape) and Codex CLI
+    (Responses API shape). Whether this call's own completion invoked a
+    tool. LiteLLM normalizes the response to an OpenAI-style tool_calls
+    list, so this reads payload["response"], not "messages" (which stay
+    Anthropic-shaped). Falls back to Responses-API shape (the "chatgpt"
+    provider, i.e. Codex) where there's no "choices" - tool calls are
+    "function_call" items in response["output"], or "custom_tool_call"
+    items for Codex's freeform tools (e.g. "exec", which runs JS source,
+    not JSON arguments - see the custom_tool_call branch below)."""
     response = payload.get("response") or {}
     choices = response.get("choices") or []
     calls = []
@@ -391,19 +413,28 @@ def _response_tool_calls(payload: dict) -> list[tuple[str, dict]]:
         return calls
 
     for item in response.get("output") or []:
-        if not isinstance(item, dict) or item.get("type") != "function_call":
+        if not isinstance(item, dict):
             continue
-        name = item.get("name", "")
-        try:
-            arguments = json.loads(item.get("arguments") or "{}")
-        except (TypeError, ValueError):
-            arguments = {}
-        calls.append((name, arguments))
+        item_type = item.get("type")
+        if item_type == "function_call":
+            name = item.get("name", "")
+            try:
+                arguments = json.loads(item.get("arguments") or "{}")
+            except (TypeError, ValueError):
+                arguments = {}
+            calls.append((name, arguments))
+        elif item_type == "custom_tool_call":
+            # Codex's freeform tools (e.g. "exec") take raw source text in
+            # "input", not a JSON arguments blob - surface it under "command",
+            # which _tool_display_arg's key-preference chain already prefers.
+            calls.append((item.get("name", ""), {"command": item.get("input", "")}))
     return calls
 
 
 def _skill_name_and_version(payload: dict) -> tuple[str, str]:
-    """skill_name is the bare directory name (no version suffix - see
+    """Claude Code only - the "Skill" tool is a Claude Code concept, Codex
+    CLI has no equivalent, so this always returns ("", "") for a Codex
+    payload. skill_name is the bare directory name (no version suffix - see
     AGENTS.md). skill_version comes from the "<skill_version>" marker in
     the "available skills" listing, already present in this payload's
     messages."""
@@ -454,9 +485,13 @@ def _response_text(payload: dict) -> str:
 
 
 def _judge_verdict(response_text: str) -> tuple[Optional[bool], str]:
-    """Parses the goal-check judge's response, once at ingest, so the Trace
-    panel doesn't re-parse raw JSON per row. Expected shape: a bare
-    {"ok": <bool>, "reason": "<string>"} object."""
+    """Claude Code only - the goal-check judge call is issued by this repo's
+    Claude Code /goal Stop hook; Codex CLI has no equivalent lifecycle hook,
+    so a Codex payload never reaches this (see _JUDGE_CALL_PREFIX in
+    _classify_event/_prompt_kind_and_display). Parses the goal-check judge's
+    response, once at ingest, so the Trace panel doesn't re-parse raw JSON
+    per row. Expected shape: a bare {"ok": <bool>, "reason": "<string>"}
+    object."""
     try:
         data = json.loads(response_text)
     except (TypeError, ValueError):
@@ -474,6 +509,15 @@ def _prompt_kind_and_display(prompt_text: str, command_name: str, response_text:
     which prioritizes "did the response invoke a tool" and previously
     misclassified system-notification/judge-call prompts whose response
     happened to also call a tool as a real user prompt.
+
+    Every non-"real"/"command" prompt_kind here (system_notification,
+    judge_call, title_gen, transcript_handoff, suggestion_mode,
+    stop_hook_feedback) is a Claude Code CLI/hook lifecycle convention with
+    no Codex CLI equivalent - a Codex prompt never starts with any of these
+    prefixes, so it always falls through to the "real" branch at the bottom
+    (or "command", harmlessly, for a prompt that happens to contain a
+    literal "<command-args>" tag). Not a Codex-specific bug: there's simply
+    nothing here for Codex to misclassify into.
 
     Returns (prompt_kind, display_text, display_arg); display_arg is the
     variable "gray argument" part of the line (severity score, summary...),
@@ -578,7 +622,15 @@ def _classify_event(payload: dict) -> tuple[str, dict]:
     """The calculated_type/calculated_payload dispatcher. Priority: did
     this call's response invoke a tool (category A), else what did the
     triggering prompt look like (category B, port of panel-76's startsWith
-    chain). 'unknown' is a searchable bucket, not an error."""
+    chain). 'unknown' is a searchable bucket, not an error.
+
+    Shared vs CLI-specific outcomes: "tool_call"/"llm_answer"/"unknown" (and
+    "ask_user_question", which Codex CLI also exposes) apply to both CLIs.
+    "agent_spawn" and "skill_call" only ever fire for Claude Code (see
+    _agent_invocations_from_messages/_skill_name_and_version) - a Codex
+    payload's first tool call, if any, always lands in the generic
+    "tool_call" branch instead. Likewise every category-B kind besides
+    "real"/"command" is Claude Code-only (see _prompt_kind_and_display)."""
     tool_calls = _response_tool_calls(payload)
     if tool_calls:
         first_name, first_args = tool_calls[0]

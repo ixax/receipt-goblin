@@ -218,6 +218,7 @@ services:
       CLICKHOUSE_USER: *clickhouse-user
       CLICKHOUSE_PASSWORD: *clickhouse-password
       CLICKHOUSE_DATABASE: *clickhouse-database
+      MCP_SERVER_PORT: *mcp-server-port
     mem_limit: 256m
     restart: always
     healthcheck:
@@ -568,10 +569,11 @@ services:
       - receipt-goblin
 
   litellm:
-    # config.yaml/entrypoint baked into the image at build time - a change
-    # needs `docker compose build litellm`, no dev override, rarely edited
-    # live. user_configs/*.yaml stays bind-mounted below even in prod
-    # (gitignored, may hold real secrets/hosts).
+    # config.yaml/entrypoint/user_configs all baked into the image at build
+    # time in prod - a change (including a new/edited user_configs/*.yaml,
+    # gitignored, may hold real hosts/keys) needs `docker compose build
+    # litellm`. docker-compose.dev.yml bind-mounts user_configs/ back for
+    # live editing without a rebuild - see services/litellm/Dockerfile.
     build: ./services/litellm
     image: receipt-goblin-litellm:${LITELLM_TAG:-latest}
     container_name: receipt-goblin-litellm
@@ -586,12 +588,6 @@ services:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_HOST: *langfuse-base-url
-    volumes:
-      # docker-entrypoint.sh merges in any config.<name>.yaml found here
-      # (e.g. config.ollama.yaml - see user_configs/config.yaml.tmpl).
-      # Gitignored, may hold real hosts/keys, so stays bind-mounted even in
-      # prod: a new remote model source is just drop-file + restart, no rebuild.
-      - ./services/litellm/user_configs:/app/litellm-config/user_configs:ro
     mem_limit: 2g
     cpus: 2.0
     healthcheck:
