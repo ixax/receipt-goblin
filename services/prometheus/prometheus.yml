@@ -87,6 +87,30 @@ scrape_configs:
           # Infra dashboard when the profile isn't enabled (no alert rule
           # wired to it, so this doesn't page anyone).
           - http://langfuse-web:3000/api/public/health
+          - http://langfuse-clickhouse:8123/ping
+          - http://langfuse-minio:9000/minio/health/live
+          - http://langfuse-worker:3030/api/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+
+  # Plain TCP-connect probing (see services/blackbox/config.yml's
+  # tcp_connect module) for backends with no HTTP health endpoint at all -
+  # langfuse-db (Postgres) and langfuse-redis. Just confirms the port
+  # accepts a connection; same opt-in-profile/no-alert reasoning as the
+  # langfuse-* targets in the `blackbox` job above.
+  - job_name: blackbox-tcp
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets:
+          - langfuse-db:5432
+          - langfuse-redis:6379
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
