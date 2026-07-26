@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Generate/update the query-performance companion dashboard.
+"""Render the query-performance companion dashboard from a panel tree.
 
-Reads panel metadata (id, title, tab/sub-tab path) for a given tab of
-services/grafana/dashboards/agents_overview.json and emits, for each
-panel already tagged by tag_panel_queries.py, a collapsible row in
-services/grafana/dashboards-health/query_performance.json titled
-"[<id>] <source title>", containing 4 panels:
+This is the "template" half of a two-script pipeline - the other half,
+extract_panel_tree.py, parses services/grafana/dashboards/agents_overview.json
+into a tree JSON (every top-level tab, its sub-tabs, and each panel's
+id/title/tagged state). This script reads that tree (--tree) and stamps it
+onto services/grafana/dashboards-health/query_performance.json, without
+touching agents_overview.json itself.
+
+For each tree panel already tagged by tag_panel_queries.py, emits a
+collapsible row titled "[<id>] <source title>", containing 4 panels:
 
   - Duration: query_duration_ms over time
   - Memory usage: memory_usage (bytes) over time
@@ -18,7 +22,7 @@ gets onto the source panel's rawSql, and AGENTS.md for the known
 CLICKHOUSE_USER grant fragility this depends on
 (SELECT ON system.query_log).
 
-The output dashboard's tab/sub-tab layout mirrors the source tab's
+The output dashboard's tab/sub-tab layout mirrors each tree tab's
 structure 1:1 (flat tab -> a RowsLayout of one collapsible row per
 source panel; tab with sub-tabs -> nested TabsLayout, one level deep,
 matching what agents_overview.json itself uses, with a RowsLayout at
@@ -28,14 +32,19 @@ or docker_containers.json for the RowsLayout/RowsLayoutRow shape this
 reuses).
 
 Usage:
-  build_query_perf_dashboard.py --tab "Top N" \\
-      --source services/grafana/dashboards/agents_overview.json \\
+  # full rebuild - every tab in the tree, one command
+  extract_panel_tree.py --out services/grafana/scripts/panel_tree.json
+  build_query_perf_dashboard.py --tree services/grafana/scripts/panel_tree.json \\
       --out services/grafana/dashboards-health/query_performance.json
 
-Re-running regenerates the given tab's panels from scratch (other tabs
-already present in --out are left untouched) - this is the mechanism
-dashboard-panels-builder uses to keep the mirror in sync after a panel
-is added/edited/removed in agents_overview.json (see SKILL.md).
+  # scoped sync - just one tab, other tabs in --out left untouched
+  build_query_perf_dashboard.py --tree services/grafana/scripts/panel_tree.json \\
+      --out services/grafana/dashboards-health/query_performance.json --tab "Top N"
+
+Always re-run extract_panel_tree.py first if agents_overview.json's panels,
+tags, or tabs changed since the tree was last written - this script only ever
+reads the tree, never the source dashboard, so a stale tree silently renders
+stale data.
 """
 import argparse
 import json
@@ -55,21 +64,6 @@ def load(path):
         return json.load(f)
 
 
-def walk_source_layout(layout, path):
-    """Yield (path_titles, [panel_refs]) for every leaf GridLayout in agents_overview.json."""
-    if layout.get("kind") == "GridLayout":
-        ids = []
-        for item in layout["spec"]["items"]:
-            el = item["spec"]["element"]
-            if el.get("kind") == "ElementReference":
-                ids.append(el["name"])
-        yield path, ids
-    elif layout.get("kind") == "TabsLayout":
-        for tab in layout["spec"]["tabs"]:
-            tspec = tab["spec"]
-            yield from walk_source_layout(tspec["layout"], path + [tspec["title"]])
-
-
 def refs_in_output_layout(layout):
     """All panel refs referenced anywhere under a query_performance.json layout
     (TabsLayout / RowsLayout / GridLayout, in any nesting)."""
@@ -87,21 +81,6 @@ def refs_in_output_layout(layout):
         for row in layout["spec"]["rows"]:
             refs |= refs_in_output_layout(row["spec"]["layout"])
     return refs
-
-
-def find_tab_layout(spec, tab_title):
-    for tab in spec["layout"]["spec"]["tabs"]:
-        if tab["spec"]["title"] == tab_title:
-            return tab["spec"]["layout"]
-    return None
-
-
-def is_tagged(panel_spec, panel_id):
-    marker = f"{TAG_PREFIX}{panel_id}'"
-    for q in panel_spec["data"]["spec"]["queries"]:
-        if marker in q["spec"]["query"]["spec"]["rawSql"]:
-            return True
-    return False
 
 
 def query(ref_id, raw_sql, fmt):
@@ -512,19 +491,45 @@ def new_dashboard_shell():
     }
 
 
+def render_tab(tab_entry, out_elements):
+    """tab_entry: one {"title": ..., "groups": [...]} entry from the tree.
+    Builds every tagged panel's elements into out_elements, returns
+    (new_tab_dict, new_refs, untagged)."""
+    groups = []
+    new_refs = []
+    untagged = []
+    for group in tab_entry["groups"]:
+        source_panels = []
+        for p in group["panels"]:
+            if not p["tagged"]:
+                untagged.append((p["id"], p["title"]))
+                continue
+            refs, panels = build_panels_for(p["id"])
+            for r, panel in zip(refs, panels):
+                out_elements[r] = panel
+            source_panels.append((p["id"], p["title"], refs))
+            new_refs.extend(refs)
+        groups.append((group["subtitle"], source_panels))
+
+    new_tab = {"kind": "TabsLayoutTab", "spec": {"title": tab_entry["title"], "layout": build_tab_layout(groups)}}
+    return new_tab, new_refs, untagged
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--source", default="services/grafana/dashboards/agents_overview.json")
+    ap.add_argument("--tree", required=True, help="Panel tree JSON from extract_panel_tree.py")
     ap.add_argument("--out", default="services/grafana/dashboards-health/query_performance.json")
-    ap.add_argument("--tab", required=True, help="Source tab title to (re)generate, e.g. 'Top N'")
+    ap.add_argument("--tab", help="Only (re)generate this one tab; omit for a full rebuild of every tab in the tree")
     args = ap.parse_args()
 
-    src = load(args.source)
-    src_spec = src["spec"]
-    tab_layout = find_tab_layout(src_spec, args.tab)
-    if tab_layout is None:
-        print(f"error: tab '{args.tab}' not found in {args.source}", file=sys.stderr)
-        sys.exit(1)
+    tree = load(args.tree)
+    if args.tab:
+        tab_entries = [t for t in tree["tabs"] if t["title"] == args.tab]
+        if not tab_entries:
+            print(f"error: tab '{args.tab}' not found in {args.tree}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        tab_entries = tree["tabs"]
 
     try:
         out = load(args.out)
@@ -532,52 +537,36 @@ def main():
         out = new_dashboard_shell()
 
     out_spec = out["spec"]
-
-    # drop any existing elements/layout entries for this tab before regenerating
     out_layout_tabs = out_spec["layout"]["spec"]["tabs"]
-    out_layout_tabs[:] = [t for t in out_layout_tabs if t["spec"]["title"] != args.tab]
 
-    groups = []
+    # drop any existing elements/layout entries for the tab(s) being (re)generated
+    regenerated_titles = {t["title"] for t in tab_entries}
+    out_layout_tabs[:] = [t for t in out_layout_tabs if t["spec"]["title"] not in regenerated_titles]
+
     all_new_refs = []
-    untagged = []
-    for path, panel_refs in walk_source_layout(tab_layout, [args.tab]):
-        subtitle = path[1] if len(path) > 1 else None
-        source_panels = []
-        for ref in panel_refs:
-            panel = src_spec["elements"].get(ref)
-            if not panel:
-                continue
-            pspec = panel["spec"]
-            pid = pspec["id"]
-            if not is_tagged(pspec, pid):
-                untagged.append((pid, pspec["title"]))
-                continue
-            refs, panels = build_panels_for(pid)
-            for r, p in zip(refs, panels):
-                out_spec["elements"][r] = p
-            source_panels.append((pid, pspec["title"], refs))
-            all_new_refs.extend(refs)
-        groups.append((subtitle, source_panels))
+    all_untagged = []
+    for tab_entry in tab_entries:
+        new_tab, new_refs, untagged = render_tab(tab_entry, out_spec["elements"])
+        out_layout_tabs.append(new_tab)
+        all_new_refs.extend(new_refs)
+        all_untagged.extend(untagged)
 
-    if untagged:
-        names = ", ".join(f"{pid} ({t})" for pid, t in untagged)
+    if all_untagged:
+        names = ", ".join(f"{pid} ({t})" for pid, t in all_untagged)
         print(f"warning: skipped untagged panels (run tag_panel_queries.py first): {names}", file=sys.stderr)
 
-    # drop stale elements from a previous generation of this tab that are no
-    # longer referenced by any tab (covers panels removed from the source tab)
+    # drop stale elements no longer referenced by any tab (covers panels
+    # removed from the source tab(s) since the tree was last generated)
     referenced = set()
     for tab in out_layout_tabs:
         referenced |= refs_in_output_layout(tab["spec"]["layout"])
     referenced.update(all_new_refs)
     out_spec["elements"] = {k: v for k, v in out_spec["elements"].items() if k in referenced}
 
-    new_tab = {"kind": "TabsLayoutTab", "spec": {"title": args.tab, "layout": build_tab_layout(groups)}}
-    out_layout_tabs.append(new_tab)
-
     # (Re)generate the standalone Query Detail tab + its query_id variable
-    # every run, regardless of which source --tab was requested - it isn't
-    # tied to any one source tab, it's the shared drill-down destination
-    # every "Recent executions" table's query_id column links to.
+    # every run, regardless of which tab(s) were requested - it isn't tied to
+    # any one source tab, it's the shared drill-down destination every
+    # "Recent executions" table's query_id column links to.
     out_layout_tabs[:] = [t for t in out_layout_tabs if t["spec"]["title"] != QUERY_DETAIL_TAB_TITLE]
     detail_tab, detail_refs = build_query_detail_tab(out_spec["elements"])
     out_layout_tabs.append(detail_tab)
@@ -591,7 +580,8 @@ def main():
         json.dump(out, f, indent=2, ensure_ascii=True)
         f.write("\n")
 
-    print(f"wrote {len(all_new_refs)} panels for tab '{args.tab}' to {args.out}")
+    scope = f"tab '{args.tab}'" if args.tab else f"all {len(tab_entries)} tabs"
+    print(f"wrote {len(all_new_refs)} panels for {scope} to {args.out}")
 
 
 if __name__ == "__main__":

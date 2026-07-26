@@ -10,3 +10,4 @@
 services/webhook/.venv
 services/litellm/user_configs/*.yaml
 .image-tags.mk
+services/grafana/scripts/panel_tree.json
