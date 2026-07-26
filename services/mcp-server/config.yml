@@ -16,6 +16,12 @@ allowed_tables:
   - ingest_dlq
   - plan_proposals
   - schema_migrations
+  # Narrow, deliberate exception to the system.* ban below (server.py's
+  # _validate_readonly_sql special-cases "system.query_log" specifically -
+  # this bare name alone doesn't grant access, the schema-qualifier check
+  # does the real work): needed for query-performance introspection
+  # (services/grafana/dashboards-health/query_performance.json).
+  - query_log
 
 # Word-boundary matched against the uppercased query - catches these
 # anywhere (subqueries, CTEs), not just as the first keyword.

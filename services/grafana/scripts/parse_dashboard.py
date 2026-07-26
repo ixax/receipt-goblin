@@ -89,6 +89,16 @@ def cmd_show_panel(args):
         print(f"query[{i}]: {json.dumps(qspec, indent=2)}")
 
 
+def cmd_show_variable(args):
+    spec = load(args.file)["spec"]
+    for v in spec.get("variables", []):
+        if v.get("spec", {}).get("name") == args.name:
+            print(json.dumps(v, indent=2))
+            return
+    print(f"no variable named '{args.name}'", file=sys.stderr)
+    sys.exit(1)
+
+
 def cmd_summary(args):
     d = load(args.file)
     spec = d["spec"]
@@ -127,6 +137,11 @@ def main():
     p.add_argument("--id", type=int)
     p.add_argument("--title")
     p.set_defaults(func=cmd_show_panel)
+
+    p = sub.add_parser("show-variable")
+    p.add_argument("file")
+    p.add_argument("--name", required=True)
+    p.set_defaults(func=cmd_show_variable)
 
     p = sub.add_parser("summary")
     p.add_argument("file")

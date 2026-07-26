@@ -60,7 +60,7 @@ VKEY := $(if $(strip $(LITELLM_VIRTUAL_KEY)),$(LITELLM_VIRTUAL_KEY),<virtual key
 $(shell python3 scripts/resolve_image_version.py > .image-tags.mk)
 include .image-tags.mk
 
-.PHONY: check-env start stop restart up-no-deps env test build langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
+.PHONY: check-env start up stop restart up-no-deps env test build langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	observability-up observability-down observability-logs observability-status loadtest
@@ -84,10 +84,13 @@ check-env:
 	@echo "⚠️  ENVIRONMENT=$(ENVIRONMENT)"
 	@python3 scripts/resolve_image_version.py | sed 's/^export /⚠️  /'
 
-# SERVICE is optional - `make up` (re)creates the whole stack, `make up
-# SERVICE=webhook` scopes --build/--force-recreate to just that one
-# service, same convention as `make build SERVICE=...` below.
-start up: check-env
+# `start`: Brings up containers with existing images (no rebuild/recreate).
+# `up`: Rebuilds and recreates containers - the fix for baked-in config/env/file changes.
+# Both support SERVICE=<name> to scope to a single service (default: whole stack).
+start: check-env
+	docker compose $(COMPOSE_FILES) up -d $(SERVICE)
+
+up: check-env
 	docker compose $(COMPOSE_FILES) up -d --build --force-recreate $(SERVICE)
 
 # SERVICE is required here (unlike `make up`) - recreates just that one
@@ -120,11 +123,12 @@ stop down: check-env langfuse-down observability-down
 logs: check-env
 	docker compose $(COMPOSE_FILES) logs -f
 
-# Opt-in Langfuse stack (see README "Langfuse"). `make up`/`make down` call
-# these automatically; run them directly if you only want to bounce Langfuse
-# without touching the core stack.
+# Opt-in Langfuse stack (see README "Langfuse"). Langfuse never starts
+# automatically - must be run explicitly. Run this directly if you want to
+# bring up Langfuse without touching the core stack. `make stop`/`make down`
+# will tear it down automatically as a courtesy.
 langfuse-up: check-env
-	docker compose $(COMPOSE_FILES) --profile langfuse up -d --build $(LANGFUSE_SERVICES)
+	docker compose $(COMPOSE_FILES) --profile langfuse up -d --build --force-recreate $(LANGFUSE_SERVICES)
 
 # `docker compose --profile langfuse down` (no service args) tears down the
 # core stack too, since --profile langfuse activates langfuse *in addition
@@ -137,11 +141,11 @@ langfuse-logs: check-env
 	docker compose $(COMPOSE_FILES) --profile langfuse logs -f $(LANGFUSE_SERVICES)
 
 # Opt-in observability stack (Prometheus/Blackbox/redis-exporter/Loki/Alloy -
-# see README "Observability"). `make up`/`make down` call observability-down
-# automatically on teardown; run these directly to bounce just this stack
-# without touching the core services.
+# see README "Observability"). Observability never starts automatically - must be
+# run explicitly. Run this directly to start the observability stack. `make stop`/
+# `make down` will tear it down automatically as a courtesy.
 observability-up: check-env
-	docker compose $(COMPOSE_FILES) --profile observability up -d --build $(OBSERVABILITY_SERVICES)
+	docker compose $(COMPOSE_FILES) --profile observability up -d --build --force-recreate $(OBSERVABILITY_SERVICES)
 
 # `docker compose --profile observability down` (no service args) tears down
 # the core stack too, since --profile observability activates observability
@@ -158,7 +162,7 @@ observability-status: check-env
 
 # Restarts running containers in place (not a rebuild) - picks up edits to
 # bind-mounted source (services/webhook/src, etc.) for services without
-# --reload, like worker. Run `make start` instead if
+# --reload, like worker. Run `make up` instead if
 # requirements.txt/Dockerfile changed.
 restart: check-env
 	docker compose $(COMPOSE_FILES) restart

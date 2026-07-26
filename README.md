@@ -23,14 +23,20 @@ See `AGENTS.md` for architecture and schema details.
 All of these are published by the single `load-balancer` (nginx) service now, not by each service's own container - see "Configuration" under "Reference" below.
 `http://localhost:<port>` still works exactly as before either way.
 
-| Service      | Base URL              | Admin/UI                                                                                                                                                                                                                                                      |
-| ------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `webhook`    | http://localhost:8010 | none - POST-only ingest API, nothing to open in a browser.                                                                                                                                                                                                    |
-| `litellm`    | http://localhost:4000 | `/ui` (http://localhost:4000/ui) - keys/teams/usage/logs, log in with `admin` / your `LITELLM_MASTER_KEY`. See "Issue yourself a personal key" below.                                                                                                         |
-| `grafana`    | http://localhost:3000 | root is the dashboard itself (http://localhost:3000/d/agents-overview/agents-overview) - anonymous viewer access is enabled by default, no login needed.                                                                                                      |
-| `clickhouse` | http://localhost:8123 | `/play` (http://localhost:8123/play) - SQL query UI; `/dashboard` (http://localhost:8123/dashboard) - ClickHouse's built-in dashboards. Both need `system.*` SELECT - `admin` already has it, see "Create additional ClickHouse users" below for anyone else. |
-| `mcp-server` | http://localhost:8001 | none - MCP endpoint only (`/whatsup` etc. in Claude Code, via `.mcp.json`), nothing to open in a browser.                                                                                                                                                     |
-| `langfuse`   | http://localhost:3001 | root is the login UI. Optional - only up when the `langfuse` compose profile is enabled, see "Langfuse" below.                                                                                                                                                |
+- [`webhook`](http://localhost:8010) - POST-only ingest API, nothing to open in a browser.
+- [`litellm`](http://localhost:4000) - [`/ui`](http://localhost:4000/ui) for keys/teams/usage/logs, log in with `admin` / your `LITELLM_MASTER_KEY`.
+  See "Issue yourself a personal key" below.
+- [`grafana`](http://localhost:3000) - anonymous viewer access is enabled by default, no login needed.
+  - [Agents Overview](http://localhost:3000/d/agents-overview/agents-overview) - root dashboard, cost/token/error/latency/adoption for tracked agent traffic (`services/grafana/dashboards/agents_overview.json`).
+  - [ClickHouse Health](http://localhost:3000/d/clickhouse-health/clickhouse-health) - ClickHouse server-level health (`services/grafana/dashboards-health/clickhouse.json`).
+  - [Docker Containers](http://localhost:3000/d/docker-containers/docker-containers) - per-container CPU/memory/network/disk (cAdvisor) plus whole-host resource metrics (node_exporter) (`services/grafana/dashboards-health/docker_containers.json`).
+  - [Infra Overview](http://localhost:3000/d/infra-overview/infra-overview) - up/down status, request rate/latency, and worker queue health for every service added by the observability migration (`services/grafana/dashboards-health/infra_overview.json`).
+  - [Query Performance (agents_overview)](http://localhost:3000/d/query-performance/query-performance) - per-panel ClickHouse query cost for Agents Overview, mirrors its tab structure (`services/grafana/dashboards-health/query_performance.json`).
+- [`clickhouse`](http://localhost:8123) - [`/play`](http://localhost:8123/play) SQL query UI; [`/dashboard`](http://localhost:8123/dashboard) ClickHouse's built-in dashboards.
+  Both need `system.*` SELECT - `admin` already has it, see "Create additional ClickHouse users" below for anyone else.
+- [`mcp-server`](http://localhost:8001) - MCP endpoint only (`/whatsup` etc. in Claude Code, via `.mcp.json`), nothing to open in a browser.
+- [`langfuse`](http://localhost:3001) - root is the login UI.
+  Optional - only up when the `langfuse` compose profile is enabled, see "Langfuse" below.
 
 ## Getting started
 
@@ -61,7 +67,7 @@ Your personal LiteLLM key does **not** go in `.env` at all - see the next step.
 `ENVIRONMENT` in `.env` (default `development`) decides which mode `make` runs in - every `make` target prints `⚠️  ENVIRONMENT=...` first so it's always obvious which one is active.
 
 - **`development`** (default) layers `docker-compose.dev.yml` on top of `docker-compose.yml`, bind-mounting live source/config into the containers and enabling `--reload` for `webhook`/`mcp-server` - editing `services/webhook/src/*.py` or a Grafana dashboard JSON takes effect without a rebuild.
-- **`production`** (`ENVIRONMENT=production make start`, or set `ENVIRONMENT=production` in `.env`) uses `docker-compose.yml` alone - every service then runs the image built entirely from its own `Dockerfile`, with no source/config bind mounts and no `command:`/`entrypoint:` overrides; picking up a code change requires rebuilding (`ENVIRONMENT=production make start` again).
+- **`production`** (`ENVIRONMENT=production make up`, or set `ENVIRONMENT=production` in `.env`) uses `docker-compose.yml` alone - every service then runs the image built entirely from its own `Dockerfile`, with no source/config bind mounts and no `command:`/`entrypoint:` overrides; picking up a code change requires rebuilding (`ENVIRONMENT=production make up` again).
 
 ### Start the stack
 
@@ -69,18 +75,22 @@ Your personal LiteLLM key does **not** go in `.env` at all - see the next step.
 make start
 ```
 
-This starts the core stack and, via `make langfuse-up`, the optional Langfuse stack (LLM tracing/observability UI, behind a compose profile) too - see "Langfuse" below. Run `make langfuse-up`/`make langfuse-down`/`make langfuse-logs` directly if you want to manage Langfuse on its own, without touching the core stack.
+This starts the core stack only. Langfuse and observability never start automatically - must be run explicitly via `make langfuse-up` and `make observability-up` respectively. Run `make langfuse-up`/`make langfuse-down`/`make langfuse-logs` directly to manage Langfuse on its own without touching the core stack; `make stop`/`make down` will tear down both Langfuse and observability automatically as a courtesy.
 
 ### Build or start a single service
 
-`SERVICE` is optional on both `make build` and `make up` (`up` is an alias for `start`):
+`SERVICE` is optional on both `make build` and `make up`:
 
 ```bash
 make build SERVICE=webhook   # just (re)build the webhook image, don't start it
 make up SERVICE=webhook      # (re)build and (re)start just webhook
 make build                   # build every service's image
-make up                      # (re)build and (re)start the whole stack, same as `make start`
+make up                      # (re)build and (re)start the whole stack
+make start SERVICE=webhook   # start webhook with existing image (no rebuild)
+make start                   # bring up the whole stack with existing images
 ```
+
+`up` rebuilds and recreates containers - use this when you've changed a Dockerfile, config baked into the image, or a service's `environment:` in the compose files. `start` just brings up whatever's already built - faster when you only want to resume after a `make stop`.
 
 Always go through `make build`/`make up` rather than calling `docker compose build`/`docker compose up` directly - the `Makefile` resolves each service's image tag from `VERSIONS.yml` first (`scripts/resolve_image_version.py`) and exports it before invoking `docker compose`; a raw `docker compose build`/`up` skips that resolution and leaves you with an image tagged out of step with `VERSIONS.yml`.
 
@@ -613,13 +623,13 @@ It's fed the same way `webhook` is: `services/litellm/config.yaml`'s `litellm_se
 
 ### It's optional - the `langfuse` compose profile
 
-All six Langfuse services carry `profiles: [langfuse]` in `docker-compose.yml`, so a plain `docker compose up -d` **never starts them** - only the core stack (`clickhouse`, `redis`, `webhook`, `webhook-worker`, `grafana`, `litellm`, `litellm-db`, `mcp-server`) comes up by default. `make up`/`make start` bring both up together though: they call `make langfuse-up` as a prerequisite, which runs
+All six Langfuse services carry `profiles: [langfuse]` in `docker-compose.yml`, so a plain `docker compose up -d` **never starts them** - only the core stack (`clickhouse`, `redis`, `webhook`, `webhook-worker`, `grafana`, `litellm`, `litellm-db`, `mcp-server`) comes up by default. Langfuse never starts automatically via `make up` or `make start` - start it explicitly via `make langfuse-up`:
 
 ```sh
 docker compose --profile langfuse up -d --build langfuse-web langfuse-worker langfuse-db langfuse-clickhouse langfuse-minio langfuse-redis
 ```
 
-Likewise `make down`/`make stop` call `make langfuse-down` first, which brings just those six containers down (`docker compose --profile langfuse down <the six services>` - listing them explicitly matters, since a bare `docker compose --profile langfuse down` with no service args tears down the core stack too, as `--profile langfuse` activates Langfuse *in addition to* default no-profile services). Run `make langfuse-up`/`make langfuse-down`/`make langfuse-logs` directly if you want to manage Langfuse on its own without touching the core stack, or drop straight to `docker compose --profile langfuse up -d` / `--profile langfuse down` if you're not using `make` at all (the latter takes the whole stack down together, core included).
+However, `make down`/`make stop` call `make langfuse-down` automatically as a courtesy - it brings just those six containers down (`docker compose --profile langfuse down <the six services>` - listing them explicitly matters, since a bare `docker compose --profile langfuse down` with no service args tears down the core stack too, as `--profile langfuse` activates Langfuse *in addition to* default no-profile services). Run `make langfuse-up`/`make langfuse-down`/`make langfuse-logs` directly if you want to manage Langfuse on its own without touching the core stack, or drop straight to `docker compose --profile langfuse up -d` / `--profile langfuse down` if you're not using `make` at all (the latter takes the whole stack down together, core included).
 
 Because of this, every `LANGFUSE_*` var - both the six-services-internal ones (`LANGFUSE_CLICKHOUSE_USER`/`PASSWORD`, `LANGFUSE_DB_PASSWORD`, `LANGFUSE_REDIS_PASSWORD`, `LANGFUSE_MINIO_ROOT_USER`/`PASSWORD`, `LANGFUSE_SALT`, `LANGFUSE_ENCRYPTION_KEY`, `LANGFUSE_NEXTAUTH_SECRET`) and the ones `litellm` itself reads (`LANGFUSE_PUBLIC_KEY`/`SECRET_KEY`) - default to empty (`${VAR:-}`) rather than the `${VAR:?...}` required-and-fail-fast pattern used everywhere else in this file. That's deliberate: unlike `CLICKHOUSE_PASSWORD` or `LITELLM_MASTER_KEY`, nothing else in the stack needs these to boot, and `docker compose` interpolates env vars for every service defined in the file regardless of which profiles are active - a `:?` here would break `docker compose up` for anyone who hasn't set up Langfuse at all, profile or not. Leaving them unset just means: Langfuse containers won't start (no profile → moot) and, if you *do* start `litellm` without ever touching Langfuse, its `langfuse` success/failure callback quietly fails per-call (logged, not fatal - LiteLLM itself still works) since it has nothing to authenticate with. Fill in `.env` (see `.env.example`) before enabling the profile for real.
 
@@ -652,7 +662,7 @@ And it has to be `docker compose up -d litellm` (recreate), not `docker compose 
 ## Observability
 
 A second, fully separate opt-in layer - infra-level metrics and logs (CPU, memory, container health, HTTP uptime, container stdout/stderr) rather than the application-level agent/LLM data ClickHouse+Grafana above track.
-Seven services, all `services/{prometheus,blackbox,redis-exporter,cadvisor,node-exporter,loki,alloy}/`, gated behind the `observability` compose profile so a plain `make start`/`make up` never brings them up.
+Seven services, all `services/{prometheus,blackbox,redis-exporter,cadvisor,node-exporter,loki,alloy}/`, gated behind the `observability` compose profile so a plain `make start` or `make up` never brings them up.
 
 | Service          | Responsible for                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

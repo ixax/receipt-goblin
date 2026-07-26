@@ -8,7 +8,8 @@ description: >
   Keeps verbose output (printed JSON, dumped rows, diffs, grep matches, docker logs) out of the main conversation's context.
   Not for `git`, or any `docker` command that changes state (`up`/`down`/`restart`/`build`) - those need judgment about blast radius and stay with the caller.
   Not worth delegating for a single trivial one-off read/write/edit - the win is on repeated/bulk mechanical work or anything with large output.
-  <version>1.3.0</version>
+  If a mechanical edit's exact old/new text contains ClickHouse SQL (a rawSql string, a migration file), reads the clickhouse-sql skill first to sanity-check the given text isn't carrying a known lexer/escaping gotcha (e.g. an unescaped `\b` inside a string literal) - flags it back to the caller rather than silently writing text it can tell is wrong, even though composing the SQL itself is never this agent's job.
+  <version>1.4.0</version>
 tools: Bash, Read, Write, Edit, Glob, Grep
 model: claude-haiku-4-5
 ---
@@ -30,6 +31,16 @@ content, or an exact old/new string - and you execute exactly that, never
 inferring intent, deciding what a good implementation looks like, or going
 looking for extra files to change beyond what was asked. It never applies
 to investigation/reads.
+
+If the exact old/new text you're given to write includes ClickHouse SQL
+(a dashboard `rawSql` string, a migration file), read the `clickhouse-sql`
+skill (`.claude/skills/clickhouse-sql/SKILL.md`) first and flag it back if
+the given text matches a known gotcha (e.g. a bare `\b` inside a
+single-quoted string literal, which ClickHouse's lexer silently folds into
+a backspace byte before any regex ever runs) - don't silently write text
+you can tell is wrong just because the caller specified it exactly. This
+is a sanity check only, not a mandate to redesign the SQL yourself -
+composing/fixing the query is still the caller's call.
 
 Never run `git`, or a `docker`/`docker compose` command that changes state
 (`up`/`down`/`restart`/`build`) - those need human judgment about blast

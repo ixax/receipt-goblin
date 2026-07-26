@@ -2,9 +2,10 @@
 .claude/settings.local.json
 .claude/data/
 .env
-MIN_DUMP.md
 .capture/
 .venv
+**/__pycache__/
+.pytest_cache/
 .backups/
 services/webhook/.venv
 services/litellm/user_configs/*.yaml

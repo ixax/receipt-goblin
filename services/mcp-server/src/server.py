@@ -2,15 +2,18 @@
 
 Claude Code talks to it over Streamable HTTP (see `.mcp.json`).
 `query`/`profile_query` accept arbitrary SQL from the model, validated in
-`_validate_readonly_sql` (SELECT/WITH only, no DDL/DML, no system tables,
-no remote/file/URL functions, every FROM/JOIN target in `_ALLOWED_TABLES`
-- not just "some allowed name appears somewhere in the query", which used
-to let a query join an allowlisted table together with an arbitrary
-out-of-allowlist one). There is no separate read-only ClickHouse user, so
-this validation is the only thing preventing a write/DDL statement or an
-unauthorized table read - keep it strict rather than convenient, and treat
-any change to `_validate_readonly_sql`/`_strip_sql_comments`/
-`_referenced_tables` as security-sensitive.
+`_validate_readonly_sql` (SELECT/WITH only, no DDL/DML, no system tables
+except `system.query_log` - a narrow, deliberate exception for
+query-performance introspection, everything else under `system.*` stays
+blocked - no remote/file/URL functions, every FROM/JOIN target in
+`_ALLOWED_TABLES` - not just "some allowed name appears somewhere in the
+query", which used to let a query join an allowlisted table together with
+an arbitrary out-of-allowlist one). There is no separate read-only
+ClickHouse user, so this validation is the only thing preventing a
+write/DDL statement or an unauthorized table read - keep it strict rather
+than convenient, and treat any change to
+`_validate_readonly_sql`/`_strip_sql_comments`/`_referenced_tables` as
+security-sensitive.
 """
 import os
 import re
@@ -187,13 +190,29 @@ def _validate_readonly_sql(sql: str) -> str:
 
     upper = stripped.upper()
     for kw in _FORBIDDEN_KEYWORDS:
+        if kw == "SYSTEM":
+            # Handled separately below: SYSTEM <command> (FLUSH LOGS, RELOAD
+            # DICTIONARY, ...) stays forbidden, but system.query_log is a
+            # narrow, deliberate exception to the system-tables ban (see the
+            # module docstring) - the negative lookahead here is what tells
+            # the two apart, so "SYSTEM" can't just run through the generic
+            # keyword loop like the rest of _FORBIDDEN_KEYWORDS.
+            continue
         if re.search(rf"\b{kw}\b", upper):
             raise ValueError(f"'{kw}' is not allowed in read-only queries.")
     for fn in _FORBIDDEN_TABLE_FUNCTIONS:
         if re.search(rf"\b{fn}\s*\(", upper):
             raise ValueError(f"Table function '{fn}(...)' is not allowed.")
-    if re.search(r"\b(SYSTEM|INFORMATION_SCHEMA|MYSQL)\s*\.", upper):
-        raise ValueError("Access to system/information_schema/mysql databases is not allowed.")
+    if re.search(r"\bSYSTEM\b(?!\s*\.)", upper):
+        raise ValueError("'SYSTEM' is not allowed in read-only queries.")
+    if re.search(r"\b(INFORMATION_SCHEMA|MYSQL)\s*\.", upper):
+        raise ValueError("Access to information_schema/mysql databases is not allowed.")
+    for m in re.finditer(r"\bSYSTEM\s*\.\s*([A-Z_][A-Z0-9_]*)", upper):
+        if m.group(1) != "QUERY_LOG":
+            raise ValueError(
+                f"'system.{m.group(1).lower()}' is not allowed - only "
+                "system.query_log is allowlisted among system.* tables."
+            )
 
     # Every FROM/JOIN target must be in the allowlist - not just "at least
     # one token somewhere in the query matches an allowed name" (the prior
