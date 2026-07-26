@@ -12,7 +12,8 @@ allowed_tables:
   - session_git_branch
   - ai_gateway_users
   - ai_gateway_groups
-  - event_sources
+  - ingest_raw
+  - ingest_dlq
   - plan_proposals
   - schema_migrations
 
