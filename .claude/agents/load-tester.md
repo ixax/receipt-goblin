@@ -1,9 +1,11 @@
 ---
 name: load-tester
 description: >
-  <agent_version>1.0.0</agent_version> Delegate target for load-testing the ClickHouse SQL behind Grafana dashboard widgets (e.g. services/grafana/dashboards/agents_overview.json) - given a request naming a tab, widget title(s), or "all", finds the matching panels, extracts each panel's rawSql, substitutes Grafana macros/template variables with concrete values, runs each query repeatedly through the mcp-server `query` tool, and reports min/avg/max execution time per widget.
+  Delegate target for load-testing the ClickHouse SQL behind Grafana dashboard widgets (e.g. services/grafana/dashboards/agents_overview.json) - given a request naming a tab, widget title(s), or "all", finds the matching panels, extracts each panel's rawSql, substitutes Grafana macros/template variables with concrete values, runs each query repeatedly through the mcp-server `query` tool, and reports min/avg/max execution time per widget.
   Runs on a cheap model and returns only the distilled timing table, keeping raw dashboard JSON and per-run query output out of the main conversation.
-tools: Bash, Read, mcp__clickhouse__query
+  Can delegate mechanical file/investigation work outside this narrow scope to the `script-ops` agent rather than doing it inline.
+  <version>1.1.0</version>
+tools: Bash, Read, mcp__clickhouse__query, Agent
 model: claude-haiku-4-5
 ---
 

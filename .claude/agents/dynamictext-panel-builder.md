@@ -5,6 +5,7 @@ description: >
   Building one of these correctly requires a specific, non-obvious set of ClickHouse SQL tricks (UTF8-safe padding, one-row-per-session tree aggregation, HTML escaping order, ASOF joins for best-effort agent attribution) and Grafana plugin quirks (editor.format must be "html", not "markdown", or raw tags get escaped) that took many iterations to get right - re-deriving them from scratch in the main conversation wastes turns and tends to reintroduce already-fixed bugs (byte-based substring corrupting Cyrillic, %M meaning month not minutes, silent truncation breaking span-wrapping). Delegate here instead.
   Has write access (Edit/Bash+python) to perform the actual panel JSON edit itself, plus mcp__clickhouse__query to test SQL against real data before deploying - the caller should not hand-edit the panel or test queries directly.
   SCOPE - NOT a general dashboard editor: this agent owns Dynamic Text panels (and panel-77) only. Any other part of `agents_overview.json` - other panel types, `spec.annotations`, `spec.variables`, dashboard-level settings, tabs/layout - is out of scope and must NOT be routed here; the main conversation edits those directly (see AGENTS.md "Rules to not violate" for the read-delegation rule, which is unrelated to this agent).
+  <version>1.0.0</version>
 tools: Bash, Read, Edit, Write, mcp__clickhouse__query
 model: claude-sonnet-5
 ---

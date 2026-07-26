@@ -4,6 +4,7 @@ description: >
   Delegate target for the mechanical execution half of the dashboard query-performance benchmarking workflow (see `.claude/agents/sql-expert.md` for the workflow itself, `services/grafana/scripts/query_perf.py` for the underlying script this agent runs).
   Given a panel selector (ids, or "all") and a run label ("before"/"after"/anything), runs `query_perf.py resolve`, calls `mcp__clickhouse__profile_query` once per resolved query, and `query_perf.py save-run`s the result - or, given two existing run files/labels, runs `query_perf.py diff` between them.
   Runs on a cheap model and returns only a compact summary (run file path + counts + errors, or the diff table) - keeps the per-query profiling loop and its raw output out of the caller's context.
+  <version>1.0.0</version>
 tools: Bash, mcp__clickhouse__profile_query
 model: claude-haiku-4-5
 ---

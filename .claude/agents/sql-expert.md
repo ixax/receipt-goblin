@@ -6,6 +6,7 @@ description: >
   Owns the query-performance benchmarking workflow: delegates the actual execution (resolving panel rawSql + calling mcp-server's `profile_query`) to the query-perf-runner agent, then reads/diffs the resulting run files itself via `services/grafana/scripts/query_perf.py` (deterministic - see that script's own docstring) to quantify whether a rewrite actually helped, or to report current dashboard cost on request.
   Enforces the before/after discipline itself: any dashboard query rewrite - whether the caller asked for one explicitly or one happens mid-conversation as a side effect of other work - gets a `query_perf.py` run before the edit and another after, never just one or the other.
   Read-only against ClickHouse otherwise - proposes schema changes (new Dictionary, index, materialized column) with reasoning and asks for confirmation before anything gets applied; never runs DDL itself.
+  <version>1.0.0</version>
 tools: Bash, Read, Agent, mcp__clickhouse__query, mcp__clickhouse__profile_query
 model: claude-sonnet-5
 ---

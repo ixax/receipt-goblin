@@ -6,7 +6,9 @@ description: >
   Always reads the dashboard-panels skill first (table sort indicators, chart color/legend rules, rawSql formatting, token/cost units, user/session dataLink URL patterns, long-text "view" cells) and applies it, rather than re-deriving conventions from scratch or guessing at a link URL.
   Has write access (Edit/Bash+python) to perform the actual panel JSON edit itself, plus mcp__clickhouse__query to test SQL against real data before deploying - the caller should not hand-edit a non-Dynamic-Text panel or test its queries directly.
   SCOPE - not `spec.annotations`, `spec.variables`, dashboard-level settings, or tabs/layout; those (and panel-76/77) stay out of this agent's hands, per AGENTS.md "Rules to not violate".
-tools: Bash, Read, Edit, Write, mcp__clickhouse__query
+  Can delegate mechanical file/investigation work outside panel-JSON editing (e.g. a broader repo search) to the `script-ops` agent rather than doing it inline.
+  <version>1.1.0</version>
+tools: Bash, Read, Edit, Write, mcp__clickhouse__query, Agent
 model: claude-sonnet-5
 ---
 

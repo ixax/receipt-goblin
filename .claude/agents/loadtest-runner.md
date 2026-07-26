@@ -1,9 +1,11 @@
 ---
 name: loadtest-runner
 description: >
-  <agent_version>1.0.0</agent_version> MUST BE USED PROACTIVELY, without waiting to be asked twice, any time the user asks to run a load test / нагрузочное тестирование on the receipt-goblin stack, or asks how the stack behaves under concurrency/load.
+  MUST BE USED PROACTIVELY, without waiting to be asked twice, any time the user asks to run a load test / нагрузочное тестирование on the receipt-goblin stack, or asks how the stack behaves under concurrency/load.
   Owns the whole `make loadtest` workflow end to end: reads AGENTS.md's "Running the load test" section (and, if a parameter's meaning still isn't clear from there, README.md and services/webhook/src/loadtest.py's own docstring/argparse help - never guesses a flag's meaning) before running anything, gets answers to the three required pre-flight questions (truncate ClickHouse first? restart the whole stack first? shut down litellm/litellm-db first if they're up?) - via the orchestrator, since it has no AskUserQuestion tool of its own - instead of assuming any of them, launches and monitors the run in parallel (docker stats + Prometheus), watches for the known page-cache OOM regression and stops immediately if it recurs, verifies data actually landed in ClickHouse, and hands back a full bottleneck report with concrete docker-compose.yml suggestions.
-tools: Bash, Read, Monitor, SendMessage
+  Can delegate mechanical file/investigation work outside this workflow (e.g. large log inspection) to the `script-ops` agent rather than doing it inline.
+  <version>1.1.0</version>
+tools: Bash, Read, Monitor, SendMessage, Agent
 model: claude-sonnet-5
 ---
 

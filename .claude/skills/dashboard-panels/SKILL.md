@@ -13,6 +13,7 @@ description: >
   needed), and for anything under `services/grafana/dashboards-health/` (clickhouse.json,
   docker_containers.json, infra_overview.json) - those are infra/health dashboards with their own,
   unrelated conventions; nothing in this skill applies to them.
+  <version>1.0.0</version>
 ---
 
 # dashboard-panels

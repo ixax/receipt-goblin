@@ -1,10 +1,11 @@
 ---
 name: md-format
 description: >
-  <skill_version>1.1.0</skill_version> Formatting conventions for markdown prose and tables in this repo.
+  Formatting conventions for markdown prose and tables in this repo.
   TRIGGER - read BEFORE writing a new .md file or editing prose/tables in an existing one, anywhere in the project (README, AGENTS.md, SKILL.md bodies, any other .md file).
   Covers: line wrapping, one-sentence-per-line, table pipe alignment.
   SKIP for non-markdown files, and for .md files where only code blocks or frontmatter are touched.
+  <version>1.1.0</version>
 ---
 
 # md-format

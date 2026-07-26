@@ -159,13 +159,22 @@ def test_codex_collaboration_mode_change_unsuccess_claude_code_payload_returns_e
 
 def test_active_command_name_and_version_success_recovers_slash_command():
     payload = load_capture("success_with_command", index=1)
-# predates the <command_version> marker convention - version comes back blank.
+# predates the <version> marker convention - version comes back blank.
     assert ci._active_command_name_and_version(payload["messages"]) == ("mcp", "")
 
 
 def test_active_command_name_and_version_success_recovers_version_marker():
     messages = [
-        {"role": "user", "content": "<command-name>whatsup</command-name>\n<command_version>1.2.3</command_version>\n# whatsup\n..."},
+        {"role": "user", "content": "<command-name>whatsup</command-name>\n<version>1.2.3</version>\n# whatsup\n..."},
+    ]
+    assert ci._active_command_name_and_version(messages) == ("whatsup", "1.2.3")
+
+
+def test_active_command_name_and_version_success_recovers_version_marker_at_end():
+    # Convention puts <version> at the end of the body, not right after
+    # <command-name> - regex must not assume a fixed position.
+    messages = [
+        {"role": "user", "content": "<command-name>whatsup</command-name>\n# whatsup\n...\n<version>1.2.3</version>"},
     ]
     assert ci._active_command_name_and_version(messages) == ("whatsup", "1.2.3")
 
@@ -329,19 +338,35 @@ def test_split_name_version_unsuccess_no_version_suffix():
 # _version_marker_for_name / _flatten_messages_text
 # ---------------------------------------------------------------------------
 
-def test_version_marker_for_name_success_finds_marker_in_listing_line():
+def test_version_marker_for_name_success_finds_marker_at_start_of_listing_line():
     text = (
         "Available agent types for the Agent tool:\n"
-        "- clickhouse-analyst: <agent_version>1.1.0</agent_version> Delegate target for...\n"
+        "- clickhouse-analyst: <version>1.1.0</version> Delegate target for...\n"
         "- general-purpose: General-purpose agent for researching...\n"
     )
-    assert ci._version_marker_for_name(text, "clickhouse-analyst", "agent_version") == "1.1.0"
+    assert ci._version_marker_for_name(text, "clickhouse-analyst", "version") == "1.1.0"
+
+
+def test_version_marker_for_name_success_finds_marker_in_middle_of_listing_line():
+    text = (
+        "Available agent types for the Agent tool:\n"
+        "- clickhouse-analyst: Delegate target for... <version>1.1.0</version> more text after.\n"
+    )
+    assert ci._version_marker_for_name(text, "clickhouse-analyst", "version") == "1.1.0"
+
+
+def test_version_marker_for_name_success_finds_marker_at_end_of_listing_line():
+    text = (
+        "Available agent types for the Agent tool:\n"
+        "- clickhouse-analyst: Delegate target for questions answerable from ClickHouse. <version>1.1.0</version>\n"
+    )
+    assert ci._version_marker_for_name(text, "clickhouse-analyst", "version") == "1.1.0"
 
 
 def test_version_marker_for_name_unsuccess_name_has_no_marker_returns_empty():
     text = "- general-purpose: General-purpose agent for researching...\n"
-    assert ci._version_marker_for_name(text, "general-purpose", "agent_version") == ""
-    assert ci._version_marker_for_name(text, "", "agent_version") == ""
+    assert ci._version_marker_for_name(text, "general-purpose", "version") == ""
+    assert ci._version_marker_for_name(text, "", "version") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -438,7 +463,7 @@ def test_agent_invocations_from_messages_success_recovers_version_marker():
             "role": "system",
             "content": (
                 "Available agent types for the Agent tool:\n"
-                "- clickhouse-analyst: <agent_version>1.1.0</agent_version> Delegate target for...\n"
+                "- clickhouse-analyst: Delegate target for... <version>1.1.0</version>\n"
             ),
         },
         {"role": "assistant", "content": [{"type": "tool_use", "name": "Agent", "id": "toolu_1", "input": {"subagent_type": "clickhouse-analyst", "description": "look up cost"}}]},
@@ -532,7 +557,7 @@ def test_skill_name_and_version_success_recovers_version_marker():
                 "role": "system",
                 "content": (
                     "available skills for the Skill tool:\n"
-                    "- test-linter: <skill_version>2.0.0</skill_version> Minimal test skill...\n"
+                    "- test-linter: Minimal test skill... <version>2.0.0</version>\n"
                 ),
             },
         ],

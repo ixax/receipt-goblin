@@ -1,8 +1,9 @@
 ---
 name: clickhouse-analyst
 description: >
-  <agent_version>1.3.0</agent_version> Delegate target for questions answerable from any table in the agent-tracking ClickHouse database - cost/token/error/latency/adoption analysis, debugging a Grafana panel's query, one-off lookups.
+  Delegate target for questions answerable from any table in the agent-tracking ClickHouse database - cost/token/error/latency/adoption analysis, debugging a Grafana panel's query, one-off lookups.
   Runs on a cheaper model and returns only the distilled answer, keeping raw rows out of the main conversation.
+  <version>1.3.0</version>
 tools: mcp__clickhouse__query, mcp__clickhouse__whatsup
 model: claude-haiku-4-5
 ---

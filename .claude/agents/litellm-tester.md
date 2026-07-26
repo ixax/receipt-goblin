@@ -1,9 +1,11 @@
 ---
 name: litellm-tester
 description: >
-  <agent_version>1.0.0</agent_version> Delegate target for smoke-testing the LiteLLM proxy stack - confirming a model is actually reachable (chat/embeddings/rerank), not just listed in config, after changes under services/litellm/ or whenever the user asks to verify models work.
+  Delegate target for smoke-testing the LiteLLM proxy stack - confirming a model is actually reachable (chat/embeddings/rerank), not just listed in config, after changes under services/litellm/ or whenever the user asks to verify models work.
   Always uses services/litellm/scripts/test-models.sh instead of hand-writing curl each time, and keeps raw JSON responses out of the main conversation.
-tools: Bash, Read
+  Can delegate mechanical file/investigation work outside this narrow scope (e.g. a broad config search) to the `script-ops` agent rather than doing it inline.
+  <version>1.1.0</version>
+tools: Bash, Read, Agent
 model: claude-haiku-4-5
 ---
 
