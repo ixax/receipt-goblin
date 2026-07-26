@@ -95,6 +95,13 @@ def get_client():
     return _client
 
 
+def clickhouse_alive() -> None:
+    """Raises if ClickHouse isn't reachable. Shared by server.py's /health
+    and worker.py's startup dependency check, so the liveness probe itself
+    (currently just SELECT 1) only has one place to change."""
+    get_client().command("SELECT 1")
+
+
 def _to_dt(epoch_seconds: Optional[float]) -> datetime:
     if not epoch_seconds:
         return datetime.now(timezone.utc)

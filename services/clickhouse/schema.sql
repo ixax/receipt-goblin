@@ -45,6 +45,24 @@ ORDER BY (agent_id);
 CREATE TABLE IF NOT EXISTS session_git_branch
 (
     session_id  String,
+    -- id = cityHash64(session_id), same convention this schema already
+    -- established for `clients` below. MATERIALIZED (not a Python-side
+    -- resolve like `clients.id` needs): this hashes session_git_branch's
+    -- own session_id column, so ClickHouse computes it inline on insert -
+    -- no ingest code round trip required. Exists purely so
+    -- session_git_branch_dict can use the cheaper HASHED() layout instead
+    -- of COMPLEX_KEY_HASHED() on a String key. That Dictionary (and
+    -- ai_gateway_users_dict/ai_gateway_groups_dict below) aren't created by
+    -- this file - like _grant_ui_access_to_app_user_once's GRANT, a
+    -- Dictionary's SOURCE(CLICKHOUSE(...)) has to authenticate even to
+    -- read its own server's own table, and schema.sql (applied by
+    -- docker-entrypoint-initdb.d with no parameter substitution) has
+    -- nowhere to get CLICKHOUSE_USER/PASSWORD from - see
+    -- webhook/src/migrate.py's _create_dictionaries_once and its module
+    -- docstring. migrate.py runs on every `docker compose up` regardless of
+    -- whether the volume was fresh-inited from this file, so the
+    -- dictionaries still always end up created either way.
+    session_id_hash UInt64 MATERIALIZED cityHash64(session_id),
     git_branch  String,
     git_repo    String DEFAULT '',
     -- Ticket key parsed out of git_branch (e.g. "VIEW-12345" out of
@@ -89,7 +107,10 @@ ORDER BY (session_id, captured_at);
 -- team gets renamed in the LiteLLM UI, without rewriting historical fact
 -- rows. Populated by webhook/src/clickhouse_ingest.py
 -- (_group_row/_insert_ai_gateway_dims) on every ingest, and backfilled from
--- ingest_raw by webhook/src/reparse.py - see AGENTS.md.
+-- ingest_raw by webhook/src/reparse.py - see AGENTS.md. Dashboard panels
+-- read this table through ai_gateway_groups_dict, not a JOIN - see the
+-- session_id_hash comment on session_git_branch above for why that
+-- Dictionary lives in a migration instead of here.
 CREATE TABLE IF NOT EXISTS ai_gateway_groups
 (
     group_id   LowCardinality(String),
@@ -106,7 +127,9 @@ ORDER BY (group_id);
 -- clickhouse_ingest.py:_user_id). group_id is carried here too so a panel
 -- can resolve "which group does this user belong to" without a second
 -- join back through agent_events. Same ReplacingMergeTree(updated_at)
--- latest-wins semantics as ai_gateway_groups above.
+-- latest-wins semantics as ai_gateway_groups above. Dashboard panels read
+-- this table through ai_gateway_users_dict, not a JOIN - see the
+-- session_id_hash comment on session_git_branch above.
 CREATE TABLE IF NOT EXISTS ai_gateway_users
 (
     user_id    LowCardinality(String),
@@ -455,9 +478,13 @@ ORDER BY (litellm_call_id);
 -- that a table's client.insert() rejects (bad column value, e.g. the
 -- ttft_ms UInt32-overflow class of bug) is isolated by re-inserting that
 -- table's rows one at a time, and whichever row(s) fail land here instead
--- of silently vanishing with the rest of their batch. TTL keeps this small -
--- it's a triage/alerting feed, not a permanent store (the row's own table
--- insert, if later fixed and replayed, is the real source of truth).
+-- of silently vanishing with the rest of their batch. It's a triage/alerting
+-- feed, not a permanent store (the row's own table insert, if later fixed
+-- and replayed, is the real source of truth) - but no TTL (see AGENTS.md's
+-- "no TTL-based deletion, ever" rule): PARTITION BY the same half-year
+-- convention as the other tables above instead, so a human can DETACH a
+-- stale half-year partition by hand if this ever grows large enough to
+-- need it.
 CREATE TABLE IF NOT EXISTS ingest_dlq
 (
     occurred_at     DateTime64(3) DEFAULT now64(3),
@@ -468,5 +495,5 @@ CREATE TABLE IF NOT EXISTS ingest_dlq
     raw_row         String DEFAULT '' CODEC(ZSTD(3)) -- JSON of the offending row, for triage
 )
 ENGINE = MergeTree
-ORDER BY (occurred_at)
-TTL toDateTime(occurred_at) + INTERVAL 30 DAY;
+PARTITION BY concat(toString(toYear(occurred_at)), '-H', toString(intDiv(toMonth(occurred_at) - 1, 6) + 1))
+ORDER BY (occurred_at);

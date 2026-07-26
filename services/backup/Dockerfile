@@ -9,6 +9,10 @@
 # from their upstream apt repos here, version-pinned to what they talk to.
 FROM debian:bookworm-slim
 
+# dash (debian's default /bin/sh) has no pipefail, so a failed curl in a
+# piped RUN wouldn't stop the build - bash -o pipefail here makes it fail fast.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Same CLICKHOUSE_VERSION used to build the clickhouse service's own image,
 # so this client never drifts from the server it talks to.
 ARG CLICKHOUSE_VERSION

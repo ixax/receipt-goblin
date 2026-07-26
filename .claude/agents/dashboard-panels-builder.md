@@ -71,12 +71,51 @@ verify:
    file-provisioner reloads within ~30s) and confirm the new content
    appears.
 
+**This is not just about avoiding `json.dump()` specifically - it's about
+never holding the file's content in memory across more than one edit.**
+`json.dump()` is one way to break this; reading the whole file into a
+Python string, making many replacements against that in-memory copy, then
+`f.write()`-ing the whole thing back is the exact same failure by a
+different name, and has caused real, hard-to-fully-recover data loss for
+real (a task doing ~80 panel edits this way silently clobbered five other
+panels' concurrent tokens-column-split edits, a title rename, and a merged
+panel, because those landed on the live file in the window between this
+task's read and its write). The rule, concretely:
+
+- **Read-edit-write is one atomic unit per change.** For every single edit:
+  read the current file (or just the specific substring you're about to
+  touch), make the one replacement, write it back immediately. Then move on
+  to the next edit and repeat the whole cycle - don't carry an in-memory
+  copy of the file forward from one edit to the next, no matter how many
+  edits the task has (10 or 100 - the discipline doesn't change with
+  scale). This is slower than batching, and that's the point: it means
+  every write only ever competes with the live file's *current* state, not
+  a snapshot from minutes ago.
+- **If a mid-task mistake needs correcting, fix it forward with another
+  scoped edit against the live file - never reset the working tree from any
+  git ref to "start clean."** This includes but is not limited to
+  `git checkout`/`restore`/`reset`/`clean` (already banned elsewhere) - the
+  same failure happened for real via `git show :path` piped into the
+  working-tree file, which is functionally identical to `git checkout --
+  path` (both silently discard whatever the live working tree currently
+  holds in favor of a stored ref) despite not being one of the four named
+  commands. If the file's state looks wrong mid-task, stop and report the
+  anomaly back to the caller - don't self-recover via any form of
+  ref-to-working-tree reset, named command or not.
+
 ## Testing SQL
 
-Test a panel's *literal* `rawSql` against ClickHouse (via
-`mcp__clickhouse__query` or, for anything too large/complex for that
-tool's validator, `docker exec receipt-goblin-clickhouse clickhouse-client`)
-with only `${...}` template variables substituted for concrete values -
-never a simplified/reconstructed rewrite of the query. A trimmed test
-query that drops a join/column that looks like template-variable plumbing
-can pass cleanly while the real query still fails.
+Test a panel's *literal* `rawSql` against ClickHouse via
+`mcp__clickhouse__query`, with only `${...}` template variables substituted
+for concrete values - never a simplified/reconstructed rewrite of the
+query. A trimmed test query that drops a join/column that looks like
+template-variable plumbing can pass cleanly while the real query still
+fails.
+
+**Never fall back to `docker exec .../clickhouse-client` (or any other
+direct ClickHouse connection) if `mcp__clickhouse__query` rejects or fails
+to validate the query** - this is a base rule with no per-agent exception
+(see AGENTS.md's "Rules to not violate"). If the tool's validator won't
+accept the literal query for any reason, stop and ask the caller for
+explicit permission before running it against ClickHouse any other way -
+ask every time this happens, not just once.

@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Request
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from . import fastjson
-from .clickhouse_ingest import _session_and_trace_id, get_client, ingest_git_branch, ingest_plan_proposal
+from .clickhouse_ingest import _session_and_trace_id, clickhouse_alive, ingest_git_branch, ingest_plan_proposal
 from .config import CAPTURE_DIR, CAPTURE_ENABLED, LITELLM_BASE_URL, LITELLM_MASTER_KEY
 from .queue_client import enqueue, enqueue_raw, get_async_redis
 
@@ -45,7 +45,7 @@ def _safe_session_dir_name(session_id: str) -> str:
 @app.get("/health")
 async def health():
     try:
-        get_client().command("SELECT 1")
+        clickhouse_alive()
         await get_async_redis().ping()
         return {"status": "ok"}
     except Exception as exc:

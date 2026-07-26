@@ -16,7 +16,7 @@ import redis
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 from . import fastjson as json
-from .clickhouse_ingest import build_event, get_client, ingest_events_batch
+from .clickhouse_ingest import build_event, clickhouse_alive, ingest_events_batch
 from .config import BATCH_SIZE, FLUSH_INTERVAL_MS, CONSUMER_GROUP, STALE_IDLE_MS, STREAM_KEY, WORKER_METRICS_PORT
 from .queue_client import get_redis
 
@@ -57,7 +57,7 @@ def _check_dependencies(redis_client: redis.Redis) -> None:
         logger.exception("redis unreachable at startup - exiting for restart: always to retry")
         raise
     try:
-        get_client().command("SELECT 1")
+        clickhouse_alive()
     except Exception:
         logger.exception("clickhouse unreachable at startup - exiting for restart: always to retry")
         raise

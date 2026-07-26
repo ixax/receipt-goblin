@@ -256,7 +256,7 @@ print-reparse-final-hint:
 #   make loadtest TARGET_URL=https://staging.example.com/api/v1/metrics
 loadtest: check-env
 	docker compose $(COMPOSE_FILES) run --rm \
-	  --name receipt-goblin-webhook-loadtest \
+	  --name receipt-goblin-loadtest \
 	  -e TARGET_URL=$(or $(TARGET_URL),http://load-balancer:8000/api/v1/metrics) \
 	  -e START_USERS=$(or $(START_USERS),10) \
 	  -e END_USERS=$(or $(END_USERS),100) \

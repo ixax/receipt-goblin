@@ -638,6 +638,19 @@ script (`Write` it to your scratch area, run via `Bash`):
 4. `json.load()` the result to confirm it's still valid JSON before
    considering the change done.
 
+If you're touching both panel-76 and panel-77 (or making more than one
+edit in the same task), do this whole read-splice-write cycle once per
+edit, immediately - never hold the file's content in memory across
+multiple edits and write it back once at the end. A concurrent edit by
+another agent landing on the live file in that window would get silently
+discarded when you write your stale copy back; this happened for real
+elsewhere in this dashboard (see `dashboard-panels-builder.md`'s "Editing
+the panel JSON" section for the incident). If a mistake needs correcting
+mid-task, fix it forward with another scoped edit against the live file -
+never reset the working tree from any git ref (`git checkout`/`restore`/
+`reset`/`clean`, or the equivalent `git show :path` piped into the file) to
+"start clean" - stop and report the anomaly to the caller instead.
+
 After writing, Grafana's file-based dashboard provisioner reloads every 30
 seconds (`services/grafana/provisioning/dashboards/*.yml`,
 `updateIntervalSeconds: 30`). Confirm the change actually landed by
