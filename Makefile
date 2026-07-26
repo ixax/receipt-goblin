@@ -60,7 +60,7 @@ VKEY := $(if $(strip $(LITELLM_VIRTUAL_KEY)),$(LITELLM_VIRTUAL_KEY),<virtual key
 $(shell python3 scripts/resolve_image_version.py > .image-tags.mk)
 include .image-tags.mk
 
-.PHONY: check-env start stop restart env test build langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
+.PHONY: check-env start stop restart up-no-deps env test build langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	observability-up observability-down observability-logs observability-status loadtest
@@ -74,7 +74,7 @@ LANGFUSE_SERVICES := langfuse-web langfuse-worker langfuse-db langfuse-clickhous
 # The observability-stack services (see docker-compose.yml) all carry
 # `profiles: [observability]` - same reasoning as LANGFUSE_SERVICES above,
 # list them explicitly so a scoped up/down/logs/status never touches core.
-OBSERVABILITY_SERVICES := prometheus blackbox redis-exporter loki alloy cadvisor node-exporter
+OBSERVABILITY_SERVICES := prometheus blackbox redis-exporter loki alloy cadvisor node-exporter nginx-exporter
 
 # Every other target depends on this so the active environment is always
 # printed loudly before anything else runs - ENVIRONMENT=production is a
@@ -89,6 +89,18 @@ check-env:
 # service, same convention as `make build SERVICE=...` below.
 start up: check-env
 	docker compose $(COMPOSE_FILES) up -d --build --force-recreate $(SERVICE)
+
+# SERVICE is required here (unlike `make up`) - recreates just that one
+# service with --no-deps, so a config/image change (mem_limit, cpus, an env
+# var) applies without cascading into recreating its depends_on chain too
+# (clickhouse/redis, if the service in question depends on them). Only
+# safe when those dependencies are already up and healthy - --no-deps skips
+# checking that, it just assumes it. Compare `make restart` above, which
+# restarts (not recreates) every running container in place - fine for a
+# bind-mounted source edit, useless for a compose-level config change like
+# this one, since restart doesn't re-read docker-compose.yml.
+up-no-deps: check-env
+	docker compose $(COMPOSE_FILES) up -d --build --no-deps $(SERVICE)
 
 # SERVICE is optional - `make build` builds every service, `make build
 # SERVICE=redis` (or webhook-1, etc.) scopes it to just that one.
@@ -146,7 +158,7 @@ observability-status: check-env
 
 # Restarts running containers in place (not a rebuild) - picks up edits to
 # bind-mounted source (services/webhook/src, etc.) for services without
-# --reload, like webhook-worker. Run `make start` instead if
+# --reload, like worker. Run `make start` instead if
 # requirements.txt/Dockerfile changed.
 restart: check-env
 	docker compose $(COMPOSE_FILES) restart
@@ -235,7 +247,7 @@ print-reparse-final-hint:
 
 # Replays real captured traffic (.capture/) against webhook's own
 # POST /api/v1/metrics at a ramping concurrency profile, to see how
-# webhook-worker/redis/clickhouse cope - see services/webhook/src/loadtest.py
+# worker/redis/clickhouse cope - see services/webhook/src/loadtest.py
 # for the full model. Bypasses LiteLLM/the real Claude API entirely.
 # Defaults reproduce loadtest.py's own defaults (ramp 10->100 users over 10
 # steps/1 min each, then hold 5 min) if no vars are set - override any of
@@ -244,6 +256,7 @@ print-reparse-final-hint:
 #   make loadtest TARGET_URL=https://staging.example.com/api/v1/metrics
 loadtest: check-env
 	docker compose $(COMPOSE_FILES) run --rm \
+	  --name receipt-goblin-webhook-loadtest \
 	  -e TARGET_URL=$(or $(TARGET_URL),http://load-balancer:8000/api/v1/metrics) \
 	  -e START_USERS=$(or $(START_USERS),10) \
 	  -e END_USERS=$(or $(END_USERS),100) \
@@ -252,7 +265,7 @@ loadtest: check-env
 	  -e HOLD_MINUTES=$(or $(HOLD_MINUTES),5) \
 	  -e DURATION_MINUTES=$(or $(DURATION_MINUTES),0) \
 	  -e SPEED=$(or $(SPEED),1.0) \
-	  webhook-loadtest
+	loadtest
 
 # Backup/restore for clickhouse, litellm-db, and grafana-data - see
 # README.md's "Backup & restore" section for the full playbook, including why restore

@@ -40,6 +40,9 @@ x-redis-port: &redis-port 6379
 # service below for why (two stateless replicas, load-balanced).
 x-webhook-url: &webhook-url ${WEBHOOK_URL:-http://load-balancer:8000/api/v1/metrics}
 x-webhook-port: &webhook-port ${WEBHOOK_PORT:-8010}
+# Off by default - real prompt/response content, and one file per event adds
+# disk I/O to the hot path. See README "Inspecting captured traffic".
+x-webhook-capture-enabled: &webhook-capture-enabled ${CAPTURE_ENABLED:-false}
 
 x-litellm-port: &litellm-port ${LITELLM_PORT:-4000}
 x-litellm-master-key: &litellm-master-key ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY, e.g. in a .env file next to docker-compose.yml}
@@ -57,7 +60,7 @@ x-webhook-env: &webhook-env
   CLICKHOUSE_USER: *clickhouse-user
   CLICKHOUSE_PASSWORD: *clickhouse-password
   CLICKHOUSE_DATABASE: *clickhouse-database
-  CAPTURE_ENABLED: "true"
+  CAPTURE_ENABLED: *webhook-capture-enabled
   REDIS_HOST: *redis-host
   REDIS_PORT: *redis-port
   # For /key/info lookups verifying report_git_branch.py's auth header.
@@ -111,7 +114,7 @@ services:
     # Generous, not tight - a hard CFS quota that's too low turns into
     # throttling-induced query latency, which would defeat the point.
     # Sized so ClickHouse alone can't starve everything else sharing the
-    # VM's cores (see webhook-loadtest below for why that matters).
+    # VM's cores (see loadtest below for why that matters).
     cpus: 3.0
     restart: always
     expose:
@@ -235,7 +238,7 @@ services:
       - receipt-goblin
 
   redis:
-    # Queue between webhook (producer) and webhook-worker (consumer) - see
+    # Queue between webhook (producer) and worker (consumer) - see
     # queue_client.py. Tuning lives in redis.conf, baked in at build time -
     # no dev override for this one, rarely edited live.
     build: ./services/redis
@@ -246,7 +249,7 @@ services:
     mem_limit: 1200m
     # Redis is single-threaded for command execution - 1 core is already
     # generous headroom, and capping it stops one runaway XADD/XREADGROUP
-    # burst from crowding out webhook/webhook-worker's own CPU share.
+    # burst from crowding out webhook/worker's own CPU share.
     cpus: 1.0
     restart: always
     volumes:
@@ -274,7 +277,7 @@ services:
       context: .
       dockerfile: services/webhook/Dockerfile
     # Shared by every service built from services/webhook/Dockerfile
-    # (webhook-1/2, webhook-worker, webhook-reparse, webhook-loadtest,
+    # (webhook-1/2, worker, webhook-reparse, webhook-loadtest,
     # clickhouse-migrate - see AGENTS.md, "one image, APP_ROLE picks the
     # role") - one explicit tag here means one build gets reused by all six
     # instead of compose's default per-service image naming giving each its
@@ -288,10 +291,14 @@ services:
       # filenames are unique per event (timestamp+uuid, see server.py).
       - ./.capture:/app/captures
     environment: *webhook-env
-    # Was 128m - too tight under concurrent load (100 concurrent 600KB
-    # payloads plus CAPTURE_ENABLED's per-event disk write); bumped after
-    # observing near-OOM behavior in load testing.
-    mem_limit: 256m
+    # Was 128m (too tight with CAPTURE_ENABLED's per-event disk write on
+    # the hot path - near-OOM under load), then 256m after CAPTURE_ENABLED
+    # was default-off and build_event()/json parsing moved off webhook's
+    # request path (see "Why a queue in front of ClickHouse"). Now 128m
+    # again - real peak under 100-user load with CAPTURE_ENABLED=false and
+    # the raw-bytes-passthrough path was ~72-74MB, ~1.7x margin. Re-raise if
+    # CAPTURE_ENABLED is ever turned on for debugging.
+    mem_limit: 128m
     cpus: 1.0
     restart: always
     healthcheck:
@@ -347,7 +354,12 @@ services:
       - target: 3001
         published: *langfuse-port
     mem_limit: 64m
-    cpus: 0.5
+    # Was 0.5 - hit 100% of that under the 100-user load test (real,
+    # unsmoothed peak, not a docker-stats sampling artifact - see
+    # AGENTS.md's load-test history), while every other gateway'd backend
+    # still had headroom. It's fronting webhook/litellm/grafana/mcp-server/
+    # clickhouse/langfuse-web all at once, so it's worth more than 0.5 cores.
+    cpus: 1.0
     restart: always
     healthcheck:
       # 127.0.0.1, not localhost - nginx.conf only binds IPv4 here, and
@@ -369,7 +381,7 @@ services:
     networks:
       - receipt-goblin
 
-  webhook-worker:
+  worker:
     # Same image as webhook, only APP_ROLE differs (docker-entrypoint.sh).
     # Drains queue_client.STREAM_KEY in batches and does the ClickHouse
     # inserts - see worker.py.
@@ -377,7 +389,7 @@ services:
       context: .
       dockerfile: services/webhook/Dockerfile
     image: receipt-goblin-webhook:${WEBHOOK_TAG:-latest}
-    container_name: receipt-goblin-webhook-worker
+    container_name: receipt-goblin-worker
     environment:
       APP_ROLE: worker
       CLICKHOUSE_HOST: *clickhouse-host
@@ -398,7 +410,11 @@ services:
     # silent OOM kills (no python traceback, container just restarted -
     # confirmed via docker inspect RestartCount + logs stopping mid-batch).
     mem_limit: 512m
-    cpus: 1.0
+    # Bumped from 1.0 after build_event() moved here from webhook (see
+    # AGENTS.md "Why a queue in front of ClickHouse") - worker now absorbs
+    # both the CPU-bound parsing and the ClickHouse batch inserts, and
+    # load testing showed it pegged at ~97% of 1.0 under sustained load.
+    cpus: 2.0
     restart: always
     healthcheck:
       test: ["CMD", "python", "-c", "from src.queue_client import get_redis; get_redis().ping()"]
@@ -416,7 +432,7 @@ services:
       - receipt-goblin
 
   webhook-reparse:
-    # Same image as webhook/webhook-worker, CLI-only. Recomputes
+    # Same image as webhook/worker, CLI-only. Recomputes
     # calculated_type/calculated_payload for existing event_sources rows -
     # see reparse.py. Not started by `docker compose up` (profiles: tools) -
     # run via `make reparse`/`make reparse-all`.
@@ -453,8 +469,8 @@ services:
     networks:
       - receipt-goblin
 
-  webhook-loadtest:
-    # Same image as webhook/webhook-worker/webhook-reparse, CLI-only.
+  loadtest:
+    # Same image as webhook/worker/webhook-reparse, CLI-only.
     # Replays real captured traffic from .capture/ against webhook's own
     # POST /api/v1/metrics at a ramping concurrency profile - see
     # src/loadtest.py. Not started by `docker compose up` (profiles: tools) -
@@ -463,7 +479,7 @@ services:
       context: .
       dockerfile: services/webhook/Dockerfile
     image: receipt-goblin-webhook:${WEBHOOK_TAG:-latest}
-    container_name: receipt-goblin-webhook-loadtest
+    container_name: receipt-goblin-loadtest
     profiles:
       - tools
     environment:
@@ -514,8 +530,12 @@ services:
     # revisits a file. Fixed at the source with posix_fadvise(DONTNEED) after
     # each read (see _read_bytes) - this limit is now just a sane ceiling,
     # not load-bearing the way it was before that fix.
-    mem_limit: 768m
-    cpus: 6.0
+    # Real peak across several 100-user/SPEED=5 runs this session stayed
+    # 27-90MB (heap ~40-50MB) and well under 1 core - 768m/6.0 was sized for
+    # a pre-fix incident (see comment above), not actual usage. Still a
+    # multiple of observed peak, not tight to it.
+    mem_limit: 256m
+    cpus: 2.0
     depends_on:
       load-balancer:
         condition: service_healthy
@@ -656,7 +676,9 @@ services:
     container_name: receipt-goblin-blackbox
     profiles:
       - observability
-    mem_limit: 128m
+    # Was 128m - real peak under 100-user load was ~17.9MB (Prometheus,
+    # not docker-stats). 64m keeps a healthy ~3.5x margin.
+    mem_limit: 64m
     restart: unless-stopped
     expose:
       - "9115"
@@ -666,14 +688,16 @@ services:
   redis-exporter:
     # Stock image, server-level Redis stats only (memory, clients, commands).
     # Business-level stream metrics (queue depth, lag) come from
-    # webhook-worker's own /metrics instead - redis_exporter can't see those.
+    # worker's own /metrics instead - redis_exporter can't see those.
     image: oliver006/redis_exporter:v1.66.0
     container_name: receipt-goblin-redis-exporter
     profiles:
       - observability
     environment:
       REDIS_ADDR: redis://redis:6379
-    mem_limit: 128m
+    # Was 128m - real peak under 100-user load was ~10.6MB (Prometheus,
+    # not docker-stats). 32m keeps a healthy 3x margin.
+    mem_limit: 32m
     restart: unless-stopped
     expose:
       - "9121"
@@ -715,7 +739,9 @@ services:
     container_name: receipt-goblin-cadvisor
     profiles:
       - observability
-    mem_limit: 256m
+    # Was 256m - real peak under 100-user load was ~80.8MB (Prometheus,
+    # not docker-stats). 128m keeps a healthy 1.5x+ margin.
+    mem_limit: 128m
     restart: unless-stopped
     expose:
       - "8080"
@@ -743,7 +769,9 @@ services:
     container_name: receipt-goblin-node-exporter
     profiles:
       - observability
-    mem_limit: 128m
+    # Was 128m - real peak under 100-user load was ~12.1MB (Prometheus,
+    # not docker-stats). 32m keeps a healthy 2.5x margin.
+    mem_limit: 32m
     restart: unless-stopped
     expose:
       - "9100"
@@ -762,7 +790,9 @@ services:
     container_name: receipt-goblin-loki
     profiles:
       - observability
-    mem_limit: 512m
+    # Was 512m - real peak under 100-user load was ~146.5MB (Prometheus,
+    # not docker-stats). 256m keeps a healthy ~1.7x margin.
+    mem_limit: 256m
     restart: unless-stopped
     expose:
       - "3100"
@@ -785,7 +815,9 @@ services:
     container_name: receipt-goblin-alloy
     profiles:
       - observability
-    mem_limit: 256m
+    # Was 256m - real peak under 100-user load was ~84.6MB (Prometheus,
+    # not docker-stats). 128m keeps a healthy 1.5x margin.
+    mem_limit: 128m
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro

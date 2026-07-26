@@ -19,9 +19,10 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from . import fastjson
 from .clickhouse_ingest import _session_and_trace_id, get_client, ingest_git_branch, ingest_plan_proposal
 from .config import CAPTURE_DIR, CAPTURE_ENABLED, LITELLM_BASE_URL, LITELLM_MASTER_KEY
-from .queue_client import enqueue, get_async_redis
+from .queue_client import enqueue, enqueue_raw, get_async_redis
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -60,24 +61,35 @@ def _write_capture_file(event: Any) -> None:
     # No indent - this is a dev-only debugging aid, not something a human
     # reads inline; pretty-printing large (~600KB) payloads on every request
     # was measurable CPU on the request path for no benefit.
-    (session_dir / filename).write_text(json.dumps(event, default=str))
+    (session_dir / filename).write_bytes(fastjson.dumps(event, default=str))
 
 
 @app.post("/api/v1/metrics")
 async def receive_metrics(request: Request):
-    body = await request.json()
-# body is usually a list of StandardLoggingPayload objects (log_format: json_array).
-    payloads = body if isinstance(body, list) else [body]
+    # Raw bytes, not `await request.json()` - parsing (and later
+    # re-serializing per payload for XADD) is real CPU cost on a ~360KB-1.5MB
+    # body, and under concurrent load testing that alone saturated a single
+    # core even with build_event() no longer running here (see AGENTS.md
+    # "Why a queue in front of ClickHouse"). enqueue_raw() below skips that
+    # entirely for the common case (a lone payload, not a bundled array).
+    body = await request.body()
 
-    # One file per event (a POST can bundle several), per-session
-    # subfolder, named so `ls | sort` replays creation order. Offloaded to a
-    # thread - synchronous mkdir/write_text on the request's own event loop
-    # would block every other in-flight request on this worker's disk I/O.
     if CAPTURE_ENABLED:
+        # Capture-file naming needs each payload's session_id, and a bundled
+        # POST needs splitting into one file per event anyway - no way
+        # around parsing here.
+        parsed = fastjson.loads(body)
+        payloads = parsed if isinstance(parsed, list) else [parsed]
+        # One file per event (a POST can bundle several), per-session
+        # subfolder, named so `ls | sort` replays creation order. Offloaded
+        # to a thread - synchronous mkdir/write_text on the request's own
+        # event loop would block every other in-flight request on this
+        # worker's disk I/O.
         for event in payloads:
             await asyncio.to_thread(_write_capture_file, event)
-
-    await enqueue(payloads)
+        await enqueue(payloads)
+    else:
+        await enqueue_raw(body)
 
     return {"status": "queued"}
 

@@ -112,15 +112,27 @@ CREATE TABLE IF NOT EXISTS ai_gateway_users
     user_id    LowCardinality(String),
     group_id   LowCardinality(String) DEFAULT '',
     user_name  LowCardinality(String),
-    -- Latest-seen calling client (metadata.user_agent, e.g.
-    -- "claude-cli/2.1.207 (external, cli)") for this user - same latest-wins
-    -- semantics as user_name, populated by
-    -- clickhouse_ingest.py:_user_agent/_user_row.
-    user_agent LowCardinality(String) DEFAULT '',
     updated_at DateTime64(3) DEFAULT now64(3)
 )
 ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (user_id);
+
+-- One row per distinct calling-client user-agent string (e.g.
+-- "claude-cli/2.1.207 (external, cli)", "codex-tui/0.145.0 (...)").
+-- id = cityHash64(value), computed exclusively by ClickHouse (never by the
+-- Python ingestion code) so the live-ingest path (clickhouse_ingest.py:
+-- _resolve_client_id) and a historical backfill (a one-off SQL run
+-- against ingest_raw) can never diverge on the hash algorithm. Joined
+-- from agent_events.event_client_id - see that column's comment below.
+CREATE TABLE IF NOT EXISTS clients
+(
+    id         UInt64,
+    value      String,
+    updated_at DateTime64(3) DEFAULT now64(3),
+    INDEX idx_value value TYPE bloom_filter(0.01) GRANULARITY 4
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (id);
 
 -- One row per lifecycle event (hook invocation). raw_payload keeps the full
 -- untouched JSON Claude Code sent, so any field missed by the extracted
@@ -194,6 +206,10 @@ CREATE TABLE IF NOT EXISTS agent_events
     -- the join key ingest_raw.litellm_call_id uses to pair a row back to
     -- its full original payload.
     litellm_call_id   String DEFAULT '',
+    -- Id of the calling client that produced this event - see `clients`
+    -- table above. 0 when no metadata.user_agent was present on the
+    -- payload. See webhook/src/clickhouse_ingest.py:_resolve_client_id.
+    event_client_id   UInt64 DEFAULT 0,
     event_type        LowCardinality(String),
     tool_name         LowCardinality(String),
     agent_name        LowCardinality(String),
@@ -262,7 +278,8 @@ CREATE TABLE IF NOT EXISTS agent_events
     INDEX idx_user_id user_id TYPE set(1000) GRANULARITY 4,
     INDEX idx_group_id group_id TYPE set(100) GRANULARITY 4,
     INDEX idx_failed_tool_name failed_tool_name TYPE set(1000) GRANULARITY 4,
-    INDEX idx_calculated_type calculated_type TYPE set(100) GRANULARITY 4
+    INDEX idx_calculated_type calculated_type TYPE set(100) GRANULARITY 4,
+    INDEX idx_event_client_id event_client_id TYPE set(50) GRANULARITY 4
 )
 ENGINE = ReplacingMergeTree(ingested_at)
 PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))

@@ -275,6 +275,36 @@ def test_session_and_trace_id_success_claude_header_wins_over_codex():
     assert session_id == "claude-session"
 
 
+# ---------------------------------------------------------------------------
+# _user_agent
+# ---------------------------------------------------------------------------
+
+def test_user_agent_success_reads_claude_cli_string():
+    payload = load_capture("success_with_agent_and_skill")
+    assert ci._user_agent(payload) == "claude-cli/2.1.207 (external, cli)"
+
+
+def test_user_agent_success_reads_codex_tui_string():
+    # Real production value confirmed via a read-only ClickHouse query -
+    # the bundled Codex-shaped captures don't happen to set user_agent.
+    payload = {
+        "metadata": {
+            "user_agent": "codex-tui/0.145.0 (Mac OS 15.2.0; x86_64) Apple_Terminal/455 (codex-tui; 0.145.0)"
+        }
+    }
+    assert ci._user_agent(payload) == (
+        "codex-tui/0.145.0 (Mac OS 15.2.0; x86_64) Apple_Terminal/455 (codex-tui; 0.145.0)"
+    )
+
+
+def test_user_agent_unsuccess_missing_metadata_returns_empty():
+    assert ci._user_agent({}) == ""
+
+
+def test_user_agent_unsuccess_absent_key_returns_empty():
+    assert ci._user_agent({"metadata": {}}) == ""
+
+
 def test_codex_session_id_unsuccess_malformed_json_returns_empty():
     assert ci._codex_session_id({"x-codex-turn-metadata": "not-json"}) == ""
 
@@ -679,9 +709,14 @@ class _FakeClient:
     def insert(self, table, rows, column_names):
         self.inserts.append((table, rows, column_names))
 
-    def query(self, *args, **kwargs):
+    def query(self, query, parameters=None, **kwargs):
         class _Result:
             result_rows = []
+        # _resolve_client_id's "SELECT cityHash64({v:String})" lookup - a
+        # fake but deterministic/positive id so batch-level dedup can be
+        # asserted without a real ClickHouse connection.
+        if parameters and "v" in parameters and "cityHash64" in query:
+            _Result.result_rows = [[abs(hash(parameters["v"])) or 1]]
         return _Result()
 
 
@@ -725,6 +760,27 @@ def test_ingest_events_batch_success_dedups_dimension_rows_by_id(monkeypatch):
 
     group_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "ai_gateway_groups")
     assert len(group_rows) == 1
+
+
+def test_ingest_events_batch_success_resolves_and_dedups_client_rows(monkeypatch):
+    # Both captures carry the same claude-cli user_agent - one dedup'd
+    # `clients` row, and every event_row's event_client_id should match it.
+    events = [
+        ci.build_event(load_capture("success_plain")),
+        ci.build_event(load_capture("success_with_command")),
+    ]
+    fake_client = _FakeClient()
+    monkeypatch.setattr(ci, "get_client", lambda: fake_client)
+
+    ci.ingest_events_batch(events)
+
+    client_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "clients")
+    assert len(client_rows) == 1
+    assert client_rows[0][1] == "claude-cli/2.1.207 (external, cli)"
+
+    event_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_events")
+    event_client_id_idx = ci._EVENT_COLUMNS.index("event_client_id")
+    assert all(row[event_client_id_idx] == client_rows[0][0] for row in event_rows)
 
 
 def test_ingest_events_batch_unsuccess_empty_list_skips_client_entirely(monkeypatch):

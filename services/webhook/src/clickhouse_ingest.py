@@ -11,6 +11,7 @@ from typing import Any, Optional
 
 import clickhouse_connect
 
+from . import fastjson
 from .config import (
     CLICKHOUSE_DATABASE,
     CLICKHOUSE_HOST,
@@ -765,12 +766,16 @@ def _classify_event(payload: dict) -> tuple[str, dict]:
 def _source_row(payload: dict, session_id: str, now: datetime) -> list:
     """The ingest_raw row: full untouched original payload, written once
     per call so reparse.py can recompute calculated_type/provider without
-    needing .capture/*.json."""
+    needing .capture/*.json. Uses fastjson (orjson-backed), not the stdlib
+    json this module otherwise uses everywhere else - this is the one place
+    re-serializing the *entire* ~360KB-1.5MB payload, not a small
+    substructure, so it's the one worth the faster encoder (see AGENTS.md
+    "Why a queue in front of ClickHouse")."""
     return [
         payload.get("litellm_call_id", ""),
         session_id,
         now,
-        json.dumps(payload, default=str),
+        fastjson.dumps(payload, default=str).decode(),
     ]
 
 
@@ -811,10 +816,11 @@ _EVENT_COLUMNS = [
     "agent_version", "skill_name", "skill_version", "command_name",
     "command_version", "agent_invocation_id", "status", "latency_ms",
     "failed_tool_name", "failed_tool_args", "failed_tool_error",
-    "litellm_call_id", "calculated_type", "calculated_payload", "ingested_at",
+    "litellm_call_id", "event_client_id", "calculated_type", "calculated_payload", "ingested_at",
 ]
 _GROUP_COLUMNS = ["group_id", "group_name", "updated_at"]
-_USER_COLUMNS = ["user_id", "group_id", "user_name", "user_agent", "updated_at"]
+_USER_COLUMNS = ["user_id", "group_id", "user_name", "updated_at"]
+_CLIENT_COLUMNS = ["id", "value", "updated_at"]
 _USAGE_COLUMNS = [
     "timestamp", "user_id", "group_id", "user_key_hash", "session_id", "trace_id", "turn_id", "model",
     "agent_name", "agent_version", "skill_name", "skill_version",
@@ -840,6 +846,7 @@ _INVOCATION_SPAWNED_AT_IDX = _INVOCATION_COLUMNS.index("spawned_at")
 _EVENT_TIMESTAMP_IDX = _EVENT_COLUMNS.index("timestamp")
 _EVENT_AGENT_NAME_IDX = _EVENT_COLUMNS.index("agent_name")
 _EVENT_AGENT_VERSION_IDX = _EVENT_COLUMNS.index("agent_version")
+_EVENT_CLIENT_ID_IDX = _EVENT_COLUMNS.index("event_client_id")
 _USAGE_TIMESTAMP_IDX = _USAGE_COLUMNS.index("timestamp")
 _USAGE_AGENT_NAME_IDX = _USAGE_COLUMNS.index("agent_name")
 _USAGE_AGENT_VERSION_IDX = _USAGE_COLUMNS.index("agent_version")
@@ -917,7 +924,7 @@ def _user_row(payload: dict, now: Optional[datetime] = None) -> Optional[list]:
     if not user_id:
         return None
     return [
-        user_id, _group_id(payload), _user_name(payload), _user_agent(payload),
+        user_id, _group_id(payload), _user_name(payload),
         now or datetime.now(timezone.utc),
     ]
 
@@ -932,6 +939,29 @@ def _insert_ai_gateway_users(client, rows: list[list]) -> None:
     if not rows:
         return
     client.insert("ai_gateway_users", rows, column_names=_USER_COLUMNS)
+
+
+def _resolve_client_id(client, user_agent: str) -> int:
+    """Best-effort id lookup for a calling-client user-agent string (e.g.
+    "claude-cli/2.1.207 (external, cli)"). The hash is always computed by
+    ClickHouse itself (cityHash64), never reimplemented in Python, so this
+    can never diverge from the one-off backfill SQL run separately against
+    ingest_raw. 0 (unknown) on any failure or empty input - never blocks
+    ingestion."""
+    if not user_agent:
+        return 0
+    try:
+        result = client.query("SELECT cityHash64({v:String})", parameters={"v": user_agent})
+        return result.result_rows[0][0]
+    except Exception:
+        logger.exception("failed to resolve client id for user_agent=%s", user_agent)
+        return 0
+
+
+def _insert_clients(client, rows: list[list]) -> None:
+    if not rows:
+        return
+    client.insert("clients", rows, column_names=_CLIENT_COLUMNS)
 
 
 def _event_row(
@@ -1020,6 +1050,9 @@ def _event_row(
         failed_tool_args,
         failed_tool_error,
         payload.get("litellm_call_id", ""),
+        0,  # event_client_id: patched in by ingest_events_batch() once the
+            # calling client's user_agent has been resolved to an id - see
+            # _resolve_client_id (build_event() has no DB client to do it here).
         calculated_type,
         json.dumps(calculated_payload, default=str),
         now or datetime.now(timezone.utc),
@@ -1278,9 +1311,11 @@ def _deserialize_row_multi(row: Optional[list], *timestamp_indices: int) -> Opti
 
 def build_event(payload: dict) -> dict:
     """The DB-free half of ingesting one StandardLoggingPayload: pure
-    functions only, no ClickHouse round-trip. Called synchronously in the
-    request handler so ClickHouse is never touched in the request path -
-    webhook only produces onto Redis, webhook-worker inserts.
+    functions only, no ClickHouse round-trip. Called in webhook-worker
+    (worker.py's _decode_into), not on webhook's own request path - webhook
+    only XADDs the raw payload onto Redis unmodified, so its hot path never
+    pays for this CPU-bound parsing (regex classification, message
+    scanning, JSON work).
 
     Includes source_row (full untouched payload) alongside the compact
     per-table rows; Redis MAXLEN/mem_limit are sized around this larger
@@ -1290,8 +1325,8 @@ def build_event(payload: dict) -> dict:
     against agent_invocations, which only makes sense once this batch's own
     invocation_rows are inserted; ingest_events_batch() patches them in.
 
-    Never raises internally - lets queue_client.enqueue decide whether one
-    bad payload drops just that item or the whole batch.
+    Never raises internally - lets worker.py's _decode_into decide whether
+    one bad payload drops just that item or the whole batch.
     """
     session_id, trace_id = _session_and_trace_id(payload)
     messages = payload.get("messages")
@@ -1325,6 +1360,10 @@ def build_event(payload: dict) -> dict:
 
     return {
         "agent_invocation_id": agent_invocation_id,
+        # Raw calling-client identity - resolved to event_client_id by
+        # ingest_events_batch() (needs a DB round trip via _resolve_client_id,
+        # which this DB-free function can't do).
+        "user_agent": _user_agent(payload),
         "invocation_rows": [
             _serialize_row(row, _INVOCATION_SPAWNED_AT_IDX) for row in invocation_rows
         ],
@@ -1382,6 +1421,9 @@ def ingest_events_batch(events: list[dict]) -> None:
         _insert_ai_gateway_users(client, list(user_rows_by_id.values()))
 
         agent_fields_cache: dict[str, tuple[str, str]] = {}
+        client_id_cache: dict[str, int] = {}
+        client_rows_by_id: dict[int, list] = {}
+        now = datetime.now(timezone.utc)
         event_rows, usage_rows, message_rows = [], [], []
 
         for event in events:
@@ -1395,10 +1437,21 @@ def ingest_events_batch(events: list[dict]) -> None:
             else:
                 agent_name, agent_version = "", ""
 
+            user_agent = event.get("user_agent") or ""
+            if user_agent:
+                if user_agent not in client_id_cache:
+                    client_id_cache[user_agent] = _resolve_client_id(client, user_agent)
+                client_id = client_id_cache[user_agent]
+                if client_id:
+                    client_rows_by_id[client_id] = [client_id, user_agent, now]
+            else:
+                client_id = 0
+
             event_row = _deserialize_row_multi(event.get("event_row"), _EVENT_TIMESTAMP_IDX, _EVENT_INGESTED_AT_IDX)
             if event_row is not None:
                 event_row[_EVENT_AGENT_NAME_IDX] = agent_name
                 event_row[_EVENT_AGENT_VERSION_IDX] = agent_version
+                event_row[_EVENT_CLIENT_ID_IDX] = client_id
                 event_rows.append(event_row)
 
             usage_row = _deserialize_row_multi(event.get("usage_row"), _USAGE_TIMESTAMP_IDX, _USAGE_INGESTED_AT_IDX)
@@ -1412,6 +1465,8 @@ def ingest_events_batch(events: list[dict]) -> None:
                 message_row[_MESSAGE_AGENT_NAME_IDX] = agent_name
                 message_row[_MESSAGE_AGENT_VERSION_IDX] = agent_version
                 message_rows.append(message_row)
+
+        _insert_clients(client, list(client_rows_by_id.values()))
 
         # Each table inserted independently, past this point: one table
         # rejecting the whole batch (e.g. a value out of a column's numeric

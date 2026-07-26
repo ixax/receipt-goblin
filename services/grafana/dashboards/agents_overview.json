@@ -7282,6 +7282,165 @@
             }
           }
         }
+      },
+      "panel-91": {
+        "kind": "Panel",
+        "spec": {
+          "id": 91,
+          "title": "Clients",
+          "description": "Which calling client (raw user-agent, e.g. claude-cli/x.y.z or codex-tui/x.y.z) produced these events: one row per exact client string with event count and first/last-seen, sorted by name.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 1,
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    agent_events.event_client_id AS event_client_id,\n    count(distinct session_id) AS sessions,\n    min(timestamp) AS first_seen,\n    max(timestamp) AS last_seen\n  FROM agent_events\n  LEFT JOIN (\n    SELECT session_id, argMax(git_branch, captured_at) AS git_branch, argMax(git_repo, captured_at) AS git_repo, argMax(issue_id, captured_at) AS issue_id\n    FROM session_git_branch GROUP BY session_id\n  ) gb ON gb.session_id = agent_events.session_id\n  WHERE $__timeFilter(timestamp) AND event_client_id != 0\n    AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], user_id))\n    AND (has([${group_id:singlequote}], '__all__') OR has([${group_id:singlequote}], group_id))\n    AND (has([${session_id:singlequote}], '') OR has([${session_id:singlequote}], agent_events.session_id))\n    AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))) AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], coalesce(gb.git_repo, ''))) AND (has([${issue_id:singlequote}], '__all__') OR has([${issue_id:singlequote}], coalesce(nullIf(gb.issue_id, ''), 'empty')))\n    AND ((has([${model:singlequote}], '__all__') AND '$provider' = 'all') OR agent_events.session_id IN (\n      SELECT session_id FROM agent_usage\n      WHERE (has([${model:singlequote}], '__all__') OR has([${model:singlequote}], model))\n        AND ('$provider' = 'all' OR ('$provider' = 'claude' AND match(model, '^claude-')) OR ('$provider' = 'openai' AND match(model, '^(gpt-|chatgpt-|o[0-9]|text-embedding-|dall-e-|whisper|tts-)')) OR ('$provider' = 'other' AND NOT match(model, '^(claude-|gpt-|chatgpt-|o[0-9]|text-embedding-|dall-e-|whisper|tts-)')))\n    ))\n    AND (has([${agent_name:singlequote}], '__all__') OR has([${agent_name:singlequote}], agent_name))\n    AND (has([${skill_name:singlequote}], '__all__') OR has([${skill_name:singlequote}], skill_name))\n    AND (has([${command_name:singlequote}], '__all__') OR has([${command_name:singlequote}], command_name))\n  GROUP BY event_client_id\n)\nSELECT\n  c.value AS name,\n  f.sessions AS sessions,\n  f.first_seen AS first_seen,\n  f.last_seen AS last_seen\nFROM filtered f\nINNER JOIN (\n  SELECT id, argMax(value, updated_at) AS value\n  FROM clients\n  GROUP BY id\n) c ON c.id = f.event_client_id\nORDER BY name ASC"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "",
+            "spec": {
+              "options": {
+                "sortBy": [
+                  {
+                    "displayName": "name",
+                    "desc": false
+                  }
+                ]
+              },
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "first_seen"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.width",
+                        "value": 170
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "last_seen"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.width",
+                        "value": 170
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-92": {
+        "kind": "Panel",
+        "spec": {
+          "id": 92,
+          "title": "Clients (share)",
+          "description": "Share of events by calling client, matching the Clients table alongside it.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 1,
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    agent_events.event_client_id AS event_client_id,\n    count(distinct session_id) AS sessions,\n    min(timestamp) AS first_seen,\n    max(timestamp) AS last_seen\n  FROM agent_events\n  LEFT JOIN (\n    SELECT session_id, argMax(git_branch, captured_at) AS git_branch, argMax(git_repo, captured_at) AS git_repo, argMax(issue_id, captured_at) AS issue_id\n    FROM session_git_branch GROUP BY session_id\n  ) gb ON gb.session_id = agent_events.session_id\n  WHERE $__timeFilter(timestamp) AND event_client_id != 0\n    AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], user_id))\n    AND (has([${group_id:singlequote}], '__all__') OR has([${group_id:singlequote}], group_id))\n    AND (has([${session_id:singlequote}], '') OR has([${session_id:singlequote}], agent_events.session_id))\n    AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], coalesce(gb.git_branch, ''))) AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], coalesce(gb.git_repo, ''))) AND (has([${issue_id:singlequote}], '__all__') OR has([${issue_id:singlequote}], coalesce(nullIf(gb.issue_id, ''), 'empty')))\n    AND ((has([${model:singlequote}], '__all__') AND '$provider' = 'all') OR agent_events.session_id IN (\n      SELECT session_id FROM agent_usage\n      WHERE (has([${model:singlequote}], '__all__') OR has([${model:singlequote}], model))\n        AND ('$provider' = 'all' OR ('$provider' = 'claude' AND match(model, '^claude-')) OR ('$provider' = 'openai' AND match(model, '^(gpt-|chatgpt-|o[0-9]|text-embedding-|dall-e-|whisper|tts-)')) OR ('$provider' = 'other' AND NOT match(model, '^(claude-|gpt-|chatgpt-|o[0-9]|text-embedding-|dall-e-|whisper|tts-)')))\n    ))\n    AND (has([${agent_name:singlequote}], '__all__') OR has([${agent_name:singlequote}], agent_name))\n    AND (has([${skill_name:singlequote}], '__all__') OR has([${skill_name:singlequote}], skill_name))\n    AND (has([${command_name:singlequote}], '__all__') OR has([${command_name:singlequote}], command_name))\n  GROUP BY event_client_id\n)\nSELECT\n  if(position(c.value, ' ') > 0, substring(c.value, 1, position(c.value, ' ') - 1), c.value) AS name,\n  sum(f.sessions) AS sessions\nFROM filtered f\nINNER JOIN (\n  SELECT id, argMax(value, updated_at) AS value\n  FROM clients\n  GROUP BY id\n) c ON c.id = f.event_client_id\nGROUP BY name\nORDER BY name ASC"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "piechart",
+            "version": "",
+            "spec": {
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": true
+                },
+                "pieType": "pie",
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "none"
+                },
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right",
+                  "values": [
+                    "value"
+                  ]
+                },
+                "displayLabels": []
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {},
+                  "color": {
+                    "mode": "palette-classic"
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
       }
     },
     "layout": {
@@ -8497,6 +8656,45 @@
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-88"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "Clients",
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-91"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-92"
                                   }
                                 }
                               }

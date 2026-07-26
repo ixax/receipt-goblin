@@ -30,7 +30,7 @@ scrape_configs:
   - job_name: worker
     metrics_path: /metrics
     static_configs:
-      - targets: ["webhook-worker:9200"]
+      - targets: ["worker:9200"]
 
   - job_name: redis
     metrics_path: /metrics

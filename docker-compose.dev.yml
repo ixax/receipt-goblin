@@ -25,7 +25,7 @@ services:
       - ./services/webhook/config.yml:/app/config.yml:ro
     command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
-  webhook-worker:
+  worker:
     volumes:
       - ./services/webhook/src:/app/src:ro
       - ./services/webhook/config.yml:/app/config.yml:ro

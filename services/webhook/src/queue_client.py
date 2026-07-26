@@ -1,15 +1,15 @@
 """Redis Streams queue between webhook (producer) and webhook-worker
-(consumer) - see AGENTS.md. webhook turns each payload into a build_event()
-dict (pure CPU, no ClickHouse round-trip) and XADDs it; webhook-worker
-drains the stream in batches and does the actual inserts.
+(consumer) - see AGENTS.md. webhook XADDs each raw StandardLoggingPayload
+completely unmodified - no parsing, no build_event() - so its own request
+path stays cheap (I/O only); webhook-worker calls build_event() itself when
+it drains the stream, then does the actual ClickHouse inserts in batches.
 """
-import json
 import logging
 
 import redis
 import redis.asyncio as aioredis
 
-from .clickhouse_ingest import build_event
+from . import fastjson as json
 from .config import MAXLEN, REDIS_HOST, REDIS_PORT, STREAM_KEY
 
 logger = logging.getLogger("webhook.queue_client")
@@ -37,18 +37,23 @@ def get_redis() -> redis.Redis:
 
 async def enqueue(payloads: list) -> None:
     """payloads: StandardLoggingPayload dicts from one webhook POST body.
-    Never raises - LiteLLM would retry the whole body forever if a
-    malformed payload or unavailable Redis broke the ack.
+    Pushed onto Redis exactly as received - no build_event() here, see
+    module docstring. Never raises - LiteLLM would retry the whole body
+    forever if a malformed payload or unavailable Redis broke the ack.
+
+    Used directly when the caller already has parsed payloads (the
+    CAPTURE_ENABLED path in server.py, which parses anyway to write capture
+    files) - everyone else should call enqueue_raw() instead, to skip the
+    parse this function requires its caller to have already done.
     """
     client = get_async_redis()
     for payload in payloads:
         if not isinstance(payload, dict):
             continue
         try:
-            event = build_event(payload)
             await client.xadd(
                 STREAM_KEY,
-                {"event": json.dumps(event, default=str)},
+                {"event": json.dumps(payload, default=str)},
                 maxlen=MAXLEN,
                 approximate=True,
             )
@@ -57,3 +62,35 @@ async def enqueue(payloads: list) -> None:
                 "failed to enqueue payload (litellm_call_id=%s)",
                 payload.get("litellm_call_id", ""),
             )
+
+
+async def enqueue_raw(body: bytes) -> None:
+    """Fast path for webhook's request handler: `body` is the exact raw
+    POST bytes, unparsed. The common case - one StandardLoggingPayload
+    object, not a `log_format: json_array` bundle - goes straight onto
+    Redis unmodified, no json.loads/json.dumps round-trip at all. Only a
+    bundled array (starts with `[`) needs an actual parse, to split it into
+    one Redis entry per payload (falls back to enqueue() for that case,
+    same as the CAPTURE_ENABLED path does).
+
+    This split exists because json parse+re-serialize of a ~360KB-1.5MB
+    payload is itself real CPU cost - load testing showed it alone
+    saturating a single core under concurrency, even with build_event()
+    no longer running on webhook's request path (see AGENTS.md "Why a
+    queue in front of ClickHouse"). Never raises, same reasoning as
+    enqueue().
+    """
+    if not body.lstrip().startswith(b"["):
+        client = get_async_redis()
+        try:
+            await client.xadd(STREAM_KEY, {"event": body}, maxlen=MAXLEN, approximate=True)
+        except Exception:
+            logger.exception("failed to enqueue raw payload")
+        return
+
+    try:
+        parsed = json.loads(body)
+    except (TypeError, ValueError):
+        logger.exception("failed to decode bundled payload array")
+        return
+    await enqueue(parsed if isinstance(parsed, list) else [parsed])

@@ -1,10 +1,12 @@
-"""Drains what webhook (server.py) enqueues and writes it into ClickHouse
-in batches via ingest_events_batch(), so ClickHouse sees a handful of large
+"""Drains the raw StandardLoggingPayloads webhook (server.py) enqueues
+unmodified, calls build_event() on each one here (the CPU-bound parsing -
+regex classification, message scanning, JSON work - kept off webhook's own
+request path on purpose), and writes the results into ClickHouse in
+batches via ingest_events_batch(), so ClickHouse sees a handful of large
 inserts instead of many small ones per request. See AGENTS.md.
 
 Runs as its own process (`python -m src.worker`), not through FastAPI/uvicorn.
 """
-import json
 import logging
 import os
 import socket
@@ -13,7 +15,8 @@ import time
 import redis
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
-from .clickhouse_ingest import ingest_events_batch
+from . import fastjson as json
+from .clickhouse_ingest import build_event, get_client, ingest_events_batch
 from .config import BATCH_SIZE, FLUSH_INTERVAL_MS, CONSUMER_GROUP, STALE_IDLE_MS, STREAM_KEY, WORKER_METRICS_PORT
 from .queue_client import get_redis
 
@@ -27,7 +30,7 @@ CONSUMER_NAME = f"{socket.gethostname()}-{os.getpid()}"
 BATCHES_FLUSHED = Counter("worker_batches_flushed_total", "Batches flushed to ClickHouse")
 EVENTS_INGESTED = Counter("worker_events_ingested_total", "Events ingested into ClickHouse")
 ENTRIES_RECLAIMED = Counter("worker_entries_reclaimed_total", "Stale pending entries reclaimed via XAUTOCLAIM")
-DECODE_FAILURES = Counter("worker_decode_failures_total", "Queued events that failed JSON decoding")
+DECODE_FAILURES = Counter("worker_decode_failures_total", "Queued events that failed JSON decoding or build_event() construction")
 FLUSH_LATENCY = Histogram("worker_flush_latency_seconds", "Time spent in ingest_events_batch per flush")
 STREAM_DEPTH = Gauge("worker_stream_depth", "Current XLEN of the queue stream")
 PENDING_COUNT = Gauge("worker_pending_count", "Current XPENDING count for the consumer group")
@@ -41,17 +44,50 @@ def _ensure_group(client: redis.Redis) -> None:
             raise
 
 
+def _check_dependencies(redis_client: redis.Redis) -> None:
+    """Fails fast (crashes the process) if Redis or ClickHouse aren't
+    reachable at startup. Deliberately not relying on docker-compose's own
+    `depends_on` health-gating alone - a scoped `--no-deps` restart of just
+    this service (see Makefile) skips that gating entirely, and this
+    service's own `restart: always` is what should retry until the
+    dependency comes up, not a silently-stuck consumer loop."""
+    try:
+        _ensure_group(redis_client)
+    except Exception:
+        logger.exception("redis unreachable at startup - exiting for restart: always to retry")
+        raise
+    try:
+        get_client().command("SELECT 1")
+    except Exception:
+        logger.exception("clickhouse unreachable at startup - exiting for restart: always to retry")
+        raise
+
+
 def _decode_into(entries: list[tuple[str, dict]], message_ids: list[str], events: list[dict]) -> None:
+    """Turns each queued raw StandardLoggingPayload into a build_event()
+    dict - this is where the CPU-bound parsing webhook itself no longer does
+    happens. One bad payload (malformed JSON, or an exception inside
+    build_event()) only drops that item, same guarantee webhook's own
+    per-payload try/except used to give when it called build_event() itself."""
     for message_id, fields in entries:
         message_ids.append(message_id)
         raw = fields.get("event")
         if not raw:
             continue
         try:
-            events.append(json.loads(raw))
+            payload = json.loads(raw)
         except (TypeError, ValueError):
             DECODE_FAILURES.inc()
-            logger.exception("failed to decode queued event (message_id=%s)", message_id)
+            logger.exception("failed to decode queued payload (message_id=%s)", message_id)
+            continue
+        try:
+            events.append(build_event(payload))
+        except Exception:
+            DECODE_FAILURES.inc()
+            logger.exception(
+                "failed to build event from queued payload (message_id=%s litellm_call_id=%s)",
+                message_id, payload.get("litellm_call_id", "") if isinstance(payload, dict) else "",
+            )
 
 
 def _flush(client: redis.Redis, message_ids: list[str], events: list[dict]) -> None:
@@ -85,7 +121,7 @@ def _refresh_queue_gauges(client: redis.Redis) -> None:
 def run() -> None:
     start_http_server(WORKER_METRICS_PORT)
     client = get_redis()
-    _ensure_group(client)
+    _check_dependencies(client)
     logger.info("webhook-worker started (consumer=%s, stream=%s, group=%s)", CONSUMER_NAME, STREAM_KEY, CONSUMER_GROUP)
 
     # Buffers accumulate across multiple XREADGROUP calls per flush window,
