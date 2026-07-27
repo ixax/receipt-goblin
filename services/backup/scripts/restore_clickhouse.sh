@@ -7,14 +7,15 @@
 # README.md's "Backup & restore" section before running this against anything but a
 # throwaway/verification target.
 #
-# Uses CLICKHOUSE_BOOTSTRAP_USER, not CLICKHOUSE_USER - DROP/RESTORE DATABASE
-# are database-level DDL, which the app user's grant (_ensure_app_user() in
-# migrate.py: `GRANT ALL ON <database>.*`, scoped to objects inside the
-# database) doesn't cover. Confirmed the hard way: running this as the app
-# user let DROP DATABASE through (dropped it anyway) but RESTORE DATABASE
-# then failed with "Database default does not exist", leaving the database
-# gone with nothing put back - the bootstrap superuser is what
-# _ensure_app_user() itself uses for equivalent database-level operations.
+# Uses CLICKHOUSE_BOOTSTRAP_USER, not the backup role's CLICKHOUSE_USER -
+# DROP/RESTORE DATABASE are database-level DDL, which no least-privilege
+# role's grant covers (the backup role only holds BACKUP, see
+# services/init/config.yml). Confirmed the hard way, back when every
+# service shared one app user with `GRANT ALL ON <database>.*`: running this
+# as that app user let DROP DATABASE through (dropped it anyway) but RESTORE
+# DATABASE then failed with "Database default does not exist", leaving the
+# database gone with nothing put back - the bootstrap superuser is what
+# migrate.py itself uses for equivalent database-level operations.
 #
 # Usage: restore_clickhouse.sh <filename> --yes
 set -euo pipefail

@@ -65,7 +65,7 @@ lines already say which).
 
 - You have no way to ask the caller a clarifying question (no
   `AskUserQuestion`, and delegation is one-shot) - same constraint
-  `load-tester` operates under. If something's ambiguous (which label to
+  `loadtest-sql` operates under. If something's ambiguous (which label to
   diff against when several exist, which dashboard file), pick the most
   recent/most obvious match, state the assumption you made in your report,
   and proceed - never stall waiting for input you can't receive.

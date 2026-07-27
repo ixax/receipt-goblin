@@ -1,0 +1,59 @@
+# Role/grant config for ClickHouse provisioning - read once, by `make init`
+# (services/init/init_clickhouse_users.py) only. Roles are created here and
+# nowhere else - services/webhook/src/migrate.py never touches users/grants
+# (see its own module docstring for why: role provisioning is a `make init`
+# concern, not something re-run on every `docker compose up`).
+#
+# See services/init/ch_roles.py's module docstring for the exact (deliberately
+# restricted, NOT general-YAML) grammar this file must stay within: a
+# top-level `roles:` list, each entry a flat mapping of scalar fields plus one
+# nested `grants:` list of strings. No flow style ({}/[]), no multi-line
+# scalars, no anchors/references - if this file ever needs more than that,
+# extend the parser deliberately rather than relying on syntax it doesn't
+# actually support.
+
+roles:
+  - name: ingest
+    user_env: CLICKHOUSE_INGEST_USER
+    password_env: CLICKHOUSE_INGEST_PASSWORD
+    default_user: ingest
+    grants:
+      - "GRANT INSERT ON {database}.*"
+      - "GRANT SELECT ON {database}.agent_invocations"
+      - "GRANT SELECT ON {database}.ingest_raw"
+      - "GRANT SELECT ON {database}.session_git_branch"
+      - "GRANT SELECT ON {database}.ai_gateway_users"
+      - "GRANT SELECT ON {database}.ai_gateway_groups"
+
+  - name: grafana
+    user_env: CLICKHOUSE_GRAFANA_USER
+    password_env: CLICKHOUSE_GRAFANA_PASSWORD
+    default_user: grafana
+    grants:
+      - "GRANT SELECT ON {database}.*"
+      - "GRANT SELECT ON system.tables"
+
+  - name: mcp
+    user_env: CLICKHOUSE_MCP_USER
+    password_env: CLICKHOUSE_MCP_PASSWORD
+    default_user: mcp
+    grants:
+      - "GRANT SELECT ON {database}.*"
+      - "GRANT SELECT ON system.query_log"
+      - "GRANT SYSTEM FLUSH LOGS ON *.*"
+
+  - name: backup
+    user_env: CLICKHOUSE_BACKUP_USER
+    password_env: CLICKHOUSE_BACKUP_PASSWORD
+    default_user: backup
+    grants:
+      - "GRANT BACKUP ON {database}.*"
+
+  - name: loadtest
+    user_env: CLICKHOUSE_LOADTEST_USER
+    password_env: CLICKHOUSE_LOADTEST_PASSWORD
+    default_user: loadtest
+    database_env: CLICKHOUSE_LOADTEST_DATABASE
+    create_database: true
+    grants:
+      - "GRANT ALL ON {database}.*"

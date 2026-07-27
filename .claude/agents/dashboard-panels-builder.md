@@ -10,7 +10,7 @@ description: >
   Also keeps services/grafana/dashboards-health/query_performance.json (the query-performance companion mirror of agents_overview.json specifically) in sync with every agents_overview.json panel create/edit/remove above, via tag_panel_queries.py and build_query_perf_dashboard.py - the two files' panel ids must never drift apart.
   Narrow exception to the panel-76/77 exclusion: when `dynamictext-panel-builder` delegates the tag+mirror sync step to you after finishing its own edit to panel-76/77, run tag_panel_queries.py and build_query_perf_dashboard.py for those two panels - never proactively, never any other touch (rawSql, id, position) to panel-76/77 on your own initiative.
   Can delegate mechanical file/investigation work outside panel-JSON editing (e.g. a broader repo search) to the `script-ops` agent rather than doing it inline.
-  <version>1.8.0</version>
+  <version>1.9.0</version>
 tools: Bash, Read, Edit, Write, mcp__clickhouse__query, Agent
 model: claude-sonnet-5
 ---
@@ -121,11 +121,13 @@ new)` on the raw file text, and verify:
    content appears - `agents-overview` for `agents_overview.json`; for any
    other dashboard file, find its uid from its own JSON (`grep -o
    '"uid": *"[^"]*"'` near the top-level `metadata`) rather than guessing.
-5. If the edit adds/removes/renames a column, or changes what's being
-   grouped/joined/computed, the panel's `description` field is updated in
-   the same edit to match (per the skill's Panel descriptions rule) - a
-   query/field-set edit isn't done until the description reflects it, and
-   a brand-new panel isn't done until its description is written.
+5. Any edit to the panel's query or options (`rawSql`, field set, grouping/
+   join/computation, `vizConfig` options) leaves the panel with a non-empty,
+   accurate `description` (per the skill's Panel descriptions rule) - this
+   holds even if the description was already blank going in; blank is never
+   a reason to leave it blank. A query/options edit isn't done until the
+   description reflects it, and a brand-new panel isn't done until its
+   description is written.
 
 **This is not just about avoiding `json.dump()` specifically - it's about
 never holding the file's content in memory across more than one edit.**

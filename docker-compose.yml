@@ -1,9 +1,29 @@
-# App-facing identity, provisioned via SQL each `docker compose up` by
-# clickhouse-migrate (migrate.py:_ensure_app_user) using the bootstrap
-# identity below. Shared by webhook/worker/mcp-server/grafana/backup.
-x-clickhouse-user: &clickhouse-user ${CLICKHOUSE_USER:?set CLICKHOUSE_USER, e.g. in a .env file next to docker-compose.yml}
-x-clickhouse-password: &clickhouse-password ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD, e.g. in a .env file next to docker-compose.yml}
+# Five least-privilege identities, provisioned via SQL once by `make init`
+# (services/init/init_clickhouse_users.py, roles/grants defined in
+# services/init/config.yml) using the bootstrap identity below - not on every
+# `docker compose up`. A fresh volume's `docker compose up` without having
+# run `make init` first fails loudly (ACCESS_DENIED/AUTHENTICATION_FAILED) -
+# expected, not something any service works around. No service shares a
+# login with another - see services/init/config.yml for exactly what each
+# role can and can't do.
+x-clickhouse-ingest-user: &clickhouse-ingest-user ${CLICKHOUSE_INGEST_USER:?set CLICKHOUSE_INGEST_USER, e.g. in a .env file next to docker-compose.yml}
+x-clickhouse-ingest-password: &clickhouse-ingest-password ${CLICKHOUSE_INGEST_PASSWORD:?set CLICKHOUSE_INGEST_PASSWORD, e.g. in a .env file next to docker-compose.yml}
+x-clickhouse-grafana-user: &clickhouse-grafana-user ${CLICKHOUSE_GRAFANA_USER:?set CLICKHOUSE_GRAFANA_USER, e.g. in a .env file next to docker-compose.yml}
+x-clickhouse-grafana-password: &clickhouse-grafana-password ${CLICKHOUSE_GRAFANA_PASSWORD:?set CLICKHOUSE_GRAFANA_PASSWORD, e.g. in a .env file next to docker-compose.yml}
+x-clickhouse-mcp-user: &clickhouse-mcp-user ${CLICKHOUSE_MCP_USER:?set CLICKHOUSE_MCP_USER, e.g. in a .env file next to docker-compose.yml}
+x-clickhouse-mcp-password: &clickhouse-mcp-password ${CLICKHOUSE_MCP_PASSWORD:?set CLICKHOUSE_MCP_PASSWORD, e.g. in a .env file next to docker-compose.yml}
+x-clickhouse-backup-user: &clickhouse-backup-user ${CLICKHOUSE_BACKUP_USER:?set CLICKHOUSE_BACKUP_USER, e.g. in a .env file next to docker-compose.yml}
+x-clickhouse-backup-password: &clickhouse-backup-password ${CLICKHOUSE_BACKUP_PASSWORD:?set CLICKHOUSE_BACKUP_PASSWORD, e.g. in a .env file next to docker-compose.yml}
+x-clickhouse-loadtest-user: &clickhouse-loadtest-user ${CLICKHOUSE_LOADTEST_USER:?set CLICKHOUSE_LOADTEST_USER, e.g. in a .env file next to docker-compose.yml}
+x-clickhouse-loadtest-password: &clickhouse-loadtest-password ${CLICKHOUSE_LOADTEST_PASSWORD:?set CLICKHOUSE_LOADTEST_PASSWORD, e.g. in a .env file next to docker-compose.yml}
+# Main app database, created by the clickhouse container itself at startup
+# (CLICKHOUSE_DB below).
 x-clickhouse-database: &clickhouse-database ${CLICKHOUSE_DATABASE:?set CLICKHOUSE_DATABASE, e.g. in a .env file next to docker-compose.yml}
+# loadtest's own database, separate from the app's - NOT created by the
+# clickhouse container at startup, provisioned instead by `make init`
+# (CREATE DATABASE IF NOT EXISTS, since the loadtest role's config in
+# services/init/config.yml sets create_database: true).
+x-clickhouse-loadtest-database: &clickhouse-loadtest-database ${CLICKHOUSE_LOADTEST_DATABASE:?set CLICKHOUSE_LOADTEST_DATABASE, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-host: &clickhouse-host ${CLICKHOUSE_HOST:-clickhouse}
 # Internal-only - webhook/clickhouse-migrate/mcp-server/grafana dial
 # `clickhouse` directly over the Docker network, never through nginx, and
@@ -19,7 +39,8 @@ x-clickhouse-native-port: &clickhouse-native-port ${CLICKHOUSE_NATIVE_PORT:-9000
 x-clickhouse-version: &clickhouse-version ${CLICKHOUSE_VERSION:-24.8.14.39}
 # Superuser the ClickHouse image creates itself at startup
 # (CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 below) - exists only to bootstrap
-# *clickhouse-user via SQL. No application service connects as this user.
+# the five roles above via SQL. No application service connects as this user
+# (restore_clickhouse.sh is the one exception - see the `backup` service).
 x-clickhouse-bootstrap-user: &clickhouse-bootstrap-user ${CLICKHOUSE_BOOTSTRAP_USER:?set CLICKHOUSE_BOOTSTRAP_USER, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-bootstrap-password: &clickhouse-bootstrap-password ${CLICKHOUSE_BOOTSTRAP_PASSWORD:?set CLICKHOUSE_BOOTSTRAP_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 
@@ -53,12 +74,14 @@ x-litellm-db-url: &litellm-db-url postgresql://litellm:${LITELLM_DB_PASSWORD:?se
 # webhook to call /key/info when verifying report_git_branch.py's key.
 x-litellm-base-url: &litellm-base-url http://litellm:4000
 
-# Shared by both webhook replicas (webhook-1/webhook-2) below.
+# Shared by both webhook replicas (webhook-1/webhook-2) below. Connects as
+# the `ingest` role (INSERT-only + a narrow SELECT list - see
+# services/init/config.yml).
 x-webhook-env: &webhook-env
   CLICKHOUSE_HOST: *clickhouse-host
   CLICKHOUSE_PORT: *clickhouse-port
-  CLICKHOUSE_USER: *clickhouse-user
-  CLICKHOUSE_PASSWORD: *clickhouse-password
+  CLICKHOUSE_USER: *clickhouse-ingest-user
+  CLICKHOUSE_PASSWORD: *clickhouse-ingest-password
   CLICKHOUSE_DATABASE: *clickhouse-database
   CAPTURE_ENABLED: *webhook-capture-enabled
   REDIS_HOST: *redis-host
@@ -66,6 +89,12 @@ x-webhook-env: &webhook-env
   # For /key/info lookups verifying report_git_branch.py's auth header.
   LITELLM_MASTER_KEY: *litellm-master-key
   LITELLM_BASE_URL: *litellm-base-url
+
+# Prometheus's own web UI (/graph, /targets, etc.) - lives behind the
+# `observability` compose profile (opt-in, see "Observability" in
+# README.md), gatewayed through load-balancer like everything else instead
+# of publishing its own host port directly.
+x-prometheus-port: &prometheus-port ${PROMETHEUS_PORT:-9090}
 
 # Langfuse (LLM tracing, fed by litellm's callbacks in config.yaml) - its
 # own Postgres/ClickHouse/Redis/MinIO, kept separate so schemas never collide
@@ -101,9 +130,9 @@ services:
     container_name: receipt-goblin-clickhouse
     environment:
       # Bootstrap superuser only (see x-clickhouse-bootstrap-* above), not
-      # the app identity. ACCESS_MANAGEMENT=1 lets clickhouse-migrate
-      # provision *clickhouse-user via SQL; the image drops the "default"
-      # account entirely in this mode.
+      # any of the app roles. ACCESS_MANAGEMENT=1 lets `make init`
+      # (services/init/) provision every role via SQL; the image drops the
+      # "default" account entirely in this mode.
       CLICKHOUSE_USER: *clickhouse-bootstrap-user
       CLICKHOUSE_PASSWORD: *clickhouse-bootstrap-password
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
@@ -142,11 +171,13 @@ services:
       - receipt-goblin
 
   clickhouse-migrate:
-    # Runs migrate.py once per `docker compose up`: provisions the app user
-    # via SQL, then applies any services/clickhouse/migrations/*.sql not yet
-    # in schema_migrations. Idempotent, safe on every startup - see
-    # migrate.py's docstring. webhook/worker wait on this so they never race
-    # a migration with live inserts.
+    # Runs migrate.py once per `docker compose up`: applies any
+    # services/clickhouse/migrations/*.sql not yet in schema_migrations, plus
+    # the one-time dashboard Dictionaries. Idempotent, safe on every startup -
+    # see migrate.py's docstring. Never touches ClickHouse users/roles/grants
+    # - that's `make init` alone (services/init/), run once, not here.
+    # webhook/worker wait on this so they never race a migration with live
+    # inserts.
     # Build context is the repo root - see services/webhook/Dockerfile.
     build:
       context: .
@@ -158,11 +189,22 @@ services:
       APP_ROLE: migrate
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
-      # Target app user this bootstraps into existence via SQL (see above).
-      CLICKHOUSE_USER: *clickhouse-user
-      CLICKHOUSE_PASSWORD: *clickhouse-password
       CLICKHOUSE_DATABASE: *clickhouse-database
-      # Bootstrap superuser, used only for CREATE USER/GRANT above.
+      # migrate.py itself never reads these (it uses the bootstrap identity
+      # below for everything) - only present because config.py is shared
+      # with webhook and reads CLICKHOUSE_USER/PASSWORD with no fallback;
+      # unset would crash on import. Reuses the ingest anchors, dead weight
+      # here, same pattern as REDIS_HOST/PORT below.
+      CLICKHOUSE_USER: *clickhouse-ingest-user
+      CLICKHOUSE_PASSWORD: *clickhouse-ingest-password
+      # Embedded (as string literals, see migrate.py's docstring) into the
+      # dashboard Dictionaries' SOURCE(CLICKHOUSE(...)) clause - the only
+      # role identity this file needs to know about.
+      CLICKHOUSE_INGEST_USER: *clickhouse-ingest-user
+      CLICKHOUSE_INGEST_PASSWORD: *clickhouse-ingest-password
+      # Bootstrap superuser - migrate.py's own DDL (schema_migrations,
+      # migrations/*.sql, dictionaries) needs rights no least-privilege role
+      # should hold.
       CLICKHOUSE_BOOTSTRAP_USER: *clickhouse-bootstrap-user
       CLICKHOUSE_BOOTSTRAP_PASSWORD: *clickhouse-bootstrap-password
       LITELLM_MASTER_KEY: *litellm-master-key
@@ -188,8 +230,8 @@ services:
     environment:
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
-      CLICKHOUSE_USER: *clickhouse-user
-      CLICKHOUSE_PASSWORD: *clickhouse-password
+      CLICKHOUSE_USER: *clickhouse-grafana-user
+      CLICKHOUSE_PASSWORD: *clickhouse-grafana-password
       CLICKHOUSE_DATABASE: *clickhouse-database
     mem_limit: 1g
     restart: always
@@ -218,8 +260,8 @@ services:
     environment:
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
-      CLICKHOUSE_USER: *clickhouse-user
-      CLICKHOUSE_PASSWORD: *clickhouse-password
+      CLICKHOUSE_MCP_USER: *clickhouse-mcp-user
+      CLICKHOUSE_MCP_PASSWORD: *clickhouse-mcp-password
       CLICKHOUSE_DATABASE: *clickhouse-database
       MCP_SERVER_PORT: *mcp-server-port
     mem_limit: 256m
@@ -330,13 +372,31 @@ services:
   load-balancer:
     # Load-balances the two webhook replicas above (real least_conn - see
     # nginx.conf) and gateways litellm/grafana/mcp-server/clickhouse/
-    # langfuse-web too - see AGENTS.md "Gateway (`load-balancer`)". Only this
-    # service publishes host ports; the backends it fronts are
+    # prometheus/langfuse-web too - see AGENTS.md "Gateway (`load-balancer`)".
+    # Only this service publishes host ports; the backends it fronts are
     # internal-network-only.
     build: ./services/load-balancer
     image: receipt-goblin-load-balancer:${LOAD_BALANCER_TAG:-latest}
     container_name: receipt-goblin-load-balancer
+    environment:
+      # Consumed only by docker-entrypoint.d/50-render-index-html.sh (the
+      # landing page's port links) - nginx.conf's own `listen` ports below
+      # are unrelated and stay hardcoded, since only the host-published side
+      # is ever configurable (see the `ports:` list's own comments).
+      WEBHOOK_PORT: *webhook-port
+      LITELLM_PORT: *litellm-port
+      GRAFANA_PORT: *grafana-port
+      MCP_SERVER_PORT: *mcp-server-port
+      CLICKHOUSE_HTTP_PORT: *clickhouse-http-port
+      PROMETHEUS_PORT: *prometheus-port
+      LANGFUSE_PORT: *langfuse-port
     ports:
+      # Landing page (nginx.conf's `listen 80` block, index.html) - fixed at
+      # 80, not a `${..._PORT:-default}` var like every port below, since
+      # it's the one meant to be reachable at the plain http://localhost
+      # root with no port at all.
+      - target: 80
+        published: 80
       - target: 8000
         published: *webhook-port
       - target: 4000
@@ -349,6 +409,10 @@ services:
         published: *clickhouse-http-port
       - target: 9000
         published: *clickhouse-native-port
+      # prometheus (opt-in `observability` profile) - 502s per-request until
+      # that profile is actually started, same as langfuse-web below.
+      - target: 9090
+        published: *prometheus-port
       # langfuse-web (opt-in `langfuse` profile) - see nginx.conf's `listen
       # 3001` block for why the target isn't 3000 (already grafana's).
       - target: 3001
@@ -394,8 +458,8 @@ services:
       APP_ROLE: worker
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
-      CLICKHOUSE_USER: *clickhouse-user
-      CLICKHOUSE_PASSWORD: *clickhouse-password
+      CLICKHOUSE_USER: *clickhouse-ingest-user
+      CLICKHOUSE_PASSWORD: *clickhouse-ingest-password
       CLICKHOUSE_DATABASE: *clickhouse-database
       REDIS_HOST: *redis-host
       REDIS_PORT: *redis-port
@@ -447,8 +511,8 @@ services:
       APP_ROLE: reparse
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
-      CLICKHOUSE_USER: *clickhouse-user
-      CLICKHOUSE_PASSWORD: *clickhouse-password
+      CLICKHOUSE_USER: *clickhouse-ingest-user
+      CLICKHOUSE_PASSWORD: *clickhouse-ingest-password
       CLICKHOUSE_DATABASE: *clickhouse-database
       # reparse.py doesn't use LITELLM_*/REDIS_*, but config.py is shared
       # with webhook and reads them unconditionally - unset crashes on import.
@@ -497,14 +561,21 @@ services:
       HOLD_MINUTES: ${HOLD_MINUTES:-5}
       DURATION_MINUTES: ${DURATION_MINUTES:-0}
       SPEED: ${SPEED:-1.0}
-      # loadtest.py never touches ClickHouse/Redis/LiteLLM directly, but
-      # config.py is shared with webhook and reads these with no fallback -
-      # unset would crash on import.
+      # loadtest.py itself never touches ClickHouse directly yet (config.py
+      # is shared with webhook and reads these with no fallback - unset
+      # would crash on import), but these are now real, scoped-down
+      # credentials rather than a dead reused pair: the `loadtest` role has
+      # full (ALL) rights on its own dedicated CLICKHOUSE_LOADTEST_DATABASE
+      # only, never on the app's main CLICKHOUSE_DATABASE - see
+      # services/init/config.yml. loadtest-runner (the agent that drives
+      # `make loadtest`) checks this database exists before every run and
+      # alerts if it doesn't, rather than creating it - it's provisioned by
+      # `make init` alone, once, not by clickhouse-migrate.
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
-      CLICKHOUSE_USER: *clickhouse-user
-      CLICKHOUSE_PASSWORD: *clickhouse-password
-      CLICKHOUSE_DATABASE: *clickhouse-database
+      CLICKHOUSE_USER: *clickhouse-loadtest-user
+      CLICKHOUSE_PASSWORD: *clickhouse-loadtest-password
+      CLICKHOUSE_DATABASE: *clickhouse-loadtest-database
       REDIS_HOST: *redis-host
       REDIS_PORT: *redis-port
       LITELLM_MASTER_KEY: *litellm-master-key
@@ -571,11 +642,12 @@ services:
       # public/nginx-published port var above - they fall back to their own
       # `${CLICKHOUSE_NATIVE_PORT:-9000}`, which matches clickhouse's actual
       # (hardcoded) internal port regardless of what the public one is set to.
-      CLICKHOUSE_USER: *clickhouse-user
-      CLICKHOUSE_PASSWORD: *clickhouse-password
+      CLICKHOUSE_USER: *clickhouse-backup-user
+      CLICKHOUSE_PASSWORD: *clickhouse-backup-password
       CLICKHOUSE_DATABASE: *clickhouse-database
       # restore_clickhouse.sh's DROP/RESTORE DATABASE need these, not the
-      # app user above - see that script's own comment for why.
+      # backup user above (which only holds the BACKUP privilege, not DDL) -
+      # see that script's own comment for why.
       CLICKHOUSE_BOOTSTRAP_USER: *clickhouse-bootstrap-user
       CLICKHOUSE_BOOTSTRAP_PASSWORD: *clickhouse-bootstrap-password
       LITELLM_DB_PASSWORD: *litellm-db-password

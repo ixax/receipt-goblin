@@ -13,11 +13,6 @@ CLICKHOUSE_USER = os.environ["CLICKHOUSE_USER"]
 CLICKHOUSE_PASSWORD = os.environ["CLICKHOUSE_PASSWORD"]
 CLICKHOUSE_DATABASE = os.environ["CLICKHOUSE_DATABASE"]
 
-# Only set on clickhouse-migrate, for migrate.py's _ensure_app_user
-# bootstrap. Optional so importing this module doesn't crash other services.
-CLICKHOUSE_BOOTSTRAP_USER = os.environ.get("CLICKHOUSE_BOOTSTRAP_USER")
-CLICKHOUSE_BOOTSTRAP_PASSWORD = os.environ.get("CLICKHOUSE_BOOTSTRAP_PASSWORD")
-
 REDIS_HOST = os.environ["REDIS_HOST"]
 REDIS_PORT = int(os.environ["REDIS_PORT"])
 

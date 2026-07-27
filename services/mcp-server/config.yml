@@ -1,6 +1,9 @@
 # Read-only SQL validation for the `query` tool (src/server.py
-# _validate_readonly_sql). Keep strict - there's no separate read-only
-# ClickHouse user backing this; all services share one user.
+# _validate_readonly_sql). Keep strict even though mcp-server now also
+# connects as its own DB-level read-only `mcp` ClickHouse user (see
+# services/init/config.yml) - that's a second, independent
+# enforcement layer (ClickHouse itself will reject any INSERT/DDL this
+# user attempts), not a replacement for the app-level checks below.
 
 # Tables this stack actually writes to - anything else (system.*, typos,
 # etc.) is out of scope for `query`.

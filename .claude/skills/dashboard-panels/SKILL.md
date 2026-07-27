@@ -15,7 +15,7 @@ description: >
   through the dynamictext-panel-builder agent instead - see AGENTS.md), and for any change to a dashboard
   that isn't actually about a panel's own content (annotations, variables, dashboard-level settings - those
   are plain edits, no skill needed).
-  <version>1.3.1</version>
+  <version>1.4.0</version>
 ---
 
 # dashboard-panels
@@ -75,7 +75,16 @@ Keep both lines short but substantive - a sentence each, not a paragraph.
 
 **Mandatory on creation**: every new panel gets this description filled in at creation time, not left blank or added later as an afterthought.
 
-**Mandatory on any change to the panel's field set or query logic**: if you add/remove/rename a column, change what's being grouped or joined, or otherwise alter what the query computes, update the description in the same edit so it keeps matching reality.
+**Mandatory on any edit to a panel's query or options**: any create or edit
+(`rawSql`, field set, grouping/join/computation, `vizConfig` options - not
+just column adds/removes/renames) must leave that panel with a non-empty,
+accurate `description` in this format when the edit is done. This applies
+regardless of the panel's description state going in - a panel that was
+already blank before the edit is not exempt from this; finding it blank is
+not a reason to leave it blank, it's the trigger to write one. Never treat
+an already-blank description as "the file's existing convention" to
+preserve - a blank description is never a convention, it's a gap this rule
+closes on the next touch.
 A stale description is worse than none - this was a real bug (found and fixed 2026-07-26): "Top repeating tool errors"' description said "the first 80 characters of failed_tool_error" after the underlying truncation had already been removed, because the query changed without the description being revisited.
 
 ### Table panel habits

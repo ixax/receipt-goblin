@@ -132,7 +132,7 @@ only a short summary or the diff table - not raw per-query numbers, to keep
 your own context clean. Give it: dashboard file (usually just the default),
 panel selector, label, and any `--hours`/`--var` overrides the caller
 specified. It cannot ask you a clarifying question (no `AskUserQuestion`,
-same constraint `load-tester` has) - if you under-specify something, it
+same constraint `loadtest-sql` has) - if you under-specify something, it
 will pick the script's own defaults and tell you what it assumed, not
 stall. Read its own agent file
 (`.claude/agents/query-perf-runner.md`) if you need to know exactly what it

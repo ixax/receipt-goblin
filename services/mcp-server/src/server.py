@@ -33,8 +33,8 @@ from starlette.responses import JSONResponse
 # Defaults live in docker-compose.yml; always set by container start, no fallback needed.
 CLICKHOUSE_HOST = os.environ["CLICKHOUSE_HOST"]
 CLICKHOUSE_PORT = int(os.environ["CLICKHOUSE_PORT"])
-CLICKHOUSE_USER = os.environ["CLICKHOUSE_USER"]
-CLICKHOUSE_PASSWORD = os.environ["CLICKHOUSE_PASSWORD"]
+CLICKHOUSE_USER = os.environ["CLICKHOUSE_MCP_USER"]
+CLICKHOUSE_PASSWORD = os.environ["CLICKHOUSE_MCP_PASSWORD"]
 CLICKHOUSE_DATABASE = os.environ["CLICKHOUSE_DATABASE"]
 MCP_SERVER_PORT = os.environ["MCP_SERVER_PORT"]
 

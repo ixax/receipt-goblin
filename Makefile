@@ -60,7 +60,7 @@ VKEY := $(if $(strip $(LITELLM_VIRTUAL_KEY)),$(LITELLM_VIRTUAL_KEY),<virtual key
 $(shell python3 scripts/resolve_image_version.py > .image-tags.mk)
 include .image-tags.mk
 
-.PHONY: check-env start up stop restart up-no-deps env test build langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
+.PHONY: check-env init start up restart up-no-deps build status migrate stop down logs env test langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	observability-up observability-down observability-logs observability-status loadtest
@@ -84,6 +84,9 @@ check-env:
 	@echo "⚠️  ENVIRONMENT=$(ENVIRONMENT)"
 	@python3 scripts/resolve_image_version.py | sed 's/^export /⚠️  /'
 
+init: check-env
+	python3 services/init/init_clickhouse_users.py $(COMPOSE_FILES)
+
 # `start`: Brings up containers with existing images (no rebuild/recreate).
 # `up`: Rebuilds and recreates containers - the fix for baked-in config/env/file changes.
 # Both support SERVICE=<name> to scope to a single service (default: whole stack).
@@ -92,6 +95,13 @@ start: check-env
 
 up: check-env
 	docker compose $(COMPOSE_FILES) up -d --build --force-recreate $(SERVICE)
+
+# Restarts running containers in place (not a rebuild) - picks up edits to
+# bind-mounted source (services/webhook/src, etc.) for services without
+# --reload, like worker. Run `make up` instead if
+# requirements.txt/Dockerfile changed.
+restart: check-env
+	docker compose $(COMPOSE_FILES) restart
 
 # SERVICE is required here (unlike `make up`) - recreates just that one
 # service with --no-deps, so a config/image change (mem_limit, cpus, an env
@@ -115,7 +125,16 @@ build: check-env
 	docker compose $(COMPOSE_FILES) build $(SERVICE)
 
 status: check-env
-	docker compose $(COMPOSE_FILES) ps
+	python3 scripts/wait_for_stack_healthy.py $(COMPOSE_FILES)
+
+# Runs just the ClickHouse migration container (services/clickhouse/migrations/*.sql
+# + one-time dashboard Dictionaries) without touching any other service - the
+# same thing `make up` already runs automatically via its depends_on chain,
+# provided standalone for e.g. applying a newly-added migration file without
+# recreating the rest of the stack. Never touches ClickHouse users/roles/grants
+# - that's `make init` alone, see services/init/.
+migrate: check-env
+	docker compose $(COMPOSE_FILES) run --rm clickhouse-migrate
 
 stop down: check-env langfuse-down observability-down
 	docker compose $(COMPOSE_FILES) down
@@ -159,13 +178,6 @@ observability-logs: check-env
 
 observability-status: check-env
 	docker compose $(COMPOSE_FILES) --profile observability ps $(OBSERVABILITY_SERVICES)
-
-# Restarts running containers in place (not a rebuild) - picks up edits to
-# bind-mounted source (services/webhook/src, etc.) for services without
-# --reload, like worker. Run `make up` instead if
-# requirements.txt/Dockerfile changed.
-restart: check-env
-	docker compose $(COMPOSE_FILES) restart
 
 # Runs services/webhook/tests (pure clickhouse_ingest.py functions, no live
 # ClickHouse needed - see services/webhook/tests/conftest.py). Needs
@@ -220,7 +232,7 @@ env: check-env
 	@echo '  }'
 	@echo '}'
 
-# Reparses event_sources into agent_events/agent_usage/agent_messages/
+# Reparses ingest_raw into agent_events/agent_usage/agent_messages/
 # agent_invocations using the current classification logic - see
 # services/webhook/src/reparse.py. ReplacingMergeTree-safe to re-run any
 # number of times. Requires SESSION=<session_id>; use `make reparse-all` to
@@ -247,7 +259,7 @@ print-reparse-final-hint:
 	@echo ''
 	@echo '  docker exec receipt-goblin-clickhouse clickhouse-client -q "OPTIMIZE TABLE agent_events FINAL; OPTIMIZE TABLE agent_usage FINAL; OPTIMIZE TABLE agent_messages FINAL; OPTIMIZE TABLE agent_invocations FINAL; OPTIMIZE TABLE ai_gateway_users FINAL; OPTIMIZE TABLE ai_gateway_groups FINAL"'
 	@echo ''
-	@echo '(event_sources is deliberately excluded - it is large and OPTIMIZE FINAL on it risks OOM.)'
+	@echo '(ingest_raw is deliberately excluded - it is large and OPTIMIZE FINAL on it risks OOM.)'
 
 # Replays real captured traffic (.capture/) against webhook's own
 # POST /api/v1/metrics at a ramping concurrency profile, to see how

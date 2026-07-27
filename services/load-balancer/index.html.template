@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Tracking Stack</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9;
+    --fg: #1c1e21;
+    --muted: #6b7280;
+    --card: #ffffff;
+    --border: #e5e7eb;
+    --link: #2563eb;
+    --link-hover: #1d4ed8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d;
+      --fg: #e8eaed;
+      --muted: #9aa0a6;
+      --card: #1e2127;
+      --border: #2c2f36;
+      --link: #7aa2f7;
+      --link-hover: #a9c1fb;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Roboto", "Calibri", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 20px;
+    line-height: 1.5;
+    padding: 3rem 1.5rem;
+  }
+  .card {
+    width: 100%;
+    max-width: 680px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2.5rem 3rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.04);
+  }
+  h1 {
+    font-size: 1.4em;
+    font-weight: 600;
+    margin: 0 0 0.25em;
+    letter-spacing: -0.01em;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.65em;
+    margin: 0 0 1.5em;
+  }
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  li {
+    margin: 0.6em 0;
+  }
+  ul ul {
+    margin: 0.35em 0 0.9em 1.4em;
+  }
+  ul ul li {
+    margin: 0.35em 0;
+    font-size: 0.75em;
+  }
+  ul ul ul {
+    margin: 0.3em 0 0.7em 1.4em;
+  }
+  ul ul ul li {
+    margin: 0.3em 0;
+    font-size: 1em;
+  }
+  a {
+    color: var(--link);
+    text-decoration: none;
+    font-weight: 500;
+  }
+  a:hover, a:focus-visible {
+    color: var(--link-hover);
+    text-decoration: underline;
+  }
+  .plain {
+    color: var(--fg);
+    font-weight: 500;
+  }
+  .note {
+    color: var(--muted);
+    font-weight: 400;
+  }
+  .top-level > li > a,
+  .top-level > li > .plain {
+    font-size: 1em;
+  }
+  .support-link {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    font-size: 0.6em;
+    color: var(--muted);
+  }
+  .support-link:hover, .support-link:focus-visible {
+    color: var(--link-hover);
+  }
+  .support-link svg {
+    width: 1.3em;
+    height: 1.3em;
+    fill: currentColor;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Agent Tracking Stack</h1>
+    <p class="subtitle">Services at a glance</p>
+    <ul class="top-level">
+      <li>
+        <span class="plain">webhook</span>
+        <span class="note">&mdash; :${WEBHOOK_PORT}, ingest API, nothing to open here</span>
+      </li>
+      <li>
+        <a href="http://localhost:${LITELLM_PORT}" target="_blank" rel="noopener">litellm</a>
+        <span class="note">&mdash; root is the Swagger/OpenAPI UI</span>
+        <ul>
+          <li><a href="http://localhost:${LITELLM_PORT}/ui" target="_blank" rel="noopener">Admin UI</a></li>
+          <li><a href="http://localhost:${LITELLM_PORT}/ui/teams" target="_blank" rel="noopener">Teams</a></li>
+          <li><a href="http://localhost:${LITELLM_PORT}/ui/api-keys" target="_blank" rel="noopener">Virtual keys</a></li>
+          <li><a href="http://localhost:${LITELLM_PORT}/ui/usage" target="_blank" rel="noopener">Usage</a></li>
+          <li><a href="http://localhost:${LITELLM_PORT}/ui/logs" target="_blank" rel="noopener">Logs</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="http://localhost:${GRAFANA_PORT}" target="_blank" rel="noopener">grafana</a>
+        <ul>
+          <li><a href="http://localhost:${GRAFANA_PORT}/d/agents-overview" target="_blank" rel="noopener">Agents Overview</a></li>
+          <li>
+            <a href="http://localhost:${GRAFANA_PORT}/dashboards/f/fft37t8f9w6wwd" target="_blank" rel="noopener">Health</a>
+            <ul>
+              <li><a href="http://localhost:${GRAFANA_PORT}/d/clickhouse-health" target="_blank" rel="noopener">ClickHouse Health</a></li>
+              <li><a href="http://localhost:${GRAFANA_PORT}/d/docker-containers" target="_blank" rel="noopener">Docker Containers</a></li>
+              <li><a href="http://localhost:${GRAFANA_PORT}/d/infra-overview" target="_blank" rel="noopener">Infra Overview</a></li>
+              <li><a href="http://localhost:${GRAFANA_PORT}/d/query-performance" target="_blank" rel="noopener">Query Performance</a></li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+      <li>
+        <a href="http://localhost:${CLICKHOUSE_HTTP_PORT}" target="_blank" rel="noopener">clickhouse</a>
+        <ul>
+          <li><a href="http://localhost:${CLICKHOUSE_HTTP_PORT}/play" target="_blank" rel="noopener">/play</a> <span class="note">&mdash; SQL query UI</span></li>
+          <li><a href="http://localhost:${CLICKHOUSE_HTTP_PORT}/dashboard" target="_blank" rel="noopener">/dashboard</a> <span class="note">&mdash; ClickHouse's own built-in observability dashboard</span></li>
+        </ul>
+      </li>
+      <li>
+        <span class="plain">mcp-server</span>
+        <span class="note">&mdash; :${MCP_SERVER_PORT}, MCP endpoint only, nothing to open here</span>
+      </li>
+      <li>
+        <a href="http://localhost:${PROMETHEUS_PORT}" target="_blank" rel="noopener">prometheus</a>
+        <span class="note">&mdash; optional, only up under the observability profile</span>
+      </li>
+      <li>
+        <a href="http://localhost:${LANGFUSE_PORT}" target="_blank" rel="noopener">langfuse</a>
+        <span class="note">&mdash; optional, only up under the langfuse profile</span>
+      </li>
+    </ul>
+  </div>
+  <a class="support-link" href="https://github.com/ixax/receipt-goblin" target="_blank" rel="noopener">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    <span>github.com/ixax/receipt-goblin</span>
+  </a>
+</body>
+</html>
