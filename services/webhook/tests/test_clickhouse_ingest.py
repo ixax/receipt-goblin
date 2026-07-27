@@ -609,7 +609,7 @@ def test_agent_invocation_rows_unsuccess_no_spawns_returns_empty_list():
 
 def test_event_row_success_reports_status_and_latency():
     payload = load_capture("success_plain")
-    row = ci._event_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "")
+    row = ci._event_row(payload, ci.EventContext("session-1", "trace-1"))
     columns = ci._EVENT_COLUMNS
     values = dict(zip(columns, row))
     assert values["status"] == "success"
@@ -621,7 +621,7 @@ def test_event_row_success_reports_status_and_latency():
 
 def test_event_row_unsuccess_failure_payload_has_no_tool_name_or_latency():
     payload = load_capture("failure")
-    row = ci._event_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "")
+    row = ci._event_row(payload, ci.EventContext("session-1", "trace-1"))
     values = dict(zip(ci._EVENT_COLUMNS, row))
     assert values["status"] == "failure"
     assert values["tool_name"] == ""
@@ -633,7 +633,7 @@ def test_event_row_unsuccess_failure_payload_has_no_tool_name_or_latency():
 
 def test_usage_row_success_extracts_token_counts():
     payload = load_capture("success_plain")
-    row = ci._usage_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "")
+    row = ci._usage_row(payload, ci.EventContext("session-1", "trace-1"))
     assert row is not None
     values = dict(zip(ci._USAGE_COLUMNS, row))
     assert values["input_tokens"] == 723
@@ -643,7 +643,7 @@ def test_usage_row_success_extracts_token_counts():
 
 def test_usage_row_unsuccess_no_billable_tokens_returns_none():
     payload = load_capture("failure")
-    assert ci._usage_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "") is None
+    assert ci._usage_row(payload, ci.EventContext("session-1", "trace-1")) is None
 
 
 def test_usage_row_unsuccess_negative_ttft_clamps_to_zero():
@@ -653,7 +653,7 @@ def test_usage_row_unsuccess_negative_ttft_clamps_to_zero():
     # ttft_ms's UInt32 column and used to crash the whole insert batch.
     payload = load_capture("success_plain")
     payload = dict(payload, startTime=100.5, completionStartTime=100.4)
-    row = ci._usage_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "")
+    row = ci._usage_row(payload, ci.EventContext("session-1", "trace-1"))
     assert row is not None
     values = dict(zip(ci._USAGE_COLUMNS, row))
     assert values["ttft_ms"] == 0
@@ -661,7 +661,7 @@ def test_usage_row_unsuccess_negative_ttft_clamps_to_zero():
 
 def test_usage_row_success_falls_back_to_responses_api_cache_fields():
     payload = load_capture("chatgpt_responses_cached")
-    row = ci._usage_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "")
+    row = ci._usage_row(payload, ci.EventContext("session-1", "trace-1"))
     assert row is not None
     values = dict(zip(ci._USAGE_COLUMNS, row))
     assert values["input_tokens"] == 19167
@@ -678,7 +678,7 @@ def test_usage_row_success_falls_back_to_responses_api_cache_fields():
 
 def test_message_row_success_captures_prompt_and_response_text():
     payload = load_capture("success_plain")
-    row = ci._message_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "")
+    row = ci._message_row(payload, ci.EventContext("session-1", "trace-1"))
     assert row is not None
     values = dict(zip(ci._MESSAGE_COLUMNS, row))
     assert "test-summarizer skill" in values["prompt_text"]
@@ -688,7 +688,7 @@ def test_message_row_success_captures_prompt_and_response_text():
 
 def test_message_row_unsuccess_no_prompt_or_response_text_returns_none():
     payload = {"messages": [], "response": {"choices": []}}
-    assert ci._message_row(payload, "session-1", "trace-1", "", "", "", "", "", "", "") is None
+    assert ci._message_row(payload, ci.EventContext("session-1", "trace-1")) is None
 
 
 # ---------------------------------------------------------------------------

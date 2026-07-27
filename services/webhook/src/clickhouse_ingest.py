@@ -6,6 +6,7 @@ tool_use blocks), not from a CLI-side hook - see AGENTS.md.
 import json
 import logging
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -320,6 +321,50 @@ def _session_and_trace_id(payload: dict) -> tuple[str, str]:
     )
     trace_id = trace_id or session_id
     return session_id, trace_id
+
+
+@dataclass
+class EventContext:
+    """Per-call identity/attribution fields shared by _event_row/_usage_row/
+    _message_row - avoids passing the same 9 positional values through all
+    three call sites (ingest_standard_logging_payload, build_event,
+    reparse._reparse_one)."""
+    session_id: str
+    trace_id: str
+    agent_name: str = ""
+    agent_version: str = ""
+    skill_name: str = ""
+    skill_version: str = ""
+    command_name: str = ""
+    command_version: str = ""
+    agent_invocation_id: str = ""
+
+
+def _derive_context(payload: dict, messages: Any, client=None) -> EventContext:
+    """Computes an EventContext for one payload. agent_name/agent_version
+    need a DB round-trip (_agent_name_and_version_for_invocation), so they're
+    left blank when client is None - the DB-free build_event() path, where
+    ingest_events_batch() patches them in afterward once the batch's own
+    invocation_rows are inserted."""
+    session_id, trace_id = _session_and_trace_id(payload)
+    agent_invocation_id = _agent_invocation_id(payload)
+    if client is not None:
+        agent_name, agent_version = _agent_name_and_version_for_invocation(client, agent_invocation_id)
+    else:
+        agent_name, agent_version = "", ""
+    skill_name, skill_version = _skill_name_and_version(payload)
+    command_name, command_version = _active_command_name_and_version(messages)
+    return EventContext(
+        session_id=session_id,
+        trace_id=trace_id,
+        agent_name=agent_name,
+        agent_version=agent_version,
+        skill_name=skill_name,
+        skill_version=skill_version,
+        command_name=command_name,
+        command_version=command_version,
+        agent_invocation_id=agent_invocation_id,
+    )
 
 
 def _split_name_version(value: str) -> tuple[str, str]:
@@ -973,12 +1018,7 @@ def _insert_clients(client, rows: list[list]) -> None:
     client.insert("clients", rows, column_names=_CLIENT_COLUMNS)
 
 
-def _event_row(
-    payload: dict, session_id: str, trace_id: str,
-    agent_name: str, agent_version: str, skill_name: str, skill_version: str,
-    command_name: str, command_version: str, agent_invocation_id: str,
-    now: Optional[datetime] = None,
-) -> list:
+def _event_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None) -> list:
     start_time = payload.get("startTime")
     end_time = payload.get("endTime")
     # NOT payload["response_time"]: for streamed calls that's time-to-first-
@@ -1001,7 +1041,7 @@ def _event_row(
     response_text = _response_text(payload)
     prompt_text_raw = _last_user_text(payload.get("messages"))
     prompt_kind, display_text, display_arg = _prompt_kind_and_display(
-        prompt_text_raw, command_name, response_text
+        prompt_text_raw, ctx.command_name, response_text
     )
     if prompt_kind:
         calculated_payload["prompt_kind"] = prompt_kind
@@ -1041,18 +1081,18 @@ def _event_row(
         _user_id(payload),
         _group_id(payload),
         _user_key_hash(payload),
-        session_id,
-        trace_id,
+        ctx.session_id,
+        ctx.trace_id,
         0,  # turn_id: unknown from this source
         "litellm_call",
         tool_name,
-        agent_name,
-        agent_version,
-        skill_name,
-        skill_version,
-        command_name,
-        command_version,
-        agent_invocation_id,
+        ctx.agent_name,
+        ctx.agent_version,
+        ctx.skill_name,
+        ctx.skill_version,
+        ctx.command_name,
+        ctx.command_version,
+        ctx.agent_invocation_id,
         payload.get("status", ""),
         latency_ms,
         failed_tool_name,
@@ -1068,12 +1108,7 @@ def _event_row(
     ]
 
 
-def _usage_row(
-    payload: dict, session_id: str, trace_id: str,
-    agent_name: str, agent_version: str, skill_name: str, skill_version: str,
-    command_name: str, command_version: str, agent_invocation_id: str,
-    now: Optional[datetime] = None,
-) -> Optional[list]:
+def _usage_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None) -> Optional[list]:
     response = payload.get("response") or {}
     usage = response.get("usage") or (payload.get("metadata") or {}).get("usage_object") or {}
     prompt_tokens = payload.get("prompt_tokens") or usage.get("prompt_tokens") or 0
@@ -1125,17 +1160,17 @@ def _usage_row(
         _user_id(payload),
         _group_id(payload),
         _user_key_hash(payload),
-        session_id,
-        trace_id,
+        ctx.session_id,
+        ctx.trace_id,
         0,  # turn_id: unknown from this source
         model,
-        agent_name,
-        agent_version,
-        skill_name,
-        skill_version,
-        command_name,
-        command_version,
-        agent_invocation_id,
+        ctx.agent_name,
+        ctx.agent_version,
+        ctx.skill_name,
+        ctx.skill_version,
+        ctx.command_name,
+        ctx.command_version,
+        ctx.agent_invocation_id,
         mcp_tool_name,
         prompt_tokens,
         completion_tokens,
@@ -1155,12 +1190,7 @@ def _usage_row(
     ]
 
 
-def _message_row(
-    payload: dict, session_id: str, trace_id: str,
-    agent_name: str, agent_version: str, skill_name: str, skill_version: str,
-    command_name: str, command_version: str, agent_invocation_id: str,
-    now: Optional[datetime] = None,
-) -> Optional[list]:
+def _message_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None) -> Optional[list]:
     response_text = _response_text(payload)
     prompt_text = _last_user_text(payload.get("messages"))
     if not prompt_text and not response_text:
@@ -1171,16 +1201,16 @@ def _message_row(
         _user_id(payload),
         _group_id(payload),
         _user_key_hash(payload),
-        session_id,
-        trace_id,
+        ctx.session_id,
+        ctx.trace_id,
         0,  # turn_id: unknown from this source
-        agent_name,
-        agent_version,
-        skill_name,
-        skill_version,
-        command_name,
-        command_version,
-        agent_invocation_id,
+        ctx.agent_name,
+        ctx.agent_version,
+        ctx.skill_name,
+        ctx.skill_version,
+        ctx.command_name,
+        ctx.command_version,
+        ctx.agent_invocation_id,
         prompt_text,
         response_text,
         payload.get("litellm_call_id", ""),
@@ -1193,40 +1223,29 @@ def ingest_standard_logging_payload(payload: dict) -> None:
     raises - LiteLLM would retry a payload forever if this broke the ack."""
     session_id = trace_id = ""
     try:
-        session_id, trace_id = _session_and_trace_id(payload)
         client = get_client()
         now = datetime.now(timezone.utc)
 
         messages = payload.get("messages")
+        session_id, trace_id = _session_and_trace_id(payload)
+        # Insert this call's own spawned-subagent rows before doing
+        # _derive_context's DB lookup below (for *this* call's own
+        # agent_invocation_id) - minimizes the race window before the
+        # spawned subagent's own first call arrives and looks its row up.
         _insert_agent_invocations(client, _agent_invocation_rows(session_id, messages, now=now))
 
-        agent_invocation_id = _agent_invocation_id(payload)
-        agent_name, agent_version = _agent_name_and_version_for_invocation(client, agent_invocation_id)
-        skill_name, skill_version = _skill_name_and_version(payload)
-        command_name, command_version = _active_command_name_and_version(messages)
+        ctx = _derive_context(payload, messages, client=client)
 
         _insert_source(client, _source_row(payload, session_id, now))
 
-        _insert_event(client, _event_row(
-            payload, session_id, trace_id,
-            agent_name, agent_version, skill_name, skill_version,
-            command_name, command_version, agent_invocation_id, now,
-        ))
+        _insert_event(client, _event_row(payload, ctx, now))
 
         if payload.get("status") == "success":
-            usage_row = _usage_row(
-                payload, session_id, trace_id,
-                agent_name, agent_version, skill_name, skill_version,
-                command_name, command_version, agent_invocation_id, now,
-            )
+            usage_row = _usage_row(payload, ctx, now)
             if usage_row is not None:
                 _insert_usage(client, usage_row)
 
-            message_row = _message_row(
-                payload, session_id, trace_id,
-                agent_name, agent_version, skill_name, skill_version,
-                command_name, command_version, agent_invocation_id, now,
-            )
+            message_row = _message_row(payload, ctx, now)
             if message_row is not None:
                 _insert_message(client, message_row)
     except Exception:
@@ -1337,38 +1356,23 @@ def build_event(payload: dict) -> dict:
     Never raises internally - lets worker.py's _decode_into decide whether
     one bad payload drops just that item or the whole batch.
     """
-    session_id, trace_id = _session_and_trace_id(payload)
     messages = payload.get("messages")
     now = datetime.now(timezone.utc)
-    invocation_rows = _agent_invocation_rows(session_id, messages, now=now)
-    agent_invocation_id = _agent_invocation_id(payload)
-    skill_name, skill_version = _skill_name_and_version(payload)
-    command_name, command_version = _active_command_name_and_version(messages)
+    ctx = _derive_context(payload, messages)  # no client - agent_name/version stay blank
+    invocation_rows = _agent_invocation_rows(ctx.session_id, messages, now=now)
 
-    source_row = _source_row(payload, session_id, now)
+    source_row = _source_row(payload, ctx.session_id, now)
 
-    event_row = _event_row(
-        payload, session_id, trace_id,
-        "", "", skill_name, skill_version,
-        command_name, command_version, agent_invocation_id, now,
-    )
+    event_row = _event_row(payload, ctx, now)
 
     usage_row = None
     message_row = None
     if payload.get("status") == "success":
-        usage_row = _usage_row(
-            payload, session_id, trace_id,
-            "", "", skill_name, skill_version,
-            command_name, command_version, agent_invocation_id, now,
-        )
-        message_row = _message_row(
-            payload, session_id, trace_id,
-            "", "", skill_name, skill_version,
-            command_name, command_version, agent_invocation_id, now,
-        )
+        usage_row = _usage_row(payload, ctx, now)
+        message_row = _message_row(payload, ctx, now)
 
     return {
-        "agent_invocation_id": agent_invocation_id,
+        "agent_invocation_id": ctx.agent_invocation_id,
         # Raw calling-client identity - resolved to event_client_id by
         # ingest_events_batch() (needs a DB round trip via _resolve_client_id,
         # which this DB-free function can't do).
@@ -1397,7 +1401,34 @@ def ingest_events_batch(events: list[dict]) -> None:
     if not events:
         return
     try:
-        client = get_client()
+        writer = _BatchWriter(get_client())
+        writer.write_dimensions(events)
+        event_rows, usage_rows, message_rows = writer.patch_fact_rows(events)
+        for table, rows, columns, call_id_idx, session_id_idx in (
+            ("agent_events", event_rows, _EVENT_COLUMNS, _EVENT_CALL_ID_IDX, _EVENT_SESSION_ID_IDX),
+            ("agent_usage", usage_rows, _USAGE_COLUMNS, _USAGE_CALL_ID_IDX, _USAGE_SESSION_ID_IDX),
+            ("agent_messages", message_rows, _MESSAGE_COLUMNS, _MESSAGE_CALL_ID_IDX, _MESSAGE_SESSION_ID_IDX),
+        ):
+            writer.insert_with_dlq_fallback(table, rows, columns, call_id_idx, session_id_idx)
+    except Exception:
+        logger.exception("failed to ingest event batch (n=%d)", len(events))
+
+
+class _BatchWriter:
+    """Owns the per-batch state ingest_events_batch() needs across its three
+    concerns - dimension rows, per-event agent/client resolution caches, and
+    per-table insert-with-DLQ-fallback - so ingest_events_batch() itself
+    stays a plain call sequence."""
+
+    def __init__(self, client):
+        self.client = client
+        self._agent_fields_cache: dict[str, tuple[str, str]] = {}
+        self._client_id_cache: dict[str, int] = {}
+
+    def write_dimensions(self, events: list[dict]) -> None:
+        """Inserts agent_invocations, ingest_raw, and the (deduped)
+        ai_gateway_groups/ai_gateway_users rows for this batch."""
+        client = self.client
 
         invocation_rows = [
             _deserialize_row(row, _INVOCATION_SPAWNED_AT_IDX)
@@ -1429,32 +1460,38 @@ def ingest_events_batch(events: list[dict]) -> None:
                 user_rows_by_id[row[0]] = row
         _insert_ai_gateway_users(client, list(user_rows_by_id.values()))
 
-        agent_fields_cache: dict[str, tuple[str, str]] = {}
-        client_id_cache: dict[str, int] = {}
+    def _agent_fields(self, agent_invocation_id: str) -> tuple[str, str]:
+        if not agent_invocation_id:
+            return "", ""
+        if agent_invocation_id not in self._agent_fields_cache:
+            self._agent_fields_cache[agent_invocation_id] = _agent_name_and_version_for_invocation(
+                self.client, agent_invocation_id
+            )
+        return self._agent_fields_cache[agent_invocation_id]
+
+    def _client_id(self, user_agent: str) -> int:
+        if not user_agent:
+            return 0
+        if user_agent not in self._client_id_cache:
+            self._client_id_cache[user_agent] = _resolve_client_id(self.client, user_agent)
+        return self._client_id_cache[user_agent]
+
+    def patch_fact_rows(self, events: list[dict]) -> tuple[list[list], list[list], list[list]]:
+        """Resolves each event's agent_name/version and event_client_id
+        (both needed a DB round trip build_event() couldn't do), patches
+        them into its event/usage/message rows, and inserts the resolved
+        `clients` rows. Returns (event_rows, usage_rows, message_rows)."""
         client_rows_by_id: dict[int, list] = {}
         now = datetime.now(timezone.utc)
         event_rows, usage_rows, message_rows = [], [], []
 
         for event in events:
-            agent_invocation_id = event.get("agent_invocation_id") or ""
-            if agent_invocation_id:
-                if agent_invocation_id not in agent_fields_cache:
-                    agent_fields_cache[agent_invocation_id] = _agent_name_and_version_for_invocation(
-                        client, agent_invocation_id
-                    )
-                agent_name, agent_version = agent_fields_cache[agent_invocation_id]
-            else:
-                agent_name, agent_version = "", ""
+            agent_name, agent_version = self._agent_fields(event.get("agent_invocation_id") or "")
 
             user_agent = event.get("user_agent") or ""
-            if user_agent:
-                if user_agent not in client_id_cache:
-                    client_id_cache[user_agent] = _resolve_client_id(client, user_agent)
-                client_id = client_id_cache[user_agent]
-                if client_id:
-                    client_rows_by_id[client_id] = [client_id, user_agent, now]
-            else:
-                client_id = 0
+            client_id = self._client_id(user_agent)
+            if client_id:
+                client_rows_by_id[client_id] = [client_id, user_agent, now]
 
             event_row = _deserialize_row_multi(event.get("event_row"), _EVENT_TIMESTAMP_IDX, _EVENT_INGESTED_AT_IDX)
             if event_row is not None:
@@ -1475,43 +1512,41 @@ def ingest_events_batch(events: list[dict]) -> None:
                 message_row[_MESSAGE_AGENT_VERSION_IDX] = agent_version
                 message_rows.append(message_row)
 
-        _insert_clients(client, list(client_rows_by_id.values()))
+        _insert_clients(self.client, list(client_rows_by_id.values()))
+        return event_rows, usage_rows, message_rows
 
-        # Each table inserted independently, past this point: one table
-        # rejecting the whole batch (e.g. a value out of a column's numeric
-        # range) must not also drop the other two tables' otherwise-good
-        # rows for this same set of events. On a rejected batch, fall back to
-        # inserting row-by-row so only the actual poison row(s) are lost -
-        # those go to ingest_dlq (see schema.sql) for triage instead of
-        # silently vanishing with the rest of a good batch.
-        for table, rows, columns, call_id_idx, session_id_idx in (
-            ("agent_events", event_rows, _EVENT_COLUMNS, _EVENT_CALL_ID_IDX, _EVENT_SESSION_ID_IDX),
-            ("agent_usage", usage_rows, _USAGE_COLUMNS, _USAGE_CALL_ID_IDX, _USAGE_SESSION_ID_IDX),
-            ("agent_messages", message_rows, _MESSAGE_COLUMNS, _MESSAGE_CALL_ID_IDX, _MESSAGE_SESSION_ID_IDX),
-        ):
-            if not rows:
-                continue
+    def insert_with_dlq_fallback(
+        self, table: str, rows: list[list], columns: list[str], call_id_idx: int, session_id_idx: int,
+    ) -> None:
+        """One table's insert. On a rejected batch (e.g. a value out of a
+        column's numeric range), falls back to inserting row-by-row so only
+        the actual poison row(s) are lost - those go to ingest_dlq (see
+        schema.sql) for triage instead of silently vanishing with the rest
+        of a good batch. Each table is independent: one table rejecting its
+        batch must not drop another table's otherwise-good rows for this
+        same set of events."""
+        if not rows:
+            return
+        client = self.client
+        try:
+            client.insert(table, rows, column_names=columns)
+            return
+        except Exception:
+            logger.exception("failed to insert into %s (n=%d) - retrying row-by-row", table, len(rows))
+
+        failure_rows = []
+        for row in rows:
             try:
-                client.insert(table, rows, column_names=columns)
-                continue
+                client.insert(table, [row], column_names=columns)
+            except Exception as exc:
+                failure_rows.append([
+                    datetime.now(timezone.utc), table, str(exc),
+                    row[call_id_idx], row[session_id_idx],
+                    json.dumps(row, default=str),
+                ])
+        if failure_rows:
+            logger.error("dropped %d row(s) into ingest_dlq (stage=%s)", len(failure_rows), table)
+            try:
+                client.insert("ingest_dlq", failure_rows, column_names=_FAILURE_COLUMNS)
             except Exception:
-                logger.exception("failed to insert into %s (n=%d) - retrying row-by-row", table, len(rows))
-
-            failure_rows = []
-            for row in rows:
-                try:
-                    client.insert(table, [row], column_names=columns)
-                except Exception as exc:
-                    failure_rows.append([
-                        datetime.now(timezone.utc), table, str(exc),
-                        row[call_id_idx], row[session_id_idx],
-                        json.dumps(row, default=str),
-                    ])
-            if failure_rows:
-                logger.error("dropped %d row(s) into ingest_dlq (stage=%s)", len(failure_rows), table)
-                try:
-                    client.insert("ingest_dlq", failure_rows, column_names=_FAILURE_COLUMNS)
-                except Exception:
-                    logger.exception("failed to record ingest_dlq (stage=%s, n=%d)", table, len(failure_rows))
-    except Exception:
-        logger.exception("failed to ingest event batch (n=%d)", len(events))
+                logger.exception("failed to record ingest_dlq (stage=%s, n=%d)", table, len(failure_rows))

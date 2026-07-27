@@ -15,10 +15,8 @@ import json
 import logging
 
 from .clickhouse_ingest import (
-    _active_command_name_and_version,
-    _agent_invocation_id,
     _agent_invocation_rows,
-    _agent_name_and_version_for_invocation,
+    _derive_context,
     _event_row,
     _group_row,
     _insert_agent_invocations,
@@ -29,7 +27,6 @@ from .clickhouse_ingest import (
     _insert_usage,
     _message_row,
     _session_and_trace_id,
-    _skill_name_and_version,
     _usage_row,
     _user_row,
     get_client,
@@ -50,11 +47,17 @@ def _reparse_one(client, litellm_call_id: str, source_session_id: str, raw_paylo
 
     now = datetime.now(timezone.utc)
     try:
-        session_id, trace_id = _session_and_trace_id(payload)
-        session_id = session_id or source_session_id
         messages = payload.get("messages")
-
+        session_id, _trace_id = _session_and_trace_id(payload)
+        session_id = session_id or source_session_id
+        # Insert this call's own spawned-subagent rows before doing
+        # _derive_context's DB lookup below (for *this* call's own
+        # agent_invocation_id) - minimizes the race window before the
+        # spawned subagent's own first call arrives and looks its row up.
         _insert_agent_invocations(client, _agent_invocation_rows(session_id, messages, now=now))
+
+        ctx = _derive_context(payload, messages, client=client)
+        ctx.session_id = session_id
 
         group_row = _group_row(payload, now=now)
         if group_row is not None:
@@ -63,31 +66,14 @@ def _reparse_one(client, litellm_call_id: str, source_session_id: str, raw_paylo
         if user_row is not None:
             _insert_ai_gateway_users(client, [user_row])
 
-        agent_invocation_id = _agent_invocation_id(payload)
-        agent_name, agent_version = _agent_name_and_version_for_invocation(client, agent_invocation_id)
-        skill_name, skill_version = _skill_name_and_version(payload)
-        command_name, command_version = _active_command_name_and_version(messages)
-
-        _insert_event(client, _event_row(
-            payload, session_id, trace_id,
-            agent_name, agent_version, skill_name, skill_version,
-            command_name, command_version, agent_invocation_id, now,
-        ))
+        _insert_event(client, _event_row(payload, ctx, now))
 
         if payload.get("status") == "success":
-            usage_row = _usage_row(
-                payload, session_id, trace_id,
-                agent_name, agent_version, skill_name, skill_version,
-                command_name, command_version, agent_invocation_id, now,
-            )
+            usage_row = _usage_row(payload, ctx, now)
             if usage_row is not None:
                 _insert_usage(client, usage_row)
 
-            message_row = _message_row(
-                payload, session_id, trace_id,
-                agent_name, agent_version, skill_name, skill_version,
-                command_name, command_version, agent_invocation_id, now,
-            )
+            message_row = _message_row(payload, ctx, now)
             if message_row is not None:
                 _insert_message(client, message_row)
     except Exception:
