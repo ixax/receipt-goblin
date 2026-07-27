@@ -149,7 +149,7 @@
       <li>
         <a href="http://localhost:${GRAFANA_PORT}" target="_blank" rel="noopener">grafana</a>
         <ul>
-          <li><a href="http://localhost:${GRAFANA_PORT}/d/agents-overview" target="_blank" rel="noopener">Agents Overview</a></li>
+          <li><a href="http://localhost:${GRAFANA_PORT}/d/agents-overview" target="_blank" rel="noopener">Agents Overview</a> <span class="note">&mdash; main dashboard, usage/cost/latency metrics</span></li>
           <li>
             <a href="http://localhost:${GRAFANA_PORT}/dashboards/f/fft37t8f9w6wwd" target="_blank" rel="noopener">Health</a>
             <ul>

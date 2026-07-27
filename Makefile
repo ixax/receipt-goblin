@@ -37,7 +37,7 @@ WEBHOOK_PORT := $(if $(strip $(WEBHOOK_PORT)),$(WEBHOOK_PORT),8010)
 INGEST_URI := $(if $(strip $(AGENT_CLI_TRACKING_API_URL)),$(AGENT_CLI_TRACKING_API_URL),http://localhost:$(WEBHOOK_PORT))
 
 # Optional - if you've already put your personal virtual key in .env (see
-# .env.example), `make env` substitutes it in below instead of printing a
+# .env.example), `make setup-client` substitutes it in below instead of printing a
 # `<virtual key>` placeholder to hand-edit.
 VKEY := $(if $(strip $(LITELLM_VIRTUAL_KEY)),$(LITELLM_VIRTUAL_KEY),<virtual key>)
 
@@ -60,7 +60,7 @@ VKEY := $(if $(strip $(LITELLM_VIRTUAL_KEY)),$(LITELLM_VIRTUAL_KEY),<virtual key
 $(shell python3 scripts/resolve_image_version.py > .image-tags.mk)
 include .image-tags.mk
 
-.PHONY: check-env init start up restart up-no-deps build status migrate stop down logs env test langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
+.PHONY: check-env init start up restart up-no-deps build status migrate stop down logs setup-client test langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	observability-up observability-down observability-logs observability-status loadtest
@@ -201,7 +201,7 @@ test: check-env
 # no config.toml equivalent of Claude's "env" block for that. `<virtual key>`
 # is a placeholder unless LITELLM_VIRTUAL_KEY is already set in .env, in
 # which case it's substituted everywhere below.
-env: check-env
+setup-client: check-env
 	@echo '# --- ~/.zshrc / ~/.bashrc (paste as-is, or use the config blocks below instead) ---'
 	@echo 'export LITELLM_VIRTUAL_KEY="$(VKEY)"'
 	@echo 'export LITELLM_AUTH_HEADER="Bearer $(VKEY)"'

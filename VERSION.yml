@@ -1,6 +1,16 @@
+# Upstream ClickHouse server/client version pin - NOT a build-tag template like the
+# entries below (no {build} substitution). Every image that installs
+# clickhouse-server/clickhouse-client (services/clickhouse/Dockerfile's FROM,
+# services/backup/Dockerfile's apt-pinned clickhouse-client/clickhouse-common-static)
+# builds against this exact version - single source of truth so server and client
+# never drift apart.
+CLICKHOUSE_VERSION: 24.8.14.39
+
 # Per-service-image-group version templates, resolved by
-# scripts/resolve_image_version.py into <MAKE_VAR>_TAG env vars that
-# docker-compose.yml's `image: ...:${..._TAG:-latest}` lines interpolate.
+# scripts/resolve_image_version.py and exported as-is - each key below is
+# already spelled as the exact env var docker-compose.yml's
+# `image: ...:${..._TAG:?...}` lines reference, so there's no separate name
+# transform (see resolve_image_version.py).
 #
 # `{build}` in a template is replaced with the current commit's short git
 # hash - bump SEMVER by hand here on a real change to that image group, the
@@ -14,23 +24,22 @@
 # rebuild/repull of its base layers. Bump the SEMVER by hand instead, the
 # same day you actually change one of those two groups' Dockerfile/config.
 #
-# Key -> compose var: "foo-bar" becomes FOO_BAR_TAG. One key can (and for
-# the six services sharing services/webhook/Dockerfile, does) back several
-# compose services at once - see docker-compose.yml's `image:` lines for
-# which services use which key.
+# One key can (and for the six services sharing services/webhook/Dockerfile,
+# does) back several compose services at once - see docker-compose.yml's
+# `image:` lines for which services use which key.
 
-webhook: 0.1.0-{build}
-mcp-server: 0.1.0-{build}
-load-balancer: 0.1.0-{build}
-litellm: 0.1.0-{build}
-clickhouse: 0.1.0-{build}
-grafana: 0.1.0-{build}
-redis: 0.1.0-{build}
-backup: 0.1.0-{build}
-prometheus: 0.1.1
-blackbox: 0.1.1
-node-exporter: 0.1.0
-loki: 0.1.0
-alloy: 0.1.0
-langfuse-minio: 0.1.0
-langfuse-redis: 0.1.0
+WEBHOOK_TAG: 0.1.0-{build}
+MCP_SERVER_TAG: 0.1.0-{build}
+LOAD_BALANCER_TAG: 0.1.0-{build}
+LITELLM_TAG: 0.1.0-{build}
+CLICKHOUSE_TAG: 0.1.0-{build}
+GRAFANA_TAG: 0.1.0-{build}
+REDIS_TAG: 0.1.0-{build}
+BACKUP_TAG: 0.1.0-{build}
+PROMETHEUS_TAG: 0.1.1
+BLACKBOX_TAG: 0.1.1
+NODE_EXPORTER_TAG: 0.1.0
+LOKI_TAG: 0.1.0
+ALLOY_TAG: 0.1.0
+LANGFUSE_MINIO_TAG: 0.1.0
+LANGFUSE_REDIS_TAG: 0.1.0

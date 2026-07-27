@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
-"""Resolves VERSION.yml's per-service-image-group templates into concrete
-image tags, substituting `{build}` with the current commit's short git hash
+"""Resolves VERSION.yml's per-image-group version templates into concrete
+values, substituting `{build}` with the current commit's short git hash
 (templates without `{build}` pass through unchanged - see VERSION.yml's own
 comment for why). No PyYAML dependency: VERSION.yml is a flat `key: value`
 mapping by design, parsed line-by-line rather than pulling in a real YAML
 parser for something this simple.
 
+Every key in VERSION.yml is spelled as the exact shell variable it exports -
+`WEBHOOK_TAG`, `CLICKHOUSE_VERSION`, etc. - so there is no separate name
+transform to apply here; the key *is* the var name.
+
 Two call shapes, both used by the Makefile (see `check-env`/`build`):
-  resolve_image_version.py            -> prints "export FOO_TAG=..." for every
+  resolve_image_version.py            -> prints "export FOO=..." for every
                                     key, one per line, for `$(eval $(shell ...))`
-  resolve_image_version.py <key>      -> prints just that key's resolved tag, e.g.
-                                    for a one-off lookup outside Make.
+  resolve_image_version.py <key>      -> prints just that key's resolved value,
+                                    e.g. for a one-off lookup outside Make.
 """
 import pathlib
 import subprocess
@@ -44,10 +48,6 @@ def resolve(template: str, build_hash: str) -> str:
     return template.replace("{build}", build_hash) if "{build}" in template else template
 
 
-def make_var_name(key: str) -> str:
-    return key.upper().replace("-", "_") + "_TAG"
-
-
 def main() -> None:
     versions = load_versions(VERSION_FILE)
     build_hash = git_hash()
@@ -61,7 +61,7 @@ def main() -> None:
         return
 
     for key, template in versions.items():
-        print(f"export {make_var_name(key)}={resolve(template, build_hash)}")
+        print(f"export {key}={resolve(template, build_hash)}")
 
 
 if __name__ == "__main__":
