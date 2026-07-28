@@ -21,7 +21,7 @@ webhook: POST /api/v1/litellm-alert  ──►  ingest_litellm_alert()  ──�
                                                                               │
 agent_events / agent_usage (existing pipeline, unchanged)  ─────────────────►│  (queried directly, not copied)
                                                                               ▼
-                                                        services/grafana/dashboards-health/alerting_overview.json
+                                                        services/grafana/dashboards-health/litellm_alerting.json
                                                                               │
                                                                               ▼
                                                 services/grafana/provisioning/alerting/rules.yml
@@ -79,7 +79,7 @@ ORDER BY (received_at);
 ```
 `raw_payload` exists because the fetched LiteLLM docs only document the budget-event shape in full; `llm_exceptions`/`outage_alerts`/`db_exceptions` payloads likely carry different fields — store the full body and add first-class columns for whatever's actually observed once real payloads are captured (same "capture real payloads, don't guess the shape" approach already used for `StandardLoggingPayload`/`services/webhook/tests/captures`).
 
-### 4. New dashboard (`services/grafana/dashboards-health/alerting_overview.json`)
+### 4. New dashboard (`services/grafana/dashboards-health/litellm_alerting.json`)
 
 Follow `infra_overview.json`'s `RowsLayout` schema/conventions (this folder isn't in `dashboard-parser`'s scope — that agent only understands `agents_overview.json`'s `TabsLayout`, so build/read this one with plain `Read`/`Edit`/Bash-python, same as `infra_overview.json` already is). Delegate actual panel construction to the `dashboard-panels-builder` agent (in scope: any dashboard JSON except `agents_overview.json`'s panel-76/77), which reads the `dashboard-panels` skill's universal conventions first.
 
@@ -108,7 +108,7 @@ Exact thresholds are a judgment call to make with the user during implementation
 - `services/webhook/src/server.py` — new `POST /api/v1/litellm-alert` route.
 - `services/webhook/src/clickhouse_ingest.py` — new `ingest_litellm_alert()`, alongside existing `ingest_git_branch`/`ingest_plan_proposal`.
 - `services/clickhouse/schema.sql` + new file under `services/clickhouse/migrations/` — `litellm_alerts` table.
-- `services/grafana/dashboards-health/alerting_overview.json` — new dashboard.
+- `services/grafana/dashboards-health/litellm_alerting.json` — new dashboard.
 - `services/grafana/provisioning/alerting/rules.yml` — new `llm-alerts` group.
 
 ## Delegation / process notes for implementation
@@ -123,5 +123,5 @@ Exact thresholds are a judgment call to make with the user during implementation
 
 1. `webhook-test-runner` agent: `make test` passes after `clickhouse_ingest.py`/`server.py` changes.
 2. Trigger a real LiteLLM alert (e.g. a deliberately low per-key budget crossed in a test key) and confirm a row lands in `litellm_alerts` via `mcp__clickhouse__query` (never a direct ClickHouse connection, per the base rule).
-3. Open `alerting_overview.json` in Grafana and confirm every panel renders (no query errors) against real data.
+3. Open `litellm_alerting.json` in Grafana and confirm every panel renders (no query errors) against real data.
 4. Confirm the new `llm-alerts` rule group appears under Grafana's Alerting > Alert rules, evaluates without error, and (as expected for now) has no contact point delivering anywhere — matching `infra-health`'s current state.

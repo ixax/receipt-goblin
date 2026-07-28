@@ -1,6 +1,6 @@
 #!/bin/sh
 # Picks which of this image's four roles to run via the APP_ROLE env var -
-# webhook/webhook-worker/webhook-reparse/clickhouse-migrate all build this
+# webhook/webhook-worker/metrics-reparse/clickhouse-migrate all build this
 # same image (see Dockerfile) and only differ in which process starts, so
 # the choice lives here as a runtime env var instead of a compose-level
 # `command:` override (see docker-compose.yml's per-service `environment:

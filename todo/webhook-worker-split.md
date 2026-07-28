@@ -130,7 +130,7 @@ still works unmodified against a bare `CMD`.
 
 - Six existing blocks map onto five new Dockerfiles: `webhook-1`/`webhook-2` →
   `services/webhook/Dockerfile`; `worker` → `services/worker/Dockerfile`;
-  `webhook-reparse` → `services/reparse/Dockerfile` (consider renaming the
+  `metrics-reparse` → `services/reparse/Dockerfile` (consider renaming the
   compose service to `reparse` — touches `Makefile`'s `reparse`/`reparse-all`
   targets); `clickhouse-migrate` → `services/migrate/Dockerfile`; `loadtest` →
   `services/loadtest/Dockerfile`.
@@ -179,7 +179,7 @@ paths instead of one.
 3. **Cut over `docker-compose.yml` one service group at a time**, lowest risk
    first: `clickhouse-migrate` (one-shot job) → `worker` → `webhook-1`/`webhook-2`
    (recreate one replica at a time, leaning on the load-balancer's two-replica
-   setup so one is always healthy) → `webhook-reparse`/`loadtest` last (both
+   setup so one is always healthy) → `metrics-reparse`/`loadtest` last (both
    `profiles: [tools]`, not started by default, zero risk to the live stack).
    Add the new `VERSION.yml` keys as each block is cut over. Only delete
    `docker-entrypoint.sh` after every old-style block is gone.

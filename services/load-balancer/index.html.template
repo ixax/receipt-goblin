@@ -156,6 +156,7 @@
               <li><a href="http://localhost:${GRAFANA_PORT}/d/clickhouse-health" target="_blank" rel="noopener">ClickHouse Health</a></li>
               <li><a href="http://localhost:${GRAFANA_PORT}/d/docker-containers" target="_blank" rel="noopener">Docker Containers</a></li>
               <li><a href="http://localhost:${GRAFANA_PORT}/d/infra-overview" target="_blank" rel="noopener">Infra Overview</a></li>
+              <li><a href="http://localhost:${GRAFANA_PORT}/d/litellm-alerting" target="_blank" rel="noopener">LiteLLM Alerting</a></li>
               <li><a href="http://localhost:${GRAFANA_PORT}/d/query-performance" target="_blank" rel="noopener">Query Performance</a></li>
             </ul>
           </li>

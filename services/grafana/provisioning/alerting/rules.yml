@@ -9,7 +9,7 @@ groups:
     folder: Alerts
     # Longer than infra-health's 30s: these run real ClickHouse SQL scans
     # (not cheap Prometheus instant vector lookups), backed by the queries
-    # services/grafana/dashboards-health/alerting_overview.json's panels
+    # services/grafana/dashboards-health/litellm_alerting.json's panels
     # also use - see AGENTS.md for the ClickHouse datasource (uid
     # "clickhouse", grafana-clickhouse-datasource plugin).
     interval: 60s

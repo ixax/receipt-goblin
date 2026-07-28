@@ -1,7 +1,9 @@
 """Idempotent ClickHouse migration runner - applies every
-services/clickhouse/migrations/*.sql file at most once, then exits. Runs on
-every `docker compose up` via clickhouse-migrate (webhook/webhook-worker
-`depends_on` it with `condition: service_completed_successfully`).
+services/clickhouse/migrations/*.sql file at most once, then exits. Explicit-
+only: gated behind the `tools` compose profile, so a plain `docker compose
+up` never starts it and no other service `depends_on` it - run it via `make
+migrate` (after `make init` on a fresh clone, or after adding a new migration
+file).
 
 This module never touches ClickHouse users/roles/grants - that's `make
 init`'s job alone (services/init/init_clickhouse_users.py, reading

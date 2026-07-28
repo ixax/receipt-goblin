@@ -30,7 +30,7 @@ services:
       - ./services/webhook/src:/app/src:ro
       - ./services/webhook/config.yml:/app/config.yml:ro
 
-  webhook-reparse:
+  metrics-reparse:
     volumes:
       - ./services/webhook/src:/app/src:ro
       - ./services/webhook/config.yml:/app/config.yml:ro

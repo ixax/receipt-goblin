@@ -169,19 +169,21 @@ services:
       - receipt-goblin
 
   clickhouse-migrate:
-    # Runs migrate.py once per `docker compose up`: applies any
-    # services/clickhouse/migrations/*.sql not yet in schema_migrations, plus
-    # the one-time dashboard Dictionaries. Idempotent, safe on every startup -
+    # Applies any services/clickhouse/migrations/*.sql not yet in schema_migrations,
+    # plus the one-time dashboard Dictionaries. Idempotent, safe to re-run -
     # see migrate.py's docstring. Never touches ClickHouse users/roles/grants
     # - that's `make init` alone (services/init/), run once, not here.
-    # webhook/worker wait on this so they never race a migration with live
-    # inserts.
+    # Not started by `docker compose up` (profiles: tools) - run via `make migrate`.
+    # Operators are responsible for running it before/after adding new migration files,
+    # or before bringing up services that depend on new schema/dictionaries.
     # Build context is the repo root - see services/webhook/Dockerfile.
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
     image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
     container_name: receipt-goblin-clickhouse-migrate
+    profiles:
+      - tools
     restart: "no"
     environment:
       APP_ROLE: migrate
@@ -243,8 +245,6 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
-      clickhouse-migrate:
-        condition: service_completed_successfully
     networks:
       - receipt-goblin
 
@@ -272,8 +272,6 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
-      clickhouse-migrate:
-        condition: service_completed_successfully
     networks:
       - receipt-goblin
 
@@ -317,7 +315,7 @@ services:
       context: .
       dockerfile: services/webhook/Dockerfile
     # Shared by every service built from services/webhook/Dockerfile
-    # (webhook-1/2, worker, webhook-reparse, webhook-loadtest,
+    # (webhook-1/2, worker, metrics-reparse, webhook-loadtest,
     # clickhouse-migrate - see AGENTS.md, "one image, APP_ROLE picks the
     # role") - one explicit tag here means one build gets reused by all six
     # instead of compose's default per-service image naming giving each its
@@ -340,8 +338,6 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
-      clickhouse-migrate:
-        condition: service_completed_successfully
       redis:
         condition: service_healthy
     # Static IP - see load-balancer/nginx.conf's upstream block, which
@@ -477,14 +473,12 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
-      clickhouse-migrate:
-        condition: service_completed_successfully
       redis:
         condition: service_healthy
     networks:
       - receipt-goblin
 
-  webhook-reparse:
+  metrics-reparse:
     # Same image as webhook/worker, CLI-only. Recomputes
     # calculated_type/calculated_payload for existing event_sources rows -
     # see reparse.py. Not started by `docker compose up` (profiles: tools) -
@@ -493,7 +487,7 @@ services:
       context: .
       dockerfile: services/webhook/Dockerfile
     image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
-    container_name: receipt-goblin-webhook-reparse
+    container_name: receipt-goblin-metrics-reparse
     profiles:
       - tools
     environment:
@@ -517,8 +511,6 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
-      clickhouse-migrate:
-        condition: service_completed_successfully
     networks:
       - receipt-goblin
 
@@ -550,18 +542,16 @@ services:
       - loadtest-fixtures-data:/app/loadtest_fixtures
     # build_fixtures.py pages ingest_raw fixtures_chunk_size rows at a time
     # instead of buffering the whole payload set client-side, same rationale
-    # as webhook-reparse's mem_limit below.
+    # as metrics-reparse's mem_limit below.
     mem_limit: 256m
     depends_on:
       clickhouse:
         condition: service_healthy
-      clickhouse-migrate:
-        condition: service_completed_successfully
     networks:
       - receipt-goblin
 
   loadtest:
-    # Same image as webhook/worker/webhook-reparse, CLI-only.
+    # Same image as webhook/worker/metrics-reparse, CLI-only.
     # Replays real traffic extracted into loadtest-fixtures-data (see the
     # separate loadtest-fixtures service/src/build_fixtures.py) against
     # webhook's own

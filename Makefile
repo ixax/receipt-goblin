@@ -128,12 +128,12 @@ build: check-env
 status: check-env
 	python3 scripts/wait_for_stack_healthy.py $(COMPOSE_FILES)
 
-# Runs just the ClickHouse migration container (services/clickhouse/migrations/*.sql
-# + one-time dashboard Dictionaries) without touching any other service - the
-# same thing `make up` already runs automatically via its depends_on chain,
-# provided standalone for e.g. applying a newly-added migration file without
-# recreating the rest of the stack. Never touches ClickHouse users/roles/grants
-# - that's `make init` alone, see services/init/.
+# The only way to apply ClickHouse migrations (services/clickhouse/migrations/*.sql
+# + one-time dashboard Dictionaries) - no longer runs automatically as part of
+# `make up`/`make start`. Operators must run `make migrate` explicitly, e.g.
+# right after `make init` on a fresh clone, or after adding a new migration file,
+# or before first `make start` on a fresh `make init`. Never touches ClickHouse
+# users/roles/grants - that's `make init` alone, see services/init/.
 migrate: check-env
 	docker compose $(COMPOSE_FILES) run --rm clickhouse-migrate
 
@@ -245,11 +245,11 @@ setup-client: check-env
 # reminds to collapse them explicitly instead of waiting on a background merge.
 reparse: check-env
 	@if [ -z "$(SESSION)" ]; then echo "usage: make reparse SESSION=<session_id>"; exit 1; fi
-	docker compose $(COMPOSE_FILES) run --rm -e SESSION_ID=$(SESSION) webhook-reparse
+	docker compose $(COMPOSE_FILES) run --rm -e SESSION_ID=$(SESSION) metrics-reparse
 	@$(MAKE) print-reparse-final-hint
 
 reparse-all: check-env
-	docker compose $(COMPOSE_FILES) run --rm webhook-reparse
+	docker compose $(COMPOSE_FILES) run --rm metrics-reparse
 	@$(MAKE) print-reparse-final-hint
 
 print-reparse-final-hint:
