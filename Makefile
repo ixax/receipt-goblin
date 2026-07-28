@@ -63,7 +63,8 @@ include .image-tags.mk
 .PHONY: check-env init start up restart up-no-deps build status migrate stop down logs setup-client test langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
-	observability-up observability-down observability-logs observability-status loadtest
+	observability-up observability-down observability-logs observability-status loadtest \
+	loadtest-fixtures loadtest-fixtures-status
 
 # The six langfuse-* services (see docker-compose.yml) all carry
 # `profiles: [langfuse]`, so `docker compose down` doesn't accept a bare
@@ -261,7 +262,8 @@ print-reparse-final-hint:
 	@echo ''
 	@echo '(ingest_raw is deliberately excluded - it is large and OPTIMIZE FINAL on it risks OOM.)'
 
-# Replays real captured traffic (.capture/) against webhook's own
+# Replays real traffic from the `loadtest_fixtures` volume (see the
+# `loadtest-fixtures` target below) against webhook's own
 # POST /api/v1/metrics at a ramping concurrency profile, to see how
 # worker/redis/clickhouse cope - see services/webhook/src/loadtest.py
 # for the full model. Bypasses LiteLLM/the real Claude API entirely.
@@ -282,6 +284,23 @@ loadtest: check-env
 	  -e DURATION_MINUTES=$(or $(DURATION_MINUTES),0) \
 	  -e SPEED=$(or $(SPEED),1.0) \
 	loadtest
+
+# Generates test fixtures (small/medium/large) by extracting data from ClickHouse into a
+# named volume mounted at `/app/loadtest_fixtures`, ready for load test consumption. No default -
+# if VOLUME is unset, checks $LOADTEST_FIXTURES_VOLUME (validates, errors if invalid), then
+# prompts interactively. Override with `VOLUME=small`, `VOLUME=medium`, `VOLUME=large`, etc.
+# Fixtures are written to the `loadtest-fixtures-data` volume and must be regenerated if you want
+# to switch volumes or update captured data. See `loadtest-runner`'s own task instructions for
+# regeneration policy.
+loadtest-fixtures: check-env
+	docker compose $(COMPOSE_FILES) run --rm $(if $(VOLUME),-e LOADTEST_FIXTURES_VOLUME=$(VOLUME),) loadtest-fixtures
+
+# Prints the fixture manifest (which fixtures are available in the `loadtest-fixtures-data`
+# volume, their sizes, timestamps, etc.) without reading ClickHouse at all - useful for
+# confirming what's already built without spawning a container that would otherwise consume
+# resources.
+loadtest-fixtures-status: check-env
+	docker compose $(COMPOSE_FILES) run --rm loadtest-fixtures python -m src.build_fixtures --status
 
 # Backup/restore for clickhouse, litellm-db, and grafana-data - see
 # README.md's "Backup & restore" section for the full playbook, including why restore

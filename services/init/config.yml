@@ -24,13 +24,30 @@ roles:
       - "GRANT SELECT ON {database}.session_git_branch"
       - "GRANT SELECT ON {database}.ai_gateway_users"
       - "GRANT SELECT ON {database}.ai_gateway_groups"
+      # build_fixtures.py's phase-1 row selection (litellm_call_id,
+      # session_id, timestamp WHERE status='success').
+      - "GRANT SELECT ON {database}.agent_events"
 
   - name: grafana
     user_env: CLICKHOUSE_GRAFANA_USER
     password_env: CLICKHOUSE_GRAFANA_PASSWORD
     default_user: grafana
     grants:
-      - "GRANT SELECT ON {database}.*"
+      # Explicit per-table list, not "GRANT SELECT ON {database}.*" -
+      # deliberately excludes ingest_raw/ingest_dlq (raw_payload_full/
+      # raw_row hold unprocessed request/response payloads verbatim; no
+      # dashboard panel queries either table - see agents_overview.json's
+      # own "no more JOIN to ingest_raw" comment - and grafana has no
+      # business reading raw traffic even if one someday tried to).
+      - "GRANT SELECT ON {database}.agent_invocations"
+      - "GRANT SELECT ON {database}.session_git_branch"
+      - "GRANT SELECT ON {database}.plan_proposals"
+      - "GRANT SELECT ON {database}.ai_gateway_groups"
+      - "GRANT SELECT ON {database}.ai_gateway_users"
+      - "GRANT SELECT ON {database}.clients"
+      - "GRANT SELECT ON {database}.agent_events"
+      - "GRANT SELECT ON {database}.agent_usage"
+      - "GRANT SELECT ON {database}.agent_messages"
       - "GRANT SELECT ON system.tables"
 
   - name: mcp

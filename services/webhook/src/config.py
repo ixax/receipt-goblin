@@ -28,10 +28,10 @@ LITELLM_BASE_URL = os.environ["LITELLM_BASE_URL"]
 # match (webhook-worker:9200).
 WORKER_METRICS_PORT = 9200
 
-CAPTURE_DIR = Path(os.environ.get("CAPTURE_DIR", "/app/captures"))
-# Off by default: raw bodies contain real prompt/response content and
-# per-request file writes add hot-path I/O. Set true for local debugging.
-CAPTURE_ENABLED = os.environ.get("CAPTURE_ENABLED", "false").lower() == "true"
+# Where loadtest.py reads its replay corpus from - a dedicated Docker
+# volume in prod, written by the separate loadtest-fixtures service
+# (services/loadtest-fixtures/, see AGENTS.md) and mounted ro here.
+FIXTURES_DIR = Path(os.environ.get("FIXTURES_DIR", "/app/loadtest_fixtures"))
 
 # Queue mechanics; sizing rationale for each value lives in config.yml.
 _config = yaml.safe_load((Path(__file__).resolve().parent.parent / "config.yml").read_text())

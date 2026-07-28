@@ -2,7 +2,6 @@
 .claude/settings.local.json
 .claude/data/
 .env
-.capture/
 .venv
 **/__pycache__/
 .pytest_cache/

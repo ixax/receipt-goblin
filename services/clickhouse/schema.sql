@@ -441,12 +441,13 @@ ORDER BY (session_id, litellm_call_id);
 -- rewritten and rerun later against real historical payloads without
 -- needing the original webhook call again.
 --
--- Deliberately separate from captures/<session_id>/*.json: that's a CAPTURE_ENABLED-
--- gated, off-by-default debug aid with no retention policy and no place in
--- the actual data model - no ingest or reparse code path may ever read from
--- it, now or in the future, including as a one-time historical backfill
--- source. This table is the only source of truth for "the full payload
--- behind row X."
+-- Deliberately separate from the old captures/<session_id>/*.json debug
+-- dump (a CAPTURE_ENABLED-gated, off-by-default debug aid with no retention
+-- policy and no place in the actual data model - now retired entirely in
+-- favor of the standalone loadtest-fixtures service): no ingest or reparse
+-- code path may ever read from it, now or in the future, including as a
+-- one-time historical backfill source. This table is the only source of
+-- truth for "the full payload behind row X."
 --
 -- PARTITION BY the same half-year convention as the other tables above -
 -- not for query pruning (this table is read rarely, by litellm_call_id or

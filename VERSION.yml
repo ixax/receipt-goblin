@@ -29,6 +29,7 @@ CLICKHOUSE_VERSION: 24.8.14.39
 # `image:` lines for which services use which key.
 
 WEBHOOK_TAG: 0.1.0-{build}
+LOADTEST_FIXTURES_TAG: 0.1.0-{build}
 MCP_SERVER_TAG: 0.1.0-{build}
 LOAD_BALANCER_TAG: 0.1.0-{build}
 LITELLM_TAG: 0.1.0-{build}

@@ -41,10 +41,10 @@ async def enqueue(payloads: list) -> None:
     module docstring. Never raises - LiteLLM would retry the whole body
     forever if a malformed payload or unavailable Redis broke the ack.
 
-    Used directly when the caller already has parsed payloads (the
-    CAPTURE_ENABLED path in server.py, which parses anyway to write capture
-    files) - everyone else should call enqueue_raw() instead, to skip the
-    parse this function requires its caller to have already done.
+    Used directly when the caller already has parsed payloads (enqueue_raw()'s
+    own bundled-array fallback below) - everyone else should call
+    enqueue_raw() instead, to skip the parse this function requires its
+    caller to have already done.
     """
     client = get_async_redis()
     for payload in payloads:
@@ -70,8 +70,7 @@ async def enqueue_raw(body: bytes) -> None:
     object, not a `log_format: json_array` bundle - goes straight onto
     Redis unmodified, no json.loads/json.dumps round-trip at all. Only a
     bundled array (starts with `[`) needs an actual parse, to split it into
-    one Redis entry per payload (falls back to enqueue() for that case,
-    same as the CAPTURE_ENABLED path does).
+    one Redis entry per payload (falls back to enqueue() for that case).
 
     This split exists because json parse+re-serialize of a ~360KB-1.5MB
     payload is itself real CPU cost - load testing showed it alone

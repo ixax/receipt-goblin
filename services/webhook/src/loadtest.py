@@ -1,5 +1,6 @@
-"""CLI-only load generator - replays real captured traffic from CAPTURE_DIR
-(see server.py's CAPTURE_ENABLED write path) against webhook's own
+"""CLI-only load generator - replays real traffic from FIXTURES_DIR, filled
+by the separate loadtest-fixtures service (services/loadtest-fixtures/,
+which extracts it from ClickHouse - see AGENTS.md), against webhook's own
 POST /api/v1/metrics, at a ramping concurrency profile. Run via `make
 loadtest` or `python -m src.loadtest`; no HTTP API of its own.
 
@@ -9,12 +10,12 @@ the only thing exercised is webhook -> redis -> webhook-worker -> clickhouse
 no LiteLLM virtual key (unlike /api/v1/session-git-branch and
 /api/v1/plan-proposal - see server.py), so this never touches LITELLM_*.
 
-Traffic model: each captured session directory under CAPTURE_DIR is one real
-Claude Code session's status="success" StandardLoggingPayload events (agentic
-tool-call round trips, not standalone chat messages) - see
-load_session_corpus/_is_success_capture for why failed events are filtered
-out - with real inter-event gaps and real payload sizes/token counts. One
-"virtual user" here is a loop
+Traffic model: each session directory under FIXTURES_DIR is one real Claude
+Code session's status="success" StandardLoggingPayload events (agentic
+tool-call round trips, not standalone chat messages) - build_fixtures.py
+already filters to status="success" at extraction time, so every file here
+qualifies - with real inter-event gaps and real payload sizes/token counts.
+One "virtual user" here is a loop
 that repeatedly picks a random session, replays its events in order at the
 real (or --speed-scaled) cadence, then immediately picks another session and
 keeps going - modeling one person's continuous Claude usage, not a single
@@ -50,7 +51,6 @@ import logging
 import math
 import os
 import random
-import re
 import statistics
 import time
 from dataclasses import dataclass, field
@@ -59,7 +59,7 @@ from typing import Optional
 
 import aiohttp
 
-from .config import CAPTURE_DIR
+from .config import FIXTURES_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("webhook.loadtest")
@@ -69,24 +69,24 @@ DEFAULT_TARGET_URL = "http://webhook:8000/api/v1/metrics"
 
 @dataclass
 class SessionTrace:
-    """One real captured session: its event files' paths in chronological
-    order, each paired with the real gap (seconds) since the previous file's
-    timestamp. The first file's gap is always 0 - nothing to wait for before
-    it. Deliberately holds only paths, not parsed payloads - .capture/ is
-    already 600MB+ and growing, and loading every session's full event
-    content into memory upfront doesn't scale with it. Each file's bytes are
-    only ever read once, right before that event is sent, unmodified (see
+    """One real session: its event files' paths in chronological order, each
+    paired with the real gap (seconds) since the previous file's timestamp.
+    The first file's gap is always 0 - nothing to wait for before it.
+    Deliberately holds only paths, not parsed payloads - a large fixture set
+    can still run multi-GB, and loading every session's full event content
+    into memory upfront doesn't scale with it. Each file's bytes are only
+    ever read once, right before that event is sent, unmodified (see
     _read_bytes/_virtual_user)."""
     paths: list = field(default_factory=list)  # list[str]
     gaps: list = field(default_factory=list)  # list[float], same length as paths
 
 
 def _filename_epoch(path: str) -> float:
-    # Filenames are "YYYYMMDDTHHMMSSffffff-uuid.json" (server.py's
-    # _safe_session_dir_name sibling naming) - chronological by sort, and the
-    # only timestamp source used for gap calculation: reading it out of the
-    # filename means indexing the whole corpus never has to open a single
-    # file's content (see SessionTrace's docstring for why that matters).
+    # Filenames are "YYYYMMDDTHHMMSSffffff-hash.json" (build_fixtures.py's
+    # naming convention) - chronological by sort, and the only timestamp
+    # source used for gap calculation: reading it out of the filename means
+    # indexing the whole corpus never has to open a single file's content
+    # (see SessionTrace's docstring for why that matters).
     stem = os.path.basename(path).split("-", 1)[0]
     try:
         return datetime.strptime(stem, "%Y%m%dT%H%M%S%f").replace(tzinfo=timezone.utc).timestamp()
@@ -94,56 +94,24 @@ def _filename_epoch(path: str) -> float:
         return time.time()
 
 
-_STATUS_PREFIX_BYTES = 512
-_SUCCESS_STATUS_RE = re.compile(rb'"status"\s*:\s*"success"')
+def load_session_corpus(fixtures_dir: str, max_gap_seconds: float) -> list[SessionTrace]:
+    """Scans fixtures_dir for session subdirectories (one per real Claude
+    Code session) and indexes each one's event file paths, in filename
+    order, into a SessionTrace with real inter-event gaps (from filename
+    timestamps, not file content) clamped to max_gap_seconds so a rare
+    multi-minute "human stepped away" gap doesn't stall a virtual user for
+    the whole test.
 
-
-def _is_success_capture(path: str) -> bool:
-    """Peeks at a capture file's first _STATUS_PREFIX_BYTES to read its
-    `status` field without json.load-ing the whole payload - `status` sits
-    within the first ~150 bytes of every capture (server.py's write path
-    puts it right after id/litellm_call_id/trace_id/call_type), so a small
-    prefix read is enough. Matters because a completion's `messages`/
-    `response` fields can run tens of KB; loading every one of them just to
-    check one field would multiply indexing time and page-cache pressure
-    across a multi-GB corpus for no reason. Same posix_fadvise(DONTNEED)
-    reasoning as _read_bytes - don't let this prefix read accumulate in the
-    page cache either."""
-    try:
-        with open(path, "rb") as fh:
-            prefix = fh.read(_STATUS_PREFIX_BYTES)
-            try:
-                os.posix_fadvise(fh.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
-            except (AttributeError, OSError):
-                pass
-    except OSError:
-        return False
-    return bool(_SUCCESS_STATUS_RE.search(prefix))
-
-
-def load_session_corpus(capture_dir: str, max_gap_seconds: float) -> list[SessionTrace]:
-    """Scans capture_dir for session subdirectories (one per real Claude Code
-    session) and indexes each one's event file paths, in filename order, into
-    a SessionTrace with real inter-event gaps (from filename timestamps, not
-    file content) clamped to max_gap_seconds so a rare multi-minute "human
-    stepped away" gap doesn't stall a virtual user for the whole test.
-
-    Only status="success" events are kept (see _is_success_capture) - most of
-    a real .capture/ corpus is failed LiteLLM calls (expired/malformed proxy
-    keys, rate limits) that never reach agent_usage/agent_messages downstream
-    (see clickhouse_ingest.py's `if payload.get("status") == "success"`
-    gates), so replaying them unfiltered load-tests only the agent_events/
-    ingest_raw half of the pipeline. A session with zero success events is
-    dropped entirely; gaps are computed only across the events that survive
-    the filter, so a run of skipped failures between two kept successes
-    collapses into one (still real, still clamped) gap.
+    No status filter here - build_fixtures.py already extracts only
+    status="success" agent_events rows, so every file under fixtures_dir
+    qualifies (unlike the old .capture/-based corpus, which mixed in failed
+    LiteLLM calls that needed filtering out per-file).
     """
     traces: list[SessionTrace] = []
-    for session_dir in sorted(glob.glob(os.path.join(capture_dir, "*"))):
+    for session_dir in sorted(glob.glob(os.path.join(fixtures_dir, "*"))):
         if not os.path.isdir(session_dir):
             continue
         files = sorted(glob.glob(os.path.join(session_dir, "*.json")))
-        files = [path for path in files if _is_success_capture(path)]
         if not files:
             continue
         starts = [_filename_epoch(path) for path in files]
@@ -158,7 +126,7 @@ def load_session_corpus(capture_dir: str, max_gap_seconds: float) -> list[Sessio
 def _read_bytes(path: str) -> Optional[bytes]:
     # Each file is read exactly once, never revisited - posix_fadvise(DONTNEED)
     # tells the kernel not to keep these pages cached, so the read-only
-    # .capture bind mount's page cache (charged to this container's memory
+    # fixtures volume mount's page cache (charged to this container's memory
     # cgroup) doesn't accumulate across the run's full corpus (multi-GB) and
     # trip the OOM killer well before mem_limit would matter for actual heap
     # usage - confirmed via resource.getrusage staying flat (~50MB) while
@@ -172,7 +140,7 @@ def _read_bytes(path: str) -> Optional[bytes]:
                 pass
             return data
     except OSError:
-        logger.warning("skipping unreadable capture file %s", path)
+        logger.warning("skipping unreadable fixture file %s", path)
         return None
 
 
@@ -372,7 +340,7 @@ def _print_final_report(stats: Stats, elapsed: float) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--target-url", default=os.environ.get("TARGET_URL", DEFAULT_TARGET_URL))
-    parser.add_argument("--capture-dir", default=os.environ.get("CAPTURE_DIR_OVERRIDE") or str(CAPTURE_DIR))
+    parser.add_argument("--fixtures-dir", default=os.environ.get("FIXTURES_DIR_OVERRIDE") or str(FIXTURES_DIR))
     parser.add_argument("--start-users", type=int, default=int(os.environ.get("START_USERS", 10)))
     parser.add_argument("--end-users", type=int, default=int(os.environ.get("END_USERS", 100)))
     parser.add_argument("--ramp-steps", type=int, default=int(os.environ.get("RAMP_STEPS", 10)))
@@ -385,12 +353,12 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=None)
     args = parser.parse_args()
 
-    corpus = load_session_corpus(args.capture_dir, args.max_gap_seconds)
+    corpus = load_session_corpus(args.fixtures_dir, args.max_gap_seconds)
     if not corpus:
-        logger.error("no session traces found under %s - nothing to replay", args.capture_dir)
+        logger.error("no session traces found under %s - nothing to replay", args.fixtures_dir)
         raise SystemExit(1)
     logger.info("loaded %d session traces (%d total events) from %s",
-                len(corpus), sum(len(t.paths) for t in corpus), args.capture_dir)
+                len(corpus), sum(len(t.paths) for t in corpus), args.fixtures_dir)
 
     schedule = _resolve_schedule(
         args.start_users, args.end_users, args.ramp_steps, args.ramp_step_minutes,
