@@ -55,6 +55,26 @@ general_settings:
   # Admin credential for /ui and /key/generate - not for day-to-day calls.
   master_key: os.environ/LITELLM_MASTER_KEY
 
+  # Native alerting: budget/outage/exception/hang signals our own generic_api
+  # StandardLoggingPayload callback below can't reconstruct - see AGENTS.md.
+  # LiteLLM reads the webhook target from a hardcoded WEBHOOK_URL env var
+  # with no config override, distinct from WEBHOOK_METRICS_URL below (that
+  # one used to be named WEBHOOK_URL too, until the collision was found -
+  # see docker-compose.yml's litellm service environment for both).
+  # Deliberately excludes management-event types (key/team/user lifecycle,
+  # new_model_added, spend_reports/daily_reports/fallback_reports digests) -
+  # not reliability signals, would just add noise to a triage dashboard.
+  alerting: ["webhook"]
+  alert_types:
+    - llm_exceptions
+    - llm_too_slow
+    - llm_requests_hanging
+    - outage_alerts
+    - db_exceptions
+    - budget_alerts
+    - failed_tracking_spend
+  alerting_threshold: 300  # seconds; matches llm_too_slow/llm_requests_hanging trigger
+
   # Personal virtual keys go in this header regardless of route (see
   # README.md "LiteLLM"). Needed for OAuth-backed routes too - without it
   # LiteLLM can't tell "authed to me" from "caller's own Anthropic cred,
@@ -113,7 +133,10 @@ callback_settings:
   metrics_webhook:
     callback_type: generic_api
     # Internal DNS name; no host port needed since only litellm talks to it.
-    endpoint: os.environ/WEBHOOK_URL
+    # WEBHOOK_METRICS_URL, not WEBHOOK_URL - that name is now LiteLLM's own
+    # native alerting feature's hardcoded env var (general_settings.alerting
+    # above), a separate target (/api/v1/litellm-alert, not /api/v1/metrics).
+    endpoint: os.environ/WEBHOOK_METRICS_URL
     headers:
       Content-Type: application/json
     event_types:

@@ -5,6 +5,182 @@ apiVersion: 1
 # anywhere real. Add contactpoints.yml + a notification policy later.
 groups:
   - orgId: 1
+    name: llm-alerts
+    folder: Alerts
+    # Longer than infra-health's 30s: these run real ClickHouse SQL scans
+    # (not cheap Prometheus instant vector lookups), backed by the queries
+    # services/grafana/dashboards-health/alerting_overview.json's panels
+    # also use - see AGENTS.md for the ClickHouse datasource (uid
+    # "clickhouse", grafana-clickhouse-datasource plugin).
+    interval: 60s
+    rules:
+      # Thresholds below are a deliberately conservative starting point
+      # (see todo/plan-litellm-alerting.md) - expect tuning once real
+      # traffic/alert volume is visible on the dashboard.
+      - uid: alert-llm-error-rate-high
+        title: LLM error rate is high
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 900, to: 0}
+            datasourceUid: clickhouse
+            model:
+              refId: A
+              datasource:
+                type: grafana-clickhouse-datasource
+                uid: clickhouse
+              editorType: sql
+              format: 1
+              queryType: table
+              rawSql: "SELECT countIf(status = 'failure') / greatest(count(), 1) AS ratio FROM agent_events WHERE timestamp >= now() - INTERVAL 15 MINUTE"
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0.05]}  # >5% failures over a rolling 15m window
+                  operator: {type: and}
+                  query: {params: [B]}
+                  reducer: {type: last, params: []}
+                  type: query
+
+      - uid: alert-llm-p95-latency-high
+        title: LLM p95 latency is high
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 900, to: 0}
+            datasourceUid: clickhouse
+            model:
+              refId: A
+              datasource:
+                type: grafana-clickhouse-datasource
+                uid: clickhouse
+              editorType: sql
+              format: 1
+              queryType: table
+              rawSql: "SELECT quantile(0.95)(latency_ms) AS p95_ms FROM agent_events WHERE timestamp >= now() - INTERVAL 15 MINUTE AND latency_ms IS NOT NULL"
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [20000]}  # p95 > 20s over a rolling 15m window
+                  operator: {type: and}
+                  query: {params: [B]}
+                  reducer: {type: last, params: []}
+                  type: query
+
+      - uid: alert-llm-native-alert-fired
+        title: LiteLLM native alert fired
+        condition: C
+        for: 30s
+        noDataState: NoData
+        execErrState: Error
+        # Presence-based, not threshold-based: any row means LiteLLM's own
+        # alerting logic (budget/outage/exception/hang - see
+        # general_settings.alerting in services/litellm/config.yaml) already
+        # decided something is wrong.
+        data:
+          - refId: A
+            relativeTimeRange: {from: 900, to: 0}
+            datasourceUid: clickhouse
+            model:
+              refId: A
+              datasource:
+                type: grafana-clickhouse-datasource
+                uid: clickhouse
+              editorType: sql
+              format: 1
+              queryType: table
+              rawSql: "SELECT count() AS n FROM litellm_alerts WHERE received_at >= now() - INTERVAL 15 MINUTE"
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+                  operator: {type: and}
+                  query: {params: [B]}
+                  reducer: {type: last, params: []}
+                  type: query
+
+      - uid: alert-llm-ingest-dlq-nonempty
+        title: Ingest pipeline is dropping rows (ingest_dlq non-empty)
+        condition: C
+        for: 30s
+        noDataState: NoData
+        execErrState: Error
+        # Presence-based: the ingestion pipeline itself (webhook-worker)
+        # failed to insert into ClickHouse and fell back to ingest_dlq - see
+        # AGENTS.md's insert_with_dlq_fallback.
+        data:
+          - refId: A
+            relativeTimeRange: {from: 900, to: 0}
+            datasourceUid: clickhouse
+            model:
+              refId: A
+              datasource:
+                type: grafana-clickhouse-datasource
+                uid: clickhouse
+              editorType: sql
+              format: 1
+              queryType: table
+              rawSql: "SELECT count() AS n FROM ingest_dlq WHERE occurred_at >= now() - INTERVAL 15 MINUTE"
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+                  operator: {type: and}
+                  query: {params: [B]}
+                  reducer: {type: last, params: []}
+                  type: query
+
+  - orgId: 1
     name: infra-health
     folder: Alerts
     interval: 30s

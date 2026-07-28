@@ -895,6 +895,10 @@ _SOURCE_COLUMNS = ["litellm_call_id", "session_id", "ingested_at", "raw_payload_
 _GIT_BRANCH_COLUMNS = ["session_id", "git_branch", "git_repo", "issue_id", "captured_at"]
 _PLAN_PROPOSAL_COLUMNS = ["session_id", "plan_text", "captured_at"]
 _FAILURE_COLUMNS = ["occurred_at", "stage", "error", "litellm_call_id", "session_id", "raw_row"]
+_LITELLM_ALERT_COLUMNS = [
+    "received_at", "event", "event_group", "key_alias", "team_id", "user_id",
+    "spend", "max_budget", "event_message", "raw_payload",
+]
 
 _INVOCATION_SPAWNED_AT_IDX = _INVOCATION_COLUMNS.index("spawned_at")
 _EVENT_TIMESTAMP_IDX = _EVENT_COLUMNS.index("timestamp")
@@ -958,6 +962,10 @@ def _insert_git_branch(client, row: list) -> None:
 
 def _insert_plan_proposal(client, row: list) -> None:
     client.insert("plan_proposals", [row], column_names=_PLAN_PROPOSAL_COLUMNS)
+
+
+def _insert_litellm_alert(client, row: list) -> None:
+    client.insert("litellm_alerts", [row], column_names=_LITELLM_ALERT_COLUMNS)
 
 
 def _group_row(payload: dict, now: Optional[datetime] = None) -> Optional[list]:
@@ -1288,6 +1296,37 @@ def ingest_plan_proposal(session_id: str, plan_text: str) -> None:
         _insert_plan_proposal(client, [session_id, plan_text, datetime.now(timezone.utc)])
     except Exception:
         logger.exception("failed to ingest plan proposal (session_id=%s)", session_id)
+
+
+def ingest_litellm_alert(payload: dict) -> None:
+    """Insert one LiteLLM native-alerting webhook event (budget/outage/
+    exception/hang signals - see general_settings.alerting in
+    services/litellm/config.yaml). Direct-to-ClickHouse, not queued through
+    Redis: these events are rare compared to per-call metrics traffic, same
+    low-volume pattern as ingest_git_branch/ingest_plan_proposal. Never
+    raises - a tracking failure must not surface to LiteLLM's own retry
+    logic for its alerting webhook.
+
+    Only the budget-event shape is fully documented by LiteLLM's own docs -
+    other alert types (llm_exceptions/outage_alerts/db_exceptions/...)
+    likely carry different fields, so raw_payload keeps the full body
+    regardless of which fields above happen to be present."""
+    try:
+        client = get_client()
+        _insert_litellm_alert(client, [
+            datetime.now(timezone.utc),
+            payload.get("event") or "",
+            payload.get("event_group") or "",
+            payload.get("key_alias") or "",
+            payload.get("team_id") or "",
+            payload.get("user_id") or "",
+            payload.get("spend"),
+            payload.get("max_budget"),
+            payload.get("event_message") or "",
+            json.dumps(payload, default=str),
+        ])
+    except Exception:
+        logger.exception("failed to ingest LiteLLM alert (event=%s)", payload.get("event", ""))
 
 
 def ingest_webhook_body(body: Any) -> None:

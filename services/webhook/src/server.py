@@ -14,7 +14,12 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Request
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from .clickhouse_ingest import clickhouse_alive, ingest_git_branch, ingest_plan_proposal
+from .clickhouse_ingest import (
+    clickhouse_alive,
+    ingest_git_branch,
+    ingest_litellm_alert,
+    ingest_plan_proposal,
+)
 from .config import LITELLM_BASE_URL, LITELLM_MASTER_KEY
 from .queue_client import enqueue_raw, get_async_redis
 
@@ -95,4 +100,17 @@ async def receive_plan_proposal(request: Request):
 
     body = await request.json()
     ingest_plan_proposal(body.get("session_id", ""), body.get("plan_text", ""))
+    return {"status": "received"}
+
+
+@app.post("/api/v1/litellm-alert")
+async def receive_litellm_alert(request: Request):
+    # LiteLLM's native alerting webhook (general_settings.alerting: ["webhook"]
+    # in services/litellm/config.yaml, WEBHOOK_URL env var) - same trust
+    # model as /api/v1/metrics (internal-network-only; LiteLLM's generic
+    # alerting webhook has no header-auth mechanism to check against).
+    # Direct-to-ClickHouse insert, not queued through Redis - see
+    # ingest_litellm_alert's own docstring for why (low event volume).
+    body = await request.json()
+    ingest_litellm_alert(body)
     return {"status": "received"}

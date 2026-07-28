@@ -17,6 +17,7 @@ allowed_tables:
   - ai_gateway_groups
   - ingest_raw
   - ingest_dlq
+  - litellm_alerts
   - plan_proposals
   - schema_migrations
   # Narrow, deliberate exception to the system.* ban below (server.py's

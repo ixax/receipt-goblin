@@ -59,7 +59,9 @@ x-redis-port: &redis-port 6379
 
 # Points at load-balancer (nginx), not a single webhook replica - see that
 # service below for why (two stateless replicas, load-balanced).
-x-webhook-url: &webhook-url ${WEBHOOK_URL:-http://load-balancer:8000/api/v1/metrics}
+x-webhook-metrics-url: &webhook-metrics-url ${WEBHOOK_METRICS_URL:-http://load-balancer:8000/api/v1/metrics}
+# LiteLLM's native alerting webhook (budget/outage/exception alerts).
+x-litellm-alert-webhook-url: &litellm-alert-webhook-url ${WEBHOOK_URL:-http://load-balancer:8000/api/v1/litellm-alert}
 x-webhook-port: &webhook-port ${WEBHOOK_PORT:-8010}
 
 x-litellm-port: &litellm-port ${LITELLM_PORT:-4000}
@@ -575,8 +577,8 @@ services:
       - tools
     environment:
       APP_ROLE: loadtest
-      # Not *webhook-url - deliberately its own override (TARGET_URL, not
-      # WEBHOOK_URL) so this can point at a different host (staging/prod)
+      # Not *webhook-metrics-url - deliberately its own override (TARGET_URL, not
+      # WEBHOOK_METRICS_URL) so this can point at a different host (staging/prod)
       # without touching the webhook service's own URL var. Defaults at
       # load-balancer, same as litellm's real traffic, so the load test
       # exercises the balancer too - not just one replica directly.
@@ -697,7 +699,8 @@ services:
     image: receipt-goblin-litellm:${LITELLM_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
     container_name: receipt-goblin-litellm
     environment:
-      WEBHOOK_URL: *webhook-url
+      WEBHOOK_METRICS_URL: *webhook-metrics-url
+      WEBHOOK_URL: *litellm-alert-webhook-url
       LITELLM_MASTER_KEY: *litellm-master-key
       DATABASE_URL: *litellm-db-url
       # Read by litellm's built-in langfuse callback (config.yaml) - one of
