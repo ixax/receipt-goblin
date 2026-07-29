@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Resolves VERSION.yml's per-image-group version templates into concrete
+"""Resolves VERSIONS.yml's per-image-group version templates into concrete
 values, substituting `{build}` with the current commit's short git hash
-(templates without `{build}` pass through unchanged - see VERSION.yml's own
-comment for why). No PyYAML dependency: VERSION.yml is a flat `key: value`
+(templates without `{build}` pass through unchanged - see VERSIONS.yml's own
+comment for why). No PyYAML dependency: VERSIONS.yml is a flat `key: value`
 mapping by design, parsed line-by-line rather than pulling in a real YAML
 parser for something this simple.
 
-Every key in VERSION.yml is spelled as the exact shell variable it exports -
+Every key in VERSIONS.yml is spelled as the exact shell variable it exports -
 `WEBHOOK_TAG`, `CLICKHOUSE_VERSION`, etc. - so there is no separate name
 transform to apply here; the key *is* the var name.
 
@@ -20,7 +20,7 @@ import pathlib
 import subprocess
 import sys
 
-VERSION_FILE = pathlib.Path(__file__).resolve().parent.parent / "VERSION.yml"
+VERSION_FILE = pathlib.Path(__file__).resolve().parent.parent / "VERSIONS.yml"
 
 
 def git_hash() -> str:
@@ -55,7 +55,7 @@ def main() -> None:
     if len(sys.argv) > 1:
         key = sys.argv[1]
         if key not in versions:
-            print(f"resolve_image_version.py: unknown key '{key}' (see VERSION.yml)", file=sys.stderr)
+            print(f"resolve_image_version.py: unknown key '{key}' (see VERSIONS.yml)", file=sys.stderr)
             sys.exit(1)
         print(resolve(versions[key], build_hash))
         return

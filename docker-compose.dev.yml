@@ -64,7 +64,7 @@ services:
     build:
       context: .
       dockerfile: services/mcp-dev/Dockerfile
-    image: receipt-goblin-mcp-dev:${MCP_DEV_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-mcp-dev:${MCP_DEV_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-mcp-dev
     environment:
       CLICKHOUSE_HOST: ${CLICKHOUSE_HOST:-clickhouse}

@@ -19,6 +19,8 @@ PATTERNS = [
     (r"git\s+push\b.*--force", "git push --force"),
     (r"git\s+reset\s+--hard\b", "git reset --hard"),
     (r"git\s+clean\s+-f", "git clean -f"),
+    (r"git\s+checkout\s+--(\s|$)", "git checkout --"),
+    (r"git\s+restore\b", "git restore"),
 ]
 
 

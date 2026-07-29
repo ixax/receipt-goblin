@@ -41,7 +41,7 @@ INGEST_URI := $(if $(strip $(AGENT_CLI_TRACKING_API_URL)),$(AGENT_CLI_TRACKING_A
 # `<virtual key>` placeholder to hand-edit.
 VKEY := $(if $(strip $(LITELLM_VIRTUAL_KEY)),$(LITELLM_VIRTUAL_KEY),<virtual key>)
 
-# One <SERVICE>_TAG env var per VERSION.yml key (see that file's own
+# One <SERVICE>_TAG env var per VERSIONS.yml key (see that file's own
 # comment for the templating rules), exported so docker-compose.yml's
 # per-service `image: ...:${..._TAG:-latest}` lines all interpolate -
 # scripts/resolve_image_version.py is the single source of truth for the
@@ -60,7 +60,7 @@ VKEY := $(if $(strip $(LITELLM_VIRTUAL_KEY)),$(LITELLM_VIRTUAL_KEY),<virtual key
 $(shell python3 scripts/resolve_image_version.py > .image-tags.mk)
 include .image-tags.mk
 
-.PHONY: check-env init start up restart up-no-deps build status migrate stop down logs setup-client test langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
+.PHONY: check-env init start up restart up-no-deps build status migrate stop down logs setup-client test test-harness-audit harness-index langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	observability-up observability-down observability-logs observability-status loadtest \
@@ -188,6 +188,16 @@ observability-status: check-env
 # deprecation noise unrelated to this repo's own code).
 test: check-env
 	.venv/bin/python -m pytest -c services/webhook/pytest.ini services/webhook/tests
+
+# Runs hooks/harness_audit/tests (pure Python unittest, no dependencies).
+test-harness-audit:
+	python3 -m unittest discover -s hooks/harness_audit/tests
+
+# Generates/refreshes agent_docs/harness-index.md (a table of every
+# skill/agent's name+description+path, derived from frontmatter, for
+# Codex CLI discovery).
+harness-index: check-env
+	python3 scripts/sync_harness.py
 
 # Prints export statements to route Claude Code, Codex, and other OpenAI/
 # Anthropic-SDK-based tools through the local LiteLLM proxy, plus

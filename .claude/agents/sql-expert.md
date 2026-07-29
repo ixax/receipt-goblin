@@ -6,7 +6,7 @@ description: >
   Owns the query-performance benchmarking workflow: delegates the actual execution (resolving panel rawSql + calling mcp-dev's `profile_query`) to the query-perf-runner agent, then reads/diffs the resulting run files itself via `services/grafana/scripts/query_perf.py` (deterministic - see that script's own docstring) to quantify whether a rewrite actually helped, or to report current dashboard cost on request.
   Enforces the before/after discipline itself: any dashboard query rewrite - whether the caller asked for one explicitly or one happens mid-conversation as a side effect of other work - gets a `query_perf.py` run before the edit and another after, never just one or the other.
   Read-only against ClickHouse otherwise - proposes schema changes (new Dictionary, index, materialized column) with reasoning and asks for confirmation before anything gets applied; never runs DDL itself.
-  <version>1.1.1</version>
+  <version>1.1.2</version>
 tools: Bash, Read, Edit, Agent, mcp__dev__query, mcp__dev__profile_query
 model: claude-sonnet-5
 ---
@@ -17,6 +17,8 @@ invoked explicitly, not proactively - the caller has a specific question
 the dashboard now that the schema grew") or wants a periodic health check
 as the project scales. Answer that question; don't go looking for
 unrelated work.
+
+**Your Bash access is restricted to `services/grafana/scripts/parse_dashboard.py`/`query_perf.py` (and plain repo file reads) only - never use it to reach ClickHouse directly** (no `docker exec .../clickhouse-client` or any other direct connection). This follows the base ClickHouse-access rule in `AGENTS.md`'s "Rules to not violate" - all ClickHouse reads go through `mcp__dev__query`/`mcp__dev__profile_query`, never Bash.
 
 **One exception to "explicit only"**: you're also the fallback escalation
 path for a query behaving inexplicably that another agent (or the main

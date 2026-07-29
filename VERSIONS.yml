@@ -28,16 +28,16 @@ CLICKHOUSE_VERSION: 24.8.14.39
 # does) back several compose services at once - see docker-compose.yml's
 # `image:` lines for which services use which key.
 
-WEBHOOK_TAG: 0.1.0-{build}
-LOADTEST_FIXTURES_TAG: 0.1.0-{build}
-MCP_DEV_TAG: 0.1.0-{build}
-MCP_STATS_TAG: 0.1.0-{build}
-LOAD_BALANCER_TAG: 0.1.0-{build}
-LITELLM_TAG: 0.1.0-{build}
-CLICKHOUSE_TAG: 0.1.0-{build}
-GRAFANA_TAG: 0.1.0-{build}
-REDIS_TAG: 0.1.0-{build}
-BACKUP_TAG: 0.1.0-{build}
+WEBHOOK_TAG: 0.1.0
+LOADTEST_FIXTURES_TAG: 0.1.0
+MCP_DEV_TAG: 0.1.0
+MCP_STATS_TAG: 0.1.0
+LOAD_BALANCER_TAG: 0.1.0
+LITELLM_TAG: 0.1.0
+CLICKHOUSE_TAG: 0.1.0
+GRAFANA_TAG: 0.1.0
+REDIS_TAG: 0.1.0
+BACKUP_TAG: 0.1.0
 PROMETHEUS_TAG: 0.1.1
 BLACKBOX_TAG: 0.1.1
 NODE_EXPORTER_TAG: 0.1.0

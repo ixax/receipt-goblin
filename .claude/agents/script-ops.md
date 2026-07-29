@@ -1,7 +1,7 @@
 ---
 name: script-ops
 description: >
-  Delegate target for mechanical data/file work and all read-only repo investigation, on a cheap model - inspecting or rewriting structured files (JSON/YAML), running one-off python/jq snippets, or reading logs.
+  MUST BE USED PROACTIVELY, without waiting to be asked, for mechanical data/file work and all read-only repo investigation, on a cheap model - inspecting or rewriting structured files (JSON/YAML), running one-off python/jq snippets, or reading logs.
   Investigation covers the full range from open-ended structural scoping (`ls`/`find`/`tree`/a broad `grep -r` to map out a directory or locate a not-yet-identified target, before the task is even scoped) through to a point lookup of a symbol the caller already knows - "the caller doesn't know what to look for yet" is a reason *to* delegate here, never a reason to keep a plain `ls`/`find` inline instead. Only actual *transformations* (rewriting/editing a file's content) need the caller to have already decided what to change - investigation never does.
   Also runs read-only `docker`/`docker compose` inspection (`ps`, `logs`, `inspect`) when asked.
   Also the delegate target for mechanical, fully-specified filesystem writes/edits where the content or exact change is already known (exact paths, exact content, or an exact old/new string) - merged in from the retired `file-ops` agent, which this one now fully subsumes (same tools plus `Bash`, same "execute, don't design" contract).
@@ -9,7 +9,7 @@ description: >
   Not for `git`, or any `docker` command that changes state (`up`/`down`/`restart`/`build`) - those need judgment about blast radius and stay with the caller.
   Not worth delegating for a single trivial one-off read/write/edit - the win is on repeated/bulk mechanical work or anything with large output.
   If a mechanical edit's exact old/new text contains ClickHouse SQL (a rawSql string, a migration file), reads the clickhouse-sql skill first to sanity-check the given text isn't carrying a known lexer/escaping gotcha (e.g. an unescaped `\b` inside a string literal) - flags it back to the caller rather than silently writing text it can tell is wrong, even though composing the SQL itself is never this agent's job.
-  <version>1.4.0</version>
+  <version>1.5.0</version>
 tools: Bash, Read, Write, Edit, Glob, Grep
 model: claude-haiku-4-5
 ---

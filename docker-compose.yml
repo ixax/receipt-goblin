@@ -36,7 +36,7 @@ x-clickhouse-http-port: &clickhouse-http-port ${CLICKHOUSE_HTTP_PORT:-8123}
 x-clickhouse-native-port: &clickhouse-native-port ${CLICKHOUSE_NATIVE_PORT:-9000}
 # Pins clickhouse's image and backup's apt-installed clickhouse-client to
 # the same version so they can't drift (see both services' Dockerfiles).
-x-clickhouse-version: &clickhouse-version ${CLICKHOUSE_VERSION:?set CLICKHOUSE_VERSION - run via `make` (see VERSION.yml), not `docker compose` directly}
+x-clickhouse-version: &clickhouse-version ${CLICKHOUSE_VERSION:?set CLICKHOUSE_VERSION - run via `make` (see VERSIONS.yml), not `docker compose` directly}
 # Superuser the ClickHouse image creates itself at startup
 # (CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 below) - exists only to bootstrap
 # the five roles above via SQL. No application service connects as this user
@@ -124,7 +124,7 @@ services:
       context: ./services/clickhouse
       args:
         CLICKHOUSE_VERSION: *clickhouse-version
-    image: receipt-goblin-clickhouse:${CLICKHOUSE_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-clickhouse:${CLICKHOUSE_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-clickhouse
     environment:
       # Bootstrap superuser only (see x-clickhouse-bootstrap-* above), not
@@ -180,7 +180,7 @@ services:
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
-    image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-clickhouse-migrate
     profiles:
       - tools
@@ -225,7 +225,7 @@ services:
     # `docker compose build grafana` in prod; docker-compose.dev.yml
     # bind-mounts them back for live editing.
     build: ./services/grafana
-    image: receipt-goblin-grafana:${GRAFANA_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-grafana:${GRAFANA_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-grafana
     environment:
       CLICKHOUSE_HOST: *clickhouse-host
@@ -257,7 +257,7 @@ services:
     build:
       context: .
       dockerfile: services/mcp-stats/Dockerfile
-    image: receipt-goblin-mcp-stats:${MCP_STATS_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-mcp-stats:${MCP_STATS_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-mcp-stats
     environment:
       CLICKHOUSE_HOST: *clickhouse-host
@@ -288,7 +288,7 @@ services:
     # queue_client.py. Tuning lives in redis.conf, baked in at build time -
     # no dev override for this one, rarely edited live.
     build: ./services/redis
-    image: receipt-goblin-redis:${REDIS_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-redis:${REDIS_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-redis
     # Above redis.conf's maxmemory (1024mb) - headroom for Redis's own
     # overhead beyond the dataset.
@@ -328,7 +328,7 @@ services:
     # role") - one explicit tag here means one build gets reused by all six
     # instead of compose's default per-service image naming giving each its
     # own identical copy (confirmed duplicating ~214MB x6 before this).
-    image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-webhook-1
     environment: *webhook-env
     # Was 256m before build_event()/json parsing moved off webhook's request
@@ -369,7 +369,7 @@ services:
     # Only this service publishes host ports; the backends it fronts are
     # internal-network-only.
     build: ./services/load-balancer
-    image: receipt-goblin-load-balancer:${LOAD_BALANCER_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-load-balancer:${LOAD_BALANCER_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-load-balancer
     environment:
       # Consumed only by docker-entrypoint.d/50-render-index-html.sh (the
@@ -445,7 +445,7 @@ services:
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
-    image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-worker
     environment:
       APP_ROLE: worker
@@ -494,7 +494,7 @@ services:
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
-    image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-metrics-reparse
     profiles:
       - tools
@@ -534,7 +534,7 @@ services:
     build:
       context: .
       dockerfile: services/loadtest-fixtures/Dockerfile
-    image: receipt-goblin-loadtest-fixtures:${LOADTEST_FIXTURES_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-loadtest-fixtures:${LOADTEST_FIXTURES_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-loadtest-fixtures
     profiles:
       - tools
@@ -571,7 +571,7 @@ services:
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
-    image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-loadtest
     profiles:
       - tools
@@ -656,7 +656,7 @@ services:
       context: ./services/backup
       args:
         CLICKHOUSE_VERSION: *clickhouse-version
-    image: receipt-goblin-backup:${BACKUP_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-backup:${BACKUP_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-backup
     profiles:
       - tools
@@ -696,7 +696,7 @@ services:
     # litellm`. docker-compose.dev.yml bind-mounts user_configs/ back for
     # live editing without a rebuild - see services/litellm/Dockerfile.
     build: ./services/litellm
-    image: receipt-goblin-litellm:${LITELLM_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-litellm:${LITELLM_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-litellm
     environment:
       WEBHOOK_METRICS_URL: *webhook-metrics-url
@@ -752,7 +752,7 @@ services:
   prometheus:
     # Config baked in at build time - see prometheus.yml for scrape jobs.
     build: ./services/prometheus
-    image: receipt-goblin-prometheus:${PROMETHEUS_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-prometheus:${PROMETHEUS_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-prometheus
     profiles:
       - observability
@@ -774,7 +774,7 @@ services:
     # Config baked in at build time - see config.yml for the http_2xx
     # module Prometheus's blackbox job uses.
     build: ./services/blackbox
-    image: receipt-goblin-blackbox:${BLACKBOX_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-blackbox:${BLACKBOX_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-blackbox
     profiles:
       - observability
@@ -867,7 +867,7 @@ services:
     # host-mount rationale as cadvisor - reports on the Docker Desktop Linux
     # VM on macOS, the real host on Linux.
     build: ./services/node-exporter
-    image: receipt-goblin-node-exporter:${NODE_EXPORTER_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-node-exporter:${NODE_EXPORTER_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-node-exporter
     profiles:
       - observability
@@ -888,7 +888,7 @@ services:
     # Config baked in at build time. Single-binary, filesystem-backed - no
     # object storage needed at this scale.
     build: ./services/loki
-    image: receipt-goblin-loki:${LOKI_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-loki:${LOKI_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-loki
     profiles:
       - observability
@@ -913,7 +913,7 @@ services:
     # system-socket exception to the no-config-volume-mounts convention -
     # needed for discovery.docker to tail every container's logs.
     build: ./services/alloy
-    image: receipt-goblin-alloy:${ALLOY_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-alloy:${ALLOY_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-alloy
     profiles:
       - observability
@@ -987,7 +987,7 @@ services:
     # Startup logic (bucket precreate + minio invocation) baked into the
     # image - see Dockerfile + entrypoint.sh.
     build: ./services/langfuse-minio
-    image: receipt-goblin-langfuse-minio:${LANGFUSE_MINIO_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-langfuse-minio:${LANGFUSE_MINIO_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-langfuse-minio
     profiles:
       - langfuse
@@ -1011,7 +1011,7 @@ services:
     # REDIS_PASSWORD at runtime and execs redis-server, since the password
     # is a runtime secret and can't be baked in.
     build: ./services/langfuse-redis
-    image: receipt-goblin-langfuse-redis:${LANGFUSE_REDIS_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    image: receipt-goblin-langfuse-redis:${LANGFUSE_REDIS_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-langfuse-redis
     profiles:
       - langfuse

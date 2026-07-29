@@ -1,0 +1,44 @@
+# `load-balancer`
+
+Single nginx service (`services/load-balancer/`) sits in front of every service that used to publish its own host port directly:
+
+- `webhook` (via `webhook-1`/`webhook-2`)
+- `litellm`
+- `grafana`
+- `mcp-dev` (dev-only)
+- `mcp-stats`
+- `clickhouse` (both its HTTP interface and native protocol)
+- `prometheus` (opt-in `observability` profile)
+- `langfuse-web` (opt-in `langfuse` profile)
+
+## Ports stay unchanged
+
+Each backend keeps its original `listen`/host port (`WEBHOOK_PORT`/`LITELLM_PORT`/`GRAFANA_PORT`/`MCP_DEV_PORT`/`MCP_STATS_PORT`/`CLICKHOUSE_HTTP_PORT`/`CLICKHOUSE_NATIVE_PORT`/`PROMETHEUS_PORT`/`LANGFUSE_PORT`) - `http://localhost:<port>` for each is unchanged, only the container actually terminating the connection changed.
+`langfuse-web`'s own container-internal port (3000) collides with `grafana`'s, so nginx listens for it on its own internal `3001` instead - purely an nginx-internal socket choice, unrelated to `LANGFUSE_PORT`, which still controls the host side exactly as before.
+`MCP_DEV_PORT` is the one exception in two ways: it's only wired up at all in `docker-compose.dev.yml` (`mcp-dev` doesn't exist in `ENVIRONMENT=production`), and load-balancer publishes it with `host_ip: 127.0.0.1` specifically - reachable from the host only, never from other interfaces like every other port above.
+`mcp-stats` is a normal prod service (auth is handled inside the service itself via a LiteLLM-virtual-key check, not by the gateway), no such restriction.
+
+## Routing stays port-based, not path-prefixed or subdomain-based
+
+This stack has no domain or local DNS infra anywhere - every consumer (README, `Makefile`, `.mcp.json`, `make setup-client`'s printed `ANTHROPIC_BASE_URL`/`AGENT_CLI_TRACKING_API_URL`) already addresses services as `http://localhost:<PORT>`, so per-port `server{}` blocks in `nginx.conf` reuse that with zero client-facing change.
+Path prefixes would need every backend to tolerate a stripped/rewritten prefix (unverified for LiteLLM's UI/API and both MCP servers' `streamable-http` transport) and would ripple through every hardcoded URL above; subdomains would need `/etc/hosts`/DNS infra that doesn't exist here.
+Revisit only if this stack ever runs behind a real external domain.
+
+## Webhook load balancing is real `least_conn`, not a fixed split
+
+This needs static backend addresses: nginx's `least_conn` only works inside a static `upstream{}` block, and open-source nginx (no nginx-plus) resolves a `server <hostname>` entry once, at startup/reload, never again.
+So `webhook-1`/`webhook-2` get **static IPs** (`172.28.1.11`/`172.28.1.12`) in `docker-compose.yml`'s `networks:` block instead, letting `nginx.conf`'s `upstream webhook_backend { least_conn; ... }` address them directly - no DNS involved, so a replica recreate can't go stale.
+The network's `ipam.ip_range` (`172.28.0.0/24`) deliberately excludes the `172.28.1.x` range the static IPs live in, so Docker's automatic allocator can never hand one of those addresses to some other container first - see `agent_docs/incidents.md` for the race this exclusion fixed.
+`max_fails`/`fail_timeout` on each `server` line add nginx's built-in passive health check on top.
+
+## Other backends use a resolver + variable-indirection pattern
+
+`litellm`/`grafana`/`mcp-dev`/`mcp-stats`/`clickhouse`/`prometheus`/`langfuse-web` use a `resolver 127.0.0.11 valid=10s;` + `set $var host:port; proxy_pass http://$var;` pattern instead - no static IP needed since each is a single backend with nothing to `least_conn` between, but a literal `proxy_pass http://host:port;` still gets resolved once at parse time even with `resolver` set, so the variable indirection is what actually defers resolution to request time.
+Without it, a routine `docker compose up -d --build <service>` recreate would 502 forever until nginx itself restarted.
+ClickHouse's native protocol (port 9000, raw TCP) uses the same variable trick inside a `stream{}` block instead of `http{}`.
+`prometheus`/`langfuse-web` not existing at all (profile not enabled) behaves the same way as any other backend not being up yet - per-request 502s, no crash.
+
+## No `depends_on`
+
+`load-balancer` has no `depends_on` on anything, deliberately.
+nginx tolerates any backend being down (502s a request until it's reachable, self-heals via the resolver/passive-check mechanisms above), and none of the backends it fronts should be forced to start (or be unstartable on their own) just because the gateway is also running.
