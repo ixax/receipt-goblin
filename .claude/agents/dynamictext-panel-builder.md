@@ -313,7 +313,7 @@ rendering logic and stay here.
   where each branch had its own cap sized to what that field "needed"
   (120 for `file_path`, 70 for `command`/`query`, 100 for `sql`, 90 for
   `url`) - that per-branch variance is what caused misalignment between
-  row types (e.g. a short `mcp__stats__whatsup {}` row padding to a
+  row types (e.g. a short `mcp__stats__me {session_id: "..."}` row padding to a
   different target than a long `command` row next to it). If asked to
   retune this, change all branches together, not just the one named -
   that's the whole point of unifying them. (Two things are deliberately

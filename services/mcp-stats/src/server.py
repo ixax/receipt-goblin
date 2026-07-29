@@ -141,45 +141,108 @@ def get_client():
     return _client
 
 
+def _operation_label(row: dict) -> str:
+    # One human-readable label per row - command/skill/agent/mcp-tool name
+    # if this call was made BY one of those (i.e. it's a subagent/skill/
+    # command's own turn), else fall back to agent_events.calculated_type
+    # (joined in by litellm_call_id) to say what the call actually DID -
+    # spawned a subagent, ran a tool, answered plainly, etc. A bare
+    # "llm:<model>" without this join is nearly always "claude-sonnet-5"
+    # repeated with no useful signal, since most turns are plain model
+    # calls from agent_usage's own columns alone.
+    if row["command_name"]:
+        return f"/{row['command_name']}"
+    if row["skill_name"]:
+        return f"skill:{row['skill_name']}"
+    if row["agent_name"]:
+        return f"agent:{row['agent_name']}"
+    if row["mcp_tool_name"]:
+        return f"mcp:{row['mcp_tool_name']}"
+    calculated_type = row["calculated_type"]
+    if calculated_type == "agent_spawn" and row["spawned_agent"]:
+        return f"spawn:{row['spawned_agent']}"
+    if calculated_type == "tool_call" and row["tool_name"]:
+        return f"tool:{row['tool_name']}"
+    if calculated_type == "llm_answer":
+        return "conversation reply"
+    if calculated_type == "ask_user_question":
+        return "ask user question"
+    if calculated_type:
+        return calculated_type
+    return f"llm:{row['model']}"
+
+
 @mcp.tool()
-def whatsup(hours: int = 24) -> dict:
-    """Report total token usage/cost and the top 5 spenders over the last
-    N hours (default 24) from the agent-tracking ClickHouse database."""
+def me(session_id: str) -> dict:
+    """Report cost/token spend for the current Claude Code session plus the
+    last 30 days, and the 5 most expensive operations in this session.
+
+    session_id must be the value of the CLAUDE_CODE_SESSION_ID environment
+    variable (read it via a shell command first, then pass it here - this
+    tool has no other way to know which session is "current").
+
+    Returns:
+      session: {cost, input_tokens, output_tokens} summed over every
+        agent_usage row for this session_id (the whole session so far, not
+        just the last N hours).
+      last_30_days: same three fields, summed across all usage (every
+        session/user) in the last 30 days - same semantics whatsup used to
+        report for cost/tokens, just fixed to a 30-day window in this tool.
+      top_operations: up to 5 rows from this session, ordered by cost
+        descending - each one a single agent_usage row (one LiteLLM call),
+        labeled by whichever of command/skill/agent/mcp-tool triggered it,
+        or (joined from agent_events by litellm_call_id) what the call
+        itself did - spawned a subagent, ran a tool, answered plainly, etc.
+        (see _operation_label) - falling back to "llm:<model>" only when
+        none of that is available.
+    """
     client = get_client()
 
-    tokens_row = client.query(
-        "SELECT sum(input_tokens + output_tokens) FROM agent_usage "
-        "WHERE timestamp >= now() - INTERVAL %(hours)s HOUR",
-        parameters={"hours": hours},
+    session_row = client.query(
+        "SELECT sum(cost), sum(input_tokens), sum(output_tokens) FROM agent_usage "
+        "WHERE session_id = {session_id:String}",
+        parameters={"session_id": session_id},
     ).result_rows[0]
-    total_tokens = tokens_row[0] or 0
 
-    # agent_usage.cost is LiteLLM's own cache-pricing-aware response_cost.
-    # A prior manual price-table JOIN overcounted cost under prompt caching
-    # (priced every input token at full rate) - don't reintroduce it.
-    cost_row = client.query(
-        "SELECT sum(cost) FROM agent_usage "
-        "WHERE timestamp >= now() - INTERVAL %(hours)s HOUR",
-        parameters={"hours": hours},
+    month_row = client.query(
+        "SELECT sum(cost), sum(input_tokens), sum(output_tokens) FROM agent_usage "
+        "WHERE timestamp >= now() - INTERVAL 30 DAY",
     ).result_rows[0]
-    total_cost = cost_row[0]
 
-    top_rows = client.query(
-        "SELECT user_id, sum(cost) AS cost, sum(input_tokens + output_tokens) AS tokens "
-        "FROM agent_usage "
-        "WHERE timestamp >= now() - INTERVAL %(hours)s HOUR "
-        "GROUP BY user_id ORDER BY cost DESC LIMIT 5",
-        parameters={"hours": hours},
-    ).result_rows
-
-    top_spenders = [
-        {"user_id": row[0], "cost": row[1], "tokens": row[2]} for row in top_rows
-    ]
+    top_result = client.query(
+        "SELECT au.timestamp, au.model, au.agent_name, au.skill_name, au.command_name, "
+        "au.mcp_tool_name, au.cost, au.input_tokens, au.output_tokens, "
+        "ae.tool_name, ae.calculated_type, "
+        "JSONExtractString(ae.calculated_payload, 'subagent_type') AS spawned_agent "
+        "FROM agent_usage AS au "
+        "LEFT JOIN agent_events AS ae "
+        "ON au.litellm_call_id = ae.litellm_call_id AND au.session_id = ae.session_id "
+        "WHERE au.session_id = {session_id:String} "
+        "ORDER BY au.cost DESC LIMIT 5",
+        parameters={"session_id": session_id},
+    )
+    top_operations = []
+    for r in top_result.result_rows:
+        row = dict(zip(top_result.column_names, r))
+        top_operations.append({
+            "label": _operation_label(row),
+            "cost": row["cost"],
+            "input_tokens": row["input_tokens"],
+            "output_tokens": row["output_tokens"],
+            "timestamp": row["timestamp"].isoformat(),
+        })
 
     return {
-        "hours": hours,
-        "total_tokens": total_tokens,
-        "total_cost": total_cost,
-        "cost_has_gaps": total_cost is None and total_tokens > 0,
-        "top_spenders": top_spenders,
+        "session_id": session_id,
+        "session": {
+            "cost": session_row[0],
+            "input_tokens": session_row[1] or 0,
+            "output_tokens": session_row[2] or 0,
+        },
+        "last_30_days": {
+            "cost": month_row[0],
+            "input_tokens": month_row[1] or 0,
+            "output_tokens": month_row[2] or 0,
+        },
+        "top_operations": top_operations,
     }

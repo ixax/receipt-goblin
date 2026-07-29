@@ -64,10 +64,12 @@ roles:
     password_env: CLICKHOUSE_MCP_STATS_PASSWORD
     default_user: mcp_stats
     grants:
-      # Only agent_usage - whatsup is the one tool today and it only reads
-      # this table. Broaden if/when mcp-stats grows tools reading more
-      # tables (see mcp-stats's own module docstring).
+      # agent_usage for cost/token numbers, agent_events for calculated_type/
+      # tool_name/calculated_payload - `me`'s top_operations labeling joins
+      # the two (see services/mcp-stats/src/server.py's _operation_label).
+      # Broaden further if/when mcp-stats grows tools reading more tables.
       - "GRANT SELECT ON {database}.agent_usage"
+      - "GRANT SELECT ON {database}.agent_events"
 
   - name: backup
     user_env: CLICKHOUSE_BACKUP_USER
