@@ -10,12 +10,12 @@ x-clickhouse-ingest-user: &clickhouse-ingest-user ${CLICKHOUSE_INGEST_USER:?set 
 x-clickhouse-ingest-password: &clickhouse-ingest-password ${CLICKHOUSE_INGEST_PASSWORD:?set CLICKHOUSE_INGEST_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-grafana-user: &clickhouse-grafana-user ${CLICKHOUSE_GRAFANA_USER:?set CLICKHOUSE_GRAFANA_USER, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-grafana-password: &clickhouse-grafana-password ${CLICKHOUSE_GRAFANA_PASSWORD:?set CLICKHOUSE_GRAFANA_PASSWORD, e.g. in a .env file next to docker-compose.yml}
-x-clickhouse-mcp-user: &clickhouse-mcp-user ${CLICKHOUSE_MCP_USER:?set CLICKHOUSE_MCP_USER, e.g. in a .env file next to docker-compose.yml}
-x-clickhouse-mcp-password: &clickhouse-mcp-password ${CLICKHOUSE_MCP_PASSWORD:?set CLICKHOUSE_MCP_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-backup-user: &clickhouse-backup-user ${CLICKHOUSE_BACKUP_USER:?set CLICKHOUSE_BACKUP_USER, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-backup-password: &clickhouse-backup-password ${CLICKHOUSE_BACKUP_PASSWORD:?set CLICKHOUSE_BACKUP_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-loadtest-user: &clickhouse-loadtest-user ${CLICKHOUSE_LOADTEST_USER:?set CLICKHOUSE_LOADTEST_USER, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-loadtest-password: &clickhouse-loadtest-password ${CLICKHOUSE_LOADTEST_PASSWORD:?set CLICKHOUSE_LOADTEST_PASSWORD, e.g. in a .env file next to docker-compose.yml}
+x-clickhouse-mcp-stats-user: &clickhouse-mcp-stats-user ${CLICKHOUSE_MCP_STATS_USER:?set CLICKHOUSE_MCP_STATS_USER, e.g. in a .env file next to docker-compose.yml}
+x-clickhouse-mcp-stats-password: &clickhouse-mcp-stats-password ${CLICKHOUSE_MCP_STATS_PASSWORD:?set CLICKHOUSE_MCP_STATS_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 # Main app database, created by the clickhouse container itself at startup
 # (CLICKHOUSE_DB below).
 x-clickhouse-database: &clickhouse-database ${CLICKHOUSE_DATABASE:?set CLICKHOUSE_DATABASE, e.g. in a .env file next to docker-compose.yml}
@@ -25,7 +25,7 @@ x-clickhouse-database: &clickhouse-database ${CLICKHOUSE_DATABASE:?set CLICKHOUS
 # services/init/config.yml sets create_database: true).
 x-clickhouse-loadtest-database: &clickhouse-loadtest-database ${CLICKHOUSE_LOADTEST_DATABASE:?set CLICKHOUSE_LOADTEST_DATABASE, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-host: &clickhouse-host ${CLICKHOUSE_HOST:-clickhouse}
-# Internal-only - webhook/clickhouse-migrate/mcp-server/grafana dial
+# Internal-only - webhook/clickhouse-migrate/mcp-dev/mcp-stats/grafana dial
 # `clickhouse` directly over the Docker network, never through nginx, and
 # that container's actual listen port is already hardcoded (`expose:
 # "8123"` below) - so this isn't user-configurable. CLICKHOUSE_HTTP_PORT/
@@ -44,8 +44,8 @@ x-clickhouse-version: &clickhouse-version ${CLICKHOUSE_VERSION:?set CLICKHOUSE_V
 x-clickhouse-bootstrap-user: &clickhouse-bootstrap-user ${CLICKHOUSE_BOOTSTRAP_USER:?set CLICKHOUSE_BOOTSTRAP_USER, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-bootstrap-password: &clickhouse-bootstrap-password ${CLICKHOUSE_BOOTSTRAP_PASSWORD:?set CLICKHOUSE_BOOTSTRAP_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 
-x-mcp-server-port: &mcp-server-port ${MCP_SERVER_PORT:-8001}
 x-grafana-port: &grafana-port ${GRAFANA_PORT:-3000}
+x-mcp-stats-port: &mcp-stats-port ${MCP_STATS_PORT:-8002}
 
 # Host root dir backup/restore scripts read/write ($BACKUP_DIR, default
 # .backups - see README.md's "Backup & restore" section). Used directly as
@@ -248,29 +248,35 @@ services:
     networks:
       - receipt-goblin
 
-  mcp-server:
-    # Prod image is self-contained (config.yml baked in). docker-compose.dev.yml
-    # bind-mounts ./src over /app/src and adds `command: --reload` for live
-    # editing; requirements.txt changes still need a rebuild either way.
-    build: ./services/mcp-server
-    image: receipt-goblin-mcp-server:${MCP_SERVER_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
-    container_name: receipt-goblin-mcp-server
+  mcp-stats:
+    # Prod-facing MCP server (fixed statistics tools, e.g. whatsup) - ships
+    # alongside litellm/grafana. Unlike mcp-dev (dev-only, arbitrary SQL, no
+    # auth), every request other than /health/`/metrics` must carry a valid
+    # LiteLLM virtual key - see services/mcp-stats/src/server.py's
+    # AuthMiddleware. depends_on litellm since auth calls its /key/info.
+    build: ./services/mcp-stats
+    image: receipt-goblin-mcp-stats:${MCP_STATS_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    container_name: receipt-goblin-mcp-stats
     environment:
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
-      CLICKHOUSE_MCP_USER: *clickhouse-mcp-user
-      CLICKHOUSE_MCP_PASSWORD: *clickhouse-mcp-password
+      CLICKHOUSE_MCP_STATS_USER: *clickhouse-mcp-stats-user
+      CLICKHOUSE_MCP_STATS_PASSWORD: *clickhouse-mcp-stats-password
       CLICKHOUSE_DATABASE: *clickhouse-database
-      MCP_SERVER_PORT: *mcp-server-port
+      MCP_STATS_PORT: *mcp-stats-port
+      LITELLM_MASTER_KEY: *litellm-master-key
+      LITELLM_BASE_URL: *litellm-base-url
     mem_limit: 256m
     restart: always
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=2)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=2)"]
       interval: 5s
       timeout: 3s
       retries: 20
     depends_on:
       clickhouse:
+        condition: service_healthy
+      litellm:
         condition: service_healthy
     networks:
       - receipt-goblin
@@ -356,7 +362,7 @@ services:
 
   load-balancer:
     # Load-balances the two webhook replicas above (real least_conn - see
-    # nginx.conf) and gateways litellm/grafana/mcp-server/clickhouse/
+    # nginx.conf) and gateways litellm/grafana/mcp-dev/mcp-stats/clickhouse/
     # prometheus/langfuse-web too - see AGENTS.md "Gateway (`load-balancer`)".
     # Only this service publishes host ports; the backends it fronts are
     # internal-network-only.
@@ -371,7 +377,7 @@ services:
       WEBHOOK_PORT: *webhook-port
       LITELLM_PORT: *litellm-port
       GRAFANA_PORT: *grafana-port
-      MCP_SERVER_PORT: *mcp-server-port
+      MCP_STATS_PORT: *mcp-stats-port
       CLICKHOUSE_HTTP_PORT: *clickhouse-http-port
       PROMETHEUS_PORT: *prometheus-port
       LANGFUSE_PORT: *langfuse-port
@@ -388,8 +394,8 @@ services:
         published: *litellm-port
       - target: 3000
         published: *grafana-port
-      - target: 8001
-        published: *mcp-server-port
+      - target: 8002
+        published: *mcp-stats-port
       - target: 8123
         published: *clickhouse-http-port
       - target: 9000
@@ -406,7 +412,7 @@ services:
     # Was 0.5 - hit 100% of that under the 100-user load test (real,
     # unsmoothed peak, not a docker-stats sampling artifact - see
     # AGENTS.md's load-test history), while every other gateway'd backend
-    # still had headroom. It's fronting webhook/litellm/grafana/mcp-server/
+    # still had headroom. It's fronting webhook/litellm/grafana/mcp-dev/mcp-stats/
     # clickhouse/langfuse-web all at once, so it's worth more than 0.5 cores.
     cpus: 1.0
     restart: always
@@ -424,7 +430,7 @@ services:
     # to start (it just 502s a request until one's reachable, self-healing
     # via the `resolver`/stream blocks + the webhook_backend upstream's
     # passive checks in nginx.conf), and load-balancer shouldn't force
-    # anyone to bring up webhook-1/2/litellm/grafana/mcp-server/clickhouse
+    # anyone to bring up webhook-1/2/litellm/grafana/mcp-dev/mcp-stats/clickhouse
     # just to start it, or vice versa - each of those should be startable
     # (or skippable) on its own.
     networks:
@@ -1133,7 +1139,7 @@ networks:
     # out the same address a static assignment below already claims from
     # .1.0/24 - without this, whichever container happens to start first
     # grabs the low addresses and can collide with the pinned ones
-    # (hit this in testing: litellm/mcp-server got 172.28.0.11/.12 before
+    # (hit this in testing: litellm/mcp-dev got 172.28.0.11/.12 before
     # webhook-1/webhook-2 could claim them).
     ipam:
       config:

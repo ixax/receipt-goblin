@@ -90,7 +90,7 @@ Panel groups:
 - **Spend/budget** — `agent_usage.cost` trend, cross-referenced against any `litellm_alerts` budget events on the same timeline.
 - **Ingest pipeline health** — `ingest_dlq` row count/recent rows, finally giving that "triage/alerting feed" (currently unconsumed per its own schema comment) an actual consumer.
 
-Every panel's `rawSql` gets tested against real data (`mcp__clickhouse__query`, through the agent) before being written, and any non-trivial SQL goes through the `clickhouse-sql` skill first, per that agent's own standing rules.
+Every panel's `rawSql` gets tested against real data (`mcp__dev__query`, through the agent) before being written, and any non-trivial SQL goes through the `clickhouse-sql` skill first, per that agent's own standing rules.
 
 ### 5. New Grafana alert rules (`services/grafana/provisioning/alerting/rules.yml`)
 
@@ -122,6 +122,6 @@ Exact thresholds are a judgment call to make with the user during implementation
 ## Verification
 
 1. `webhook-test-runner` agent: `make test` passes after `clickhouse_ingest.py`/`server.py` changes.
-2. Trigger a real LiteLLM alert (e.g. a deliberately low per-key budget crossed in a test key) and confirm a row lands in `litellm_alerts` via `mcp__clickhouse__query` (never a direct ClickHouse connection, per the base rule).
+2. Trigger a real LiteLLM alert (e.g. a deliberately low per-key budget crossed in a test key) and confirm a row lands in `litellm_alerts` via `mcp__dev__query` (never a direct ClickHouse connection, per the base rule).
 3. Open `litellm_alerting.json` in Grafana and confirm every panel renders (no query errors) against real data.
 4. Confirm the new `llm-alerts` rule group appears under Grafana's Alerting > Alert rules, evaluates without error, and (as expected for now) has no contact point delivering anywhere — matching `infra-health`'s current state.

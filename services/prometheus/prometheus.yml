@@ -22,10 +22,19 @@ scrape_configs:
       # `instance` label; alert rules aggregate across them (see rules.yml).
       - targets: ["webhook-1:8000", "webhook-2:8000"]
 
-  - job_name: mcp-server
+  - job_name: mcp-dev
     metrics_path: /metrics
     static_configs:
-      - targets: ["mcp-server:8001"]
+      # Dev-only - reads DOWN/no-data when ENVIRONMENT=production, same as
+      # the opt-in-profile langfuse targets below when their profile isn't
+      # enabled (no alert rule wired to either case, so this doesn't page
+      # anyone).
+      - targets: ["mcp-dev:8001"]
+
+  - job_name: mcp-stats
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["mcp-stats:8002"]
 
   - job_name: worker
     metrics_path: /metrics
@@ -73,7 +82,8 @@ scrape_configs:
       - targets:
           - http://webhook-1:8000/health
           - http://webhook-2:8000/health
-          - http://mcp-server:8001/health
+          - http://mcp-dev:8001/health
+          - http://mcp-stats:8002/health
           - http://clickhouse:8123/ping
           - http://grafana:3000/api/health
           - http://litellm:4000/health/liveliness

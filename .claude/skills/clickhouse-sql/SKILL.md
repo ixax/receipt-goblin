@@ -4,9 +4,9 @@ description: >
   Shared knowledge base of ClickHouse-specific SQL gotchas and the sanctioned tool/script pointers for this repo's agent-tracking stack.
   TRIGGER - read BEFORE writing or debugging any non-trivial ClickHouse SQL: regex functions (replaceRegexpAll/replaceRegexpOne/match/extract), string-literal escape sequences, Map-type columns, CAST/type-conversion, WITH/CTE alias resolution, ASOF JOIN, or any query whose result doesn't match what the SQL visibly says it should do.
   Also read this reactively the moment a query's behavior looks inexplicable (wrong match, silent no-op, off-by-something result) even if the SQL wasn't flagged as risky going in - most entries below were discovered exactly that way.
-  Points at the sanctioned ClickHouse tool/script set so agents don't have to guess which one exists for what: mcp__clickhouse__query/profile_query (read/profile), services/grafana/scripts/query_perf.py (benchmark run tracking), services/grafana/scripts/parse_dashboard.py (agents_overview.json panel structure).
+  Points at the sanctioned ClickHouse tool/script set so agents don't have to guess which one exists for what: mcp__dev__query/profile_query (read/profile), services/grafana/scripts/query_perf.py (benchmark run tracking), services/grafana/scripts/parse_dashboard.py (agents_overview.json panel structure).
   SKIP for a trivial query with no regex, no string-literal escapes, no Map columns, no CTE aliasing, and behaving exactly as expected.
-  <version>1.0.0</version>
+  <version>1.0.1</version>
 ---
 
 # clickhouse-sql
@@ -53,11 +53,11 @@ this file balloon into essay-length entries; keep each one scannable.
 
 ## Sanctioned tools/scripts for this stack
 
-- **`mcp__clickhouse__query`** - the only sanctioned way to run a
+- **`mcp__dev__query`** - the only sanctioned way to run a
   SELECT/WITH against live data (single statement, read-only by
-  server-side validation). Never `docker exec .../clickhouse-client` or any
+  server-side validation, `mcp-dev` service). Never `docker exec .../clickhouse-client` or any
   other direct connection - see AGENTS.md's base ClickHouse-access rule.
-- **`mcp__clickhouse__profile_query`** - same validation as `query`, but
+- **`mcp__dev__profile_query`** - same validation as `query`, but
   returns cost metrics (`memory_usage_bytes`/`read_rows`/`read_bytes`/
   `query_duration_ms`) instead of result rows, for comparing two versions
   of a query.

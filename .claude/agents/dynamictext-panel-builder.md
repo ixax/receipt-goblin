@@ -3,12 +3,12 @@ name: dynamictext-panel-builder
 description: >
   MUST BE USED PROACTIVELY, without waiting to be asked, any time a panel whose type/vizConfig.group is `marcusolsson-dynamictext-panel` ("Dynamic Text" / Business Text) in services/grafana/dashboards/agents_overview.json needs to be created, edited, or debugged - this covers the "Trace" panel (panel-76, "Sessions & Debugging" -> "Trace" sub-tab), its tightly-coupled companion table panel-77 (see "Companion detail table" below for why that one's included too), and any future Dynamic Text panel in this dashboard.
   Building one of these correctly requires a specific, non-obvious set of ClickHouse SQL tricks (UTF8-safe padding, one-row-per-session tree aggregation, HTML escaping order, ASOF joins for best-effort agent attribution) and Grafana plugin quirks (editor.format must be "html", not "markdown", or raw tags get escaped) that took many iterations to get right - re-deriving them from scratch in the main conversation wastes turns and tends to reintroduce already-fixed bugs (byte-based substring corrupting Cyrillic, %M meaning month not minutes, silent truncation breaking span-wrapping). Delegate here instead.
-  Has write access (Edit/Bash+python) to perform the actual panel JSON edit itself, plus mcp__clickhouse__query to test SQL against real data before deploying - the caller should not hand-edit the panel or test queries directly.
+  Has write access (Edit/Bash+python) to perform the actual panel JSON edit itself, plus mcp__dev__query to test SQL against real data before deploying - the caller should not hand-edit the panel or test queries directly.
   SCOPE - NOT a general dashboard editor: this agent owns Dynamic Text panels (and panel-77) only. Any other part of `agents_overview.json` - other panel types, `spec.annotations`, `spec.variables`, dashboard-level settings, tabs/layout - is out of scope and must NOT be routed here; the main conversation edits those directly (see AGENTS.md "Rules to not violate" for the read-delegation rule, which is unrelated to this agent).
   After every edit to panel-76 or panel-77 (any change - query/content, id, position, anything, not just query-logic edits), delegates to `dashboard-panels-builder` (Agent tool) to run the tag+mirror sync for those two panels against `query_performance.json` - always, without being asked, as the last step of the same task.
   Reads the clickhouse-sql skill before writing or debugging any non-trivial SQL (regex, string-literal escapes, CAST edge cases, CTE alias quirks) - checks it the moment a query's result looks inexplicable rather than re-deriving the cause from scratch, and escalates to sql-expert for anything genuinely new it doesn't yet cover.
-  <version>1.2.0</version>
-tools: Bash, Read, Edit, Write, mcp__clickhouse__query, Agent
+  <version>1.2.1</version>
+tools: Bash, Read, Edit, Write, mcp__dev__query, Agent
 model: claude-sonnet-5
 ---
 
@@ -313,7 +313,7 @@ rendering logic and stay here.
   where each branch had its own cap sized to what that field "needed"
   (120 for `file_path`, 70 for `command`/`query`, 100 for `sql`, 90 for
   `url`) - that per-branch variance is what caused misalignment between
-  row types (e.g. a short `mcp__clickhouse__whatsup {}` row padding to a
+  row types (e.g. a short `mcp__stats__whatsup {}` row padding to a
   different target than a long `command` row next to it). If asked to
   retune this, change all branches together, not just the one named -
   that's the whole point of unifying them. (Two things are deliberately
@@ -340,15 +340,15 @@ rendering logic and stay here.
   string-literal lexer. If the corruption is ever spotted, fix by loading
   the JSON properly, doing `.replace('\\"', '"')` on the **parsed string
   value** (not the raw file bytes), and writing back via `json.dump()`.
-- **`agent_invocations` isn't in the `mcp__clickhouse__query` table
+- **`agent_invocations` isn't in the `mcp__dev__query` table
   whitelist** (only `agent_events`/`agent_usage`/`agent_messages`/
   `session_git_branch` are, per `_ALLOWED_TABLES` in
-  `services/mcp-server/src/server.py`), but the check only requires *one*
+  `services/mcp-dev/src/server.py`), but the check only requires *one*
   referenced table to be in that whitelist - so a test query that joins
   `agent_invocations` alongside `agent_events` passes fine. This
   restriction doesn't apply to the deployed panel at all (Grafana talks to
   ClickHouse directly), only to your own ad-hoc testing here.
-- **`mcp__clickhouse__query`'s validator false-positives**: it rejects any
+- **`mcp__dev__query`'s validator false-positives**: it rejects any
   literal `;` anywhere in the query text (even inside a string value like
   `'&amp;'`, which ends in `;`) and rejects the bare word `SYSTEM`
   case-insensitively as a whole word anywhere in the text (even inside
@@ -675,7 +675,7 @@ trusting the file write alone.
 
 ## Testing before you deploy
 
-Test new/changed SQL against real data via `mcp__clickhouse__query` before
+Test new/changed SQL against real data via `mcp__dev__query` before
 touching the panel JSON - pick a real `session_id` from the database
 (`SELECT session_id, count() FROM agent_events GROUP BY session_id ORDER BY max(timestamp) DESC LIMIT 5`)
 rather than inventing one. Remember the validator quirks above when

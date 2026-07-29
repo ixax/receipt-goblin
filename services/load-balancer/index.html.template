@@ -169,9 +169,15 @@
           <li><a href="http://localhost:${CLICKHOUSE_HTTP_PORT}/dashboard" target="_blank" rel="noopener">/dashboard</a> <span class="note">&mdash; ClickHouse's own built-in observability dashboard</span></li>
         </ul>
       </li>
+      <!-- MCP_DEV_ROW_START -->
       <li>
-        <span class="plain">mcp-server</span>
-        <span class="note">&mdash; :${MCP_SERVER_PORT}, MCP endpoint only, nothing to open here</span>
+        <span class="plain">mcp-dev</span>
+        <span class="note">&mdash; :${MCP_DEV_PORT}, MCP endpoint only, nothing to open here (dev-only)</span>
+      </li>
+      <!-- MCP_DEV_ROW_END -->
+      <li>
+        <span class="plain">mcp-stats</span>
+        <span class="note">&mdash; :${MCP_STATS_PORT}, MCP endpoint only, nothing to open here</span>
       </li>
       <li>
         <a href="http://localhost:${PROMETHEUS_PORT}" target="_blank" rel="noopener">prometheus</a>

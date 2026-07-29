@@ -6,6 +6,20 @@
 # config needs a rebuild even in dev. litellm gets one narrow exception
 # below (user_configs/ only) - its own config.yaml/entrypoint still need a
 # rebuild like redis.
+#
+# mcp-dev is the one exception to "override": it has no definition at
+# all in docker-compose.yml anymore, so its block below is a full service
+# definition (build/image/environment/healthcheck/depends_on/networks),
+# not just a bind-mount/--reload overlay - it's dev-only, never runs in
+# ENVIRONMENT=production. load-balancer gets a small override alongside it
+# to publish mcp-dev's port, bound to 127.0.0.1 only (defense-in-depth
+# safety net, unlike every other port it publishes on all interfaces).
+# mcp-stats is the prod-facing sibling (see docker-compose.yml) - it's not
+# touched here at all, no dev-only bind-mounts/--reload for it (yet).
+x-clickhouse-mcp-user: &clickhouse-mcp-user ${CLICKHOUSE_MCP_USER:?set CLICKHOUSE_MCP_USER, e.g. in a .env file next to docker-compose.yml}
+x-clickhouse-mcp-password: &clickhouse-mcp-password ${CLICKHOUSE_MCP_PASSWORD:?set CLICKHOUSE_MCP_PASSWORD, e.g. in a .env file next to docker-compose.yml}
+x-mcp-dev-port: &mcp-dev-port ${MCP_DEV_PORT:-8001}
+
 services:
   clickhouse-migrate:
     volumes:
@@ -35,11 +49,51 @@ services:
       - ./services/webhook/src:/app/src:ro
       - ./services/webhook/config.yml:/app/config.yml:ro
 
-  mcp-server:
+  mcp-dev:
+    # Dev-only service - no definition in docker-compose.yml at all, so this
+    # is the full definition, not an overlay. Prod image is self-contained
+    # (config.yml baked in); the volumes/command below bind-mount ./src over
+    # /app/src and add --reload for live editing; requirements.txt changes
+    # still need a rebuild either way.
+    build: ./services/mcp-dev
+    image: receipt-goblin-mcp-dev:${MCP_DEV_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
+    container_name: receipt-goblin-mcp-dev
+    environment:
+      CLICKHOUSE_HOST: ${CLICKHOUSE_HOST:-clickhouse}
+      CLICKHOUSE_PORT: 8123
+      CLICKHOUSE_MCP_USER: *clickhouse-mcp-user
+      CLICKHOUSE_MCP_PASSWORD: *clickhouse-mcp-password
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:?set CLICKHOUSE_DATABASE, e.g. in a .env file next to docker-compose.yml}
+      MCP_DEV_PORT: *mcp-dev-port
+    mem_limit: 256m
+    restart: always
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - receipt-goblin
     volumes:
-      - ./services/mcp-server/src:/app/src:ro
-      - ./services/mcp-server/config.yml:/app/config.yml:ro
+      - ./services/mcp-dev/src:/app/src:ro
+      - ./services/mcp-dev/config.yml:/app/config.yml:ro
     command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+
+  load-balancer:
+    # Dev-only: publish mcp-dev's port bound to 127.0.0.1 only (defense-
+    # in-depth safety net - mcp-dev itself is dev-only and shouldn't be
+    # reachable from anywhere but the host it's running on). Every other
+    # port docker-compose.yml's load-balancer publishes (including
+    # mcp-stats) binds to all interfaces; this is the one exception.
+    environment:
+      MCP_DEV_PORT: *mcp-dev-port
+    ports:
+      - target: 8001
+        published: *mcp-dev-port
+        host_ip: 127.0.0.1
 
   litellm:
     # Only user_configs/ - gitignored, may hold real hosts/keys, added/edited

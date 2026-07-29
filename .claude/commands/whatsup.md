@@ -5,14 +5,15 @@ description: Report token/cost spend and top spenders from the last 24h, from Cl
 # whatsup
 
 Report the last 24 hours of spend from the local agent-tracking stack.
-Reads go through the `mcp-server` MCP server, not `docker exec` -
-`webhook` is still write-only, but `mcp-server` is the dedicated
-read path (see `README.md` → "MCP server (`mcp-server`)").
+Reads go through the `mcp-stats` MCP server, not `docker exec` -
+`webhook` is still write-only, but `mcp-stats` is the dedicated
+read path for fixed statistics (see `README.md` → "MCP server (`mcp-stats`)").
 
-Call the `mcp__clickhouse__whatsup` tool with `hours: 24`. If the call
-fails (connection refused, timeout), say the `mcp-server` service
+Call the `mcp__stats__whatsup` tool with `hours: 24`. If the call
+fails (connection refused, timeout), say the `mcp-stats` service
 isn't reachable - point at `docker compose ps` - instead of letting the
 error pass silently.
+<version>1.0.0</version>
 
 The tool returns JSON shaped like:
 

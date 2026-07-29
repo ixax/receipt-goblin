@@ -21,7 +21,7 @@ REDIS_PORT = int(os.environ["REDIS_PORT"])
 LITELLM_MASTER_KEY = os.environ["LITELLM_MASTER_KEY"]
 LITELLM_BASE_URL = os.environ["LITELLM_BASE_URL"]
 
-# webhook-worker's own /metrics port; not read by webhook/mcp-server/reparse.
+# webhook-worker's own /metrics port; not read by webhook/mcp-dev/mcp-stats/reparse.
 # Fixed, not env-configurable: docker-compose.yml never passes
 # WORKER_METRICS_PORT into webhook-worker's environment, so an env var here
 # would be dead weight - prometheus.yml's scrape target is hardcoded to

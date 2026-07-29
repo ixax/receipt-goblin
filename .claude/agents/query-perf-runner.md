@@ -2,10 +2,10 @@
 name: query-perf-runner
 description: >
   Delegate target for the mechanical execution half of the dashboard query-performance benchmarking workflow (see `.claude/agents/sql-expert.md` for the workflow itself, `services/grafana/scripts/query_perf.py` for the underlying script this agent runs).
-  Given a panel selector (ids, or "all") and a run label ("before"/"after"/anything), runs `query_perf.py resolve`, calls `mcp__clickhouse__profile_query` once per resolved query, and `query_perf.py save-run`s the result - or, given two existing run files/labels, runs `query_perf.py diff` between them.
+  Given a panel selector (ids, or "all") and a run label ("before"/"after"/anything), runs `query_perf.py resolve`, calls `mcp__dev__profile_query` once per resolved query, and `query_perf.py save-run`s the result - or, given two existing run files/labels, runs `query_perf.py diff` between them.
   Runs on a cheap model and returns only a compact summary (run file path + counts + errors, or the diff table) - keeps the per-query profiling loop and its raw output out of the caller's context.
-  <version>1.0.0</version>
-tools: Bash, mcp__clickhouse__profile_query
+  <version>1.0.1</version>
+tools: Bash, mcp__dev__profile_query
 model: claude-haiku-4-5
 ---
 
@@ -30,7 +30,7 @@ or something more specific like `before-provider-fix`), and optionally
    your final report - do not guess a value for an unknown `$variable`,
    and do not edit the script to add one yourself (that's the caller's
    call, flag it instead).
-3. For every remaining query, call `mcp__clickhouse__profile_query(sql=resolved_sql)`.
+3. For every remaining query, call `mcp__dev__profile_query(sql=resolved_sql)`.
    **Never more than 2 of these in flight at once** (existing project
    rule on ClickHouse concurrency) - work through the list sequentially or
    in pairs, not in one burst.
@@ -72,7 +72,7 @@ lines already say which).
 - Never invent a `profile_query` result. If a call errors, that error goes
   into stats.json verbatim (as `{"error": "..."}"`) and gets reported, not
   papered over with a fabricated number.
-- You have no `mcp__clickhouse__query` and no `Read`/`Write`/`Edit` on
+- You have no `mcp__dev__query` and no `Read`/`Write`/`Edit` on
   purpose - `query_perf.py` (via Bash) and `profile_query` are the only two
   things this job needs; adding more surface here isn't your call to make.
 - Never `docker exec`/`clickhouse-client` directly - `profile_query` is the

@@ -36,7 +36,7 @@ CLICKHOUSE_PORT = int(os.environ["CLICKHOUSE_PORT"])
 CLICKHOUSE_USER = os.environ["CLICKHOUSE_MCP_USER"]
 CLICKHOUSE_PASSWORD = os.environ["CLICKHOUSE_MCP_PASSWORD"]
 CLICKHOUSE_DATABASE = os.environ["CLICKHOUSE_DATABASE"]
-MCP_SERVER_PORT = os.environ["MCP_SERVER_PORT"]
+MCP_DEV_PORT = os.environ["MCP_DEV_PORT"]
 
 # The mcp SDK's DNS-rebinding protection defaults to allowed_hosts=[] (rejects
 # every Host header) once transport_security is left unset - it used to be
@@ -46,14 +46,14 @@ MCP_SERVER_PORT = os.environ["MCP_SERVER_PORT"]
 # cover any client that connects with the port still on the Host header
 # (e.g. straight to the container, bypassing nginx).
 mcp = FastMCP(
-    "clickhouse",
+    "dev",
     transport_security=TransportSecuritySettings(
         allowed_hosts=[
             "localhost",
             "localhost:*",
             "127.0.0.1",
             "127.0.0.1:*",
-            f"mcp-server:{MCP_SERVER_PORT}",
+            f"mcp-dev:{MCP_DEV_PORT}",
         ],
     ),
 )
@@ -248,50 +248,6 @@ def get_client():
                     database=CLICKHOUSE_DATABASE,
                 )
     return _client
-
-
-@mcp.tool()
-def whatsup(hours: int = 24) -> dict:
-    """Report total token usage/cost and the top 5 spenders over the last
-    N hours (default 24) from the agent-tracking ClickHouse database."""
-    client = get_client()
-
-    tokens_row = client.query(
-        "SELECT sum(input_tokens + output_tokens) FROM agent_usage "
-        "WHERE timestamp >= now() - INTERVAL %(hours)s HOUR",
-        parameters={"hours": hours},
-    ).result_rows[0]
-    total_tokens = tokens_row[0] or 0
-
-    # agent_usage.cost is LiteLLM's own cache-pricing-aware response_cost.
-    # A prior manual price-table JOIN overcounted cost under prompt caching
-    # (priced every input token at full rate) - don't reintroduce it.
-    cost_row = client.query(
-        "SELECT sum(cost) FROM agent_usage "
-        "WHERE timestamp >= now() - INTERVAL %(hours)s HOUR",
-        parameters={"hours": hours},
-    ).result_rows[0]
-    total_cost = cost_row[0]
-
-    top_rows = client.query(
-        "SELECT user_id, sum(cost) AS cost, sum(input_tokens + output_tokens) AS tokens "
-        "FROM agent_usage "
-        "WHERE timestamp >= now() - INTERVAL %(hours)s HOUR "
-        "GROUP BY user_id ORDER BY cost DESC LIMIT 5",
-        parameters={"hours": hours},
-    ).result_rows
-
-    top_spenders = [
-        {"user_id": row[0], "cost": row[1], "tokens": row[2]} for row in top_rows
-    ]
-
-    return {
-        "hours": hours,
-        "total_tokens": total_tokens,
-        "total_cost": total_cost,
-        "cost_has_gaps": total_cost is None and total_tokens > 0,
-        "top_spenders": top_spenders,
-    }
 
 
 @mcp.tool()

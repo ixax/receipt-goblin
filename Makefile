@@ -18,7 +18,7 @@ unexport $(ENV_VARS)
 
 # Anything other than exactly "production" is dev - default/empty included.
 # docker-compose.dev.yml layers dev's live source/config bind mounts (and
-# webhook/mcp-server's --reload) back on top of docker-compose.yml, which is
+# webhook/mcp-dev's --reload) back on top of docker-compose.yml, which is
 # the prod-default file (no command:/entrypoint:/source volumes at all).
 ENVIRONMENT ?= development
 ifeq ($(ENVIRONMENT),production)
