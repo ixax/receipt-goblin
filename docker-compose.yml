@@ -254,7 +254,9 @@ services:
     # auth), every request other than /health/`/metrics` must carry a valid
     # LiteLLM virtual key - see services/mcp-stats/src/server.py's
     # AuthMiddleware. depends_on litellm since auth calls its /key/info.
-    build: ./services/mcp-stats
+    build:
+      context: .
+      dockerfile: services/mcp-stats/Dockerfile
     image: receipt-goblin-mcp-stats:${MCP_STATS_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
     container_name: receipt-goblin-mcp-stats
     environment:
@@ -529,7 +531,9 @@ services:
     # sized by LOADTEST_FIXTURES_VOLUME - see src/build_fixtures.py. Not
     # started by `docker compose up` (profiles: tools) - run via
     # `make loadtest-fixtures`/`make loadtest-fixtures-status`.
-    build: ./services/loadtest-fixtures
+    build:
+      context: .
+      dockerfile: services/loadtest-fixtures/Dockerfile
     image: receipt-goblin-loadtest-fixtures:${LOADTEST_FIXTURES_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
     container_name: receipt-goblin-loadtest-fixtures
     profiles:

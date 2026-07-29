@@ -47,7 +47,6 @@ What to watch in another terminal/Grafana while this runs:
 import argparse
 import asyncio
 import glob
-import logging
 import math
 import os
 import random
@@ -59,10 +58,11 @@ from typing import Optional
 
 import aiohttp
 
+from common.logging_config import create_logger
+
 from .config import FIXTURES_DIR
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("webhook.loadtest")
+logger = create_logger("webhook.loadtest")
 
 DEFAULT_TARGET_URL = "http://webhook:8000/api/v1/metrics"
 

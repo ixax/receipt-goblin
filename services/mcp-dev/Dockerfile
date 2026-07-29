@@ -1,18 +1,21 @@
-# Self-contained, buildable/runnable standalone with no docker-compose.
+# Build context is the repo root (not this directory), so it can also bake
+# in services/_common: `docker build -t mcp-dev -f services/mcp-dev/Dockerfile .`.
 # mcp-dev is dev-only (query/profile_query, arbitrary read-only SQL) -
 # docker-compose.dev.yml is the only compose file that builds/runs this
-# image, mounting ./src over /app/src and adding `--reload`, so deps stay
-# baked in and only the source is live. See services/mcp-stats for the
-# prod-facing sibling (fixed statistics tools, real auth).
+# image, mounting ./src (and services/_common/src) over /app/src (/app/common)
+# and adding `--reload`, so deps stay baked in and only the source is live.
+# See services/mcp-stats for the prod-facing sibling (fixed statistics
+# tools, real auth).
 FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY services/mcp-dev/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/ ./src/
-COPY config.yml .
+COPY services/_common/src/ ./common/
+COPY services/mcp-dev/src/ ./src/
+COPY services/mcp-dev/config.yml .
 
 EXPOSE 8001
 

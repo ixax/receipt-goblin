@@ -7,7 +7,6 @@ inserts instead of many small ones per request. See AGENTS.md.
 
 Runs as its own process (`python -m src.worker`), not through FastAPI/uvicorn.
 """
-import logging
 import os
 import socket
 import time
@@ -15,13 +14,14 @@ import time
 import redis
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
+from common.logging_config import create_logger
+
 from . import fastjson as json
 from .clickhouse_ingest import build_event, clickhouse_alive, ingest_events_batch
 from .config import BATCH_SIZE, FLUSH_INTERVAL_MS, CONSUMER_GROUP, STALE_IDLE_MS, STREAM_KEY, WORKER_METRICS_PORT
 from .queue_client import get_redis
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("webhook.worker")
+logger = create_logger("webhook.worker")
 
 CONSUMER_NAME = f"{socket.gethostname()}-{os.getpid()}"
 

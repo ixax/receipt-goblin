@@ -24,7 +24,6 @@ one unbounded query:
 import argparse
 import hashlib
 import json
-import logging
 import os
 import re
 import shutil
@@ -33,18 +32,12 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from common.logging_config import create_logger
+
 from .clickhouse_client import get_client
 from .config import FIXTURES_CHUNK_SIZE, FIXTURES_DIR
 
-# LOG_LEVEL is deliberately bare, not LOADTEST_FIXTURES_-prefixed like every
-# other env var this service reads (see config.py) - it's a shared operator
-# knob meant to be set once in .env and apply identically across every
-# service's own logging setup, not a per-service credential that could
-# collide if copied between containers.
-logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "INFO").upper(), format="%(asctime)s %(levelname)s %(message)s"
-)
-logger = logging.getLogger("loadtest_fixtures.build_fixtures")
+logger = create_logger("loadtest_fixtures.build_fixtures")
 
 VOLUME_EVENT_COUNTS = {"small": 2000, "medium": 20000, "large": 100000}
 

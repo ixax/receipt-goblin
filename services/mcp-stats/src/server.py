@@ -8,21 +8,17 @@ production alongside `litellm`/`grafana`, so every request (other than
 `_virtual_key_is_valid` below, the same check `services/webhook/src/server.py`
 already uses for its own authenticated routes.
 """
-import json
 import os
-import threading
-import urllib.error
-import urllib.request
-from datetime import datetime, timezone
 
-import clickhouse_connect
 from mcp.server.fastmcp import FastMCP
-from mcp.server.transport_security import TransportSecuritySettings
 from prometheus_fastapi_instrumentator import Instrumentator
-from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+
+from common.litellm_auth import virtual_key_is_valid
+from common.logging_config import create_logger
+from common.mcp_common import ClickHouseClientFactory, build_transport_security, make_health_route
 
 # Defaults live in docker-compose.yml; always set by container start, no fallback needed.
 CLICKHOUSE_HOST = os.environ["CLICKHOUSE_HOST"]
@@ -34,50 +30,17 @@ MCP_STATS_PORT = os.environ["MCP_STATS_PORT"]
 LITELLM_BASE_URL = os.environ["LITELLM_BASE_URL"]
 LITELLM_MASTER_KEY = os.environ["LITELLM_MASTER_KEY"]
 
-# The mcp SDK's DNS-rebinding protection defaults to allowed_hosts=[] (rejects
-# every Host header) once transport_security is left unset - it used to be
-# opt-in, now it's opt-out. Clients reach this container through load-balancer
-# (nginx's `proxy_set_header Host $host` strips the port, so the Host header
-# arriving here is bare "localhost"/"127.0.0.1"); the ":*" wildcard entries
-# cover any client that connects with the port still on the Host header
-# (e.g. straight to the container, bypassing nginx).
+logger = create_logger("mcp_stats.server")
+
 mcp = FastMCP(
     "stats",
-    transport_security=TransportSecuritySettings(
-        allowed_hosts=[
-            "localhost",
-            "localhost:*",
-            "127.0.0.1",
-            "127.0.0.1:*",
-            f"mcp-stats:{MCP_STATS_PORT}",
-        ],
-    ),
+    transport_security=build_transport_security(f"mcp-stats:{MCP_STATS_PORT}"),
 )
 
 
 def _virtual_key_is_valid(key: str) -> bool:
-    # Checks the caller's key against LiteLLM's own /key/info instead of
-    # inventing a signing scheme - same check services/webhook/src/server.py
-    # uses for its own authenticated routes.
-    if not key:
-        return False
-    req = urllib.request.Request(
-        f"{LITELLM_BASE_URL}/key/info?key={key}",
-        # LiteLLM's litellm_key_header_name is x-litellm-api-key (see AGENTS.md);
-        # plain Authorization: Bearer here is rejected as malformed.
-        headers={"x-litellm-api-key": f"Bearer {LITELLM_MASTER_KEY}"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            info = json.load(resp).get("info") or {}
-    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError):
-        return False
-    if info.get("blocked"):
-        return False
-    expires = info.get("expires")
-    if expires and datetime.fromisoformat(expires.replace("Z", "+00:00")) < datetime.now(timezone.utc):
-        return False
-    return True
+    # Same check services/webhook/src/server.py uses for its own authenticated routes.
+    return virtual_key_is_valid(key, LITELLM_BASE_URL, LITELLM_MASTER_KEY)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -91,6 +54,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         if not _virtual_key_is_valid(token):
+            logger.warning("rejected request to %s: invalid or missing virtual key", request.url.path)
             return JSONResponse({"detail": "invalid or missing virtual key"}, status_code=401)
         return await call_next(request)
 
@@ -102,43 +66,16 @@ app = mcp.streamable_http_app()
 app.add_middleware(AuthMiddleware)
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
+_ch_factory = ClickHouseClientFactory(
+    host=CLICKHOUSE_HOST,
+    port=CLICKHOUSE_PORT,
+    username=CLICKHOUSE_USER,
+    password=CLICKHOUSE_PASSWORD,
+    database=CLICKHOUSE_DATABASE,
+)
+get_client = _ch_factory.get_client
 
-async def health(request: Request) -> JSONResponse:
-    try:
-        # get_client().command(...) is a blocking network call - offloaded
-        # to a thread so a slow/unreachable ClickHouse stalls only this
-        # request, not the whole event loop (every other concurrent request
-        # this worker is handling).
-        await run_in_threadpool(get_client().command, "SELECT 1")
-        return JSONResponse({"status": "ok"})
-    except Exception as exc:
-        return JSONResponse({"status": "error", "detail": str(exc)}, status_code=503)
-
-
-app.add_route("/health", health, methods=["GET"])
-
-_client = None
-# Guards _client's check-then-set below: without it, two concurrent first
-# calls (plausible under FastMCP's multi-threaded tool dispatch) could each
-# see _client is None, each construct their own clickhouse_connect client,
-# and race to assign the module-level reference - the loser's client leaks
-# (never closed, its connection never reused, just abandoned).
-_client_lock = threading.Lock()
-
-
-def get_client():
-    global _client
-    if _client is None:
-        with _client_lock:
-            if _client is None:  # re-check: another thread may have won the race while we waited
-                _client = clickhouse_connect.get_client(
-                    host=CLICKHOUSE_HOST,
-                    port=CLICKHOUSE_PORT,
-                    username=CLICKHOUSE_USER,
-                    password=CLICKHOUSE_PASSWORD,
-                    database=CLICKHOUSE_DATABASE,
-                )
-    return _client
+app.add_route("/health", make_health_route(get_client, logger), methods=["GET"])
 
 
 def _operation_label(row: dict) -> str:

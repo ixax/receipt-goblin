@@ -17,18 +17,15 @@ security-sensitive.
 """
 import os
 import re
-import threading
 import time
 from pathlib import Path
 
-import clickhouse_connect
 import yaml
 from mcp.server.fastmcp import FastMCP
-from mcp.server.transport_security import TransportSecuritySettings
 from prometheus_fastapi_instrumentator import Instrumentator
-from starlette.concurrency import run_in_threadpool
-from starlette.requests import Request
-from starlette.responses import JSONResponse
+
+from common.logging_config import create_logger
+from common.mcp_common import ClickHouseClientFactory, build_transport_security, make_health_route
 
 # Defaults live in docker-compose.yml; always set by container start, no fallback needed.
 CLICKHOUSE_HOST = os.environ["CLICKHOUSE_HOST"]
@@ -38,24 +35,11 @@ CLICKHOUSE_PASSWORD = os.environ["CLICKHOUSE_MCP_PASSWORD"]
 CLICKHOUSE_DATABASE = os.environ["CLICKHOUSE_DATABASE"]
 MCP_DEV_PORT = os.environ["MCP_DEV_PORT"]
 
-# The mcp SDK's DNS-rebinding protection defaults to allowed_hosts=[] (rejects
-# every Host header) once transport_security is left unset - it used to be
-# opt-in, now it's opt-out. Clients reach this container through load-balancer
-# (nginx's `proxy_set_header Host $host` strips the port, so the Host header
-# arriving here is bare "localhost"/"127.0.0.1"); the ":*" wildcard entries
-# cover any client that connects with the port still on the Host header
-# (e.g. straight to the container, bypassing nginx).
+logger = create_logger("mcp_dev.server")
+
 mcp = FastMCP(
     "dev",
-    transport_security=TransportSecuritySettings(
-        allowed_hosts=[
-            "localhost",
-            "localhost:*",
-            "127.0.0.1",
-            "127.0.0.1:*",
-            f"mcp-dev:{MCP_DEV_PORT}",
-        ],
-    ),
+    transport_security=build_transport_security(f"mcp-dev:{MCP_DEV_PORT}"),
 )
 
 # Served directly as uvicorn's top-level app, not mounted under FastAPI:
@@ -64,28 +48,16 @@ mcp = FastMCP(
 app = mcp.streamable_http_app()
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
+_ch_factory = ClickHouseClientFactory(
+    host=CLICKHOUSE_HOST,
+    port=CLICKHOUSE_PORT,
+    username=CLICKHOUSE_USER,
+    password=CLICKHOUSE_PASSWORD,
+    database=CLICKHOUSE_DATABASE,
+)
+get_client = _ch_factory.get_client
 
-async def health(request: Request) -> JSONResponse:
-    try:
-        # get_client().command(...) is a blocking network call - offloaded
-        # to a thread so a slow/unreachable ClickHouse stalls only this
-        # request, not the whole event loop (every other concurrent request
-        # this worker is handling).
-        await run_in_threadpool(get_client().command, "SELECT 1")
-        return JSONResponse({"status": "ok"})
-    except Exception as exc:
-        return JSONResponse({"status": "error", "detail": str(exc)}, status_code=503)
-
-
-app.add_route("/health", health, methods=["GET"])
-
-_client = None
-# Guards _client's check-then-set below: without it, two concurrent first
-# calls (plausible under FastMCP's multi-threaded tool dispatch) could each
-# see _client is None, each construct their own clickhouse_connect client,
-# and race to assign the module-level reference - the loser's client leaks
-# (never closed, its connection never reused, just abandoned).
-_client_lock = threading.Lock()
+app.add_route("/health", make_health_route(get_client, logger), methods=["GET"])
 
 # Allow/deny lists for read-only SQL validation live in config.yml.
 _config = yaml.safe_load((Path(__file__).resolve().parent.parent / "config.yml").read_text())
@@ -235,21 +207,6 @@ def _validate_readonly_sql(sql: str) -> str:
     return stripped
 
 
-def get_client():
-    global _client
-    if _client is None:
-        with _client_lock:
-            if _client is None:  # re-check: another thread may have won the race while we waited
-                _client = clickhouse_connect.get_client(
-                    host=CLICKHOUSE_HOST,
-                    port=CLICKHOUSE_PORT,
-                    username=CLICKHOUSE_USER,
-                    password=CLICKHOUSE_PASSWORD,
-                    database=CLICKHOUSE_DATABASE,
-                )
-    return _client
-
-
 @mcp.tool()
 def query(sql: str, max_rows: int = 200) -> dict:
     """Run a read-only SQL query against the agent-tracking ClickHouse tables
@@ -271,6 +228,7 @@ def query(sql: str, max_rows: int = 200) -> dict:
             settings={"max_execution_time": 10},
         )
     except Exception as exc:
+        logger.warning("query() failed: %s", exc)
         return {"error": str(exc), "execution_time_ms": round((time.perf_counter() - start) * 1000, 1)}
     execution_time_ms = round((time.perf_counter() - start) * 1000, 1)
 
@@ -312,6 +270,7 @@ def profile_query(sql: str) -> dict:
     try:
         summary = client.command(f"{validated} FORMAT Null", settings={"max_execution_time": 10})
     except Exception as exc:
+        logger.warning("profile_query() failed: %s", exc)
         return {"error": str(exc), "execution_time_ms": round((time.perf_counter() - start) * 1000, 1)}
     execution_time_ms = round((time.perf_counter() - start) * 1000, 1)
     info = summary.summary
@@ -332,6 +291,7 @@ def profile_query(sql: str) -> dict:
         else:
             memory_usage_warning = "no matching system.query_log row after SYSTEM FLUSH LOGS"
     except Exception as exc:
+        logger.warning("profile_query() memory_usage lookup failed: %s", exc)
         memory_usage_warning = str(exc)
 
     result = {

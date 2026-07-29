@@ -44,16 +44,16 @@ module doesn't have (nor need) an ingest-role client of its own at all; it
 only reads CLICKHOUSE_INGEST_USER/_PASSWORD as plain strings to embed in the
 Dictionary's SOURCE(CLICKHOUSE(...)) clause.
 """
-import logging
 import os
 from pathlib import Path
 
 import clickhouse_connect
 
+from common.logging_config import create_logger
+
 from .config import CLICKHOUSE_DATABASE, CLICKHOUSE_HOST, CLICKHOUSE_PORT
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("clickhouse.migrate")
+logger = create_logger("clickhouse.migrate")
 
 MIGRATIONS_DIR = Path(os.environ.get("MIGRATIONS_DIR", "/app/migrations"))
 

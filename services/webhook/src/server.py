@@ -5,14 +5,11 @@ webhook-worker (worker.py) is what actually parses/inserts into ClickHouse,
 in batches - see AGENTS.md.
 """
 
-import json
-import logging
-import urllib.error
-import urllib.request
-from datetime import datetime, timezone
-
 from fastapi import FastAPI, HTTPException, Request
 from prometheus_fastapi_instrumentator import Instrumentator
+
+from common.litellm_auth import virtual_key_is_valid
+from common.logging_config import create_logger
 
 from .clickhouse_ingest import (
     clickhouse_alive,
@@ -23,7 +20,7 @@ from .clickhouse_ingest import (
 from .config import LITELLM_BASE_URL, LITELLM_MASTER_KEY
 from .queue_client import enqueue_raw, get_async_redis
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = create_logger("webhook.server")
 
 app = FastAPI()
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
@@ -53,26 +50,7 @@ async def receive_metrics(request: Request):
 
 
 def _virtual_key_is_valid(key: str) -> bool:
-# Checks the caller's key against LiteLLM's own /key/info instead of inventing a signing scheme.
-    if not key:
-        return False
-    req = urllib.request.Request(
-        f"{LITELLM_BASE_URL}/key/info?key={key}",
-        # LiteLLM's litellm_key_header_name is x-litellm-api-key (see AGENTS.md);
-        # plain Authorization: Bearer here is rejected as malformed.
-        headers={"x-litellm-api-key": f"Bearer {LITELLM_MASTER_KEY}"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            info = json.load(resp).get("info") or {}
-    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError):
-        return False
-    if info.get("blocked"):
-        return False
-    expires = info.get("expires")
-    if expires and datetime.fromisoformat(expires.replace("Z", "+00:00")) < datetime.now(timezone.utc):
-        return False
-    return True
+    return virtual_key_is_valid(key, LITELLM_BASE_URL, LITELLM_MASTER_KEY)
 
 
 @app.post("/api/v1/session-git-branch")

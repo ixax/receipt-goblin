@@ -12,7 +12,8 @@ ReplacingMergeTree, keyed so this run's now() always wins.
 """
 import argparse
 import json
-import logging
+
+from common.logging_config import create_logger
 
 from .clickhouse_ingest import (
     _agent_invocation_rows,
@@ -34,8 +35,7 @@ from .clickhouse_ingest import (
 from .config import REPARSE_CHUNK_SIZE
 from datetime import datetime, timezone
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("webhook.reparse")
+logger = create_logger("webhook.reparse")
 
 
 def _reparse_one(client, litellm_call_id: str, source_session_id: str, raw_payload_full: str) -> None:

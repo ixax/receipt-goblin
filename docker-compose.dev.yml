@@ -14,8 +14,9 @@
 # ENVIRONMENT=production. load-balancer gets a small override alongside it
 # to publish mcp-dev's port, bound to 127.0.0.1 only (defense-in-depth
 # safety net, unlike every other port it publishes on all interfaces).
-# mcp-stats is the prod-facing sibling (see docker-compose.yml) - it's not
-# touched here at all, no dev-only bind-mounts/--reload for it (yet).
+# mcp-stats is the prod-facing sibling (see docker-compose.yml) - it receives
+# a minimal override below to mount the shared ./services/_common/src only
+# (no src bind-mount/--reload for mcp-stats itself yet).
 x-clickhouse-mcp-user: &clickhouse-mcp-user ${CLICKHOUSE_MCP_USER:?set CLICKHOUSE_MCP_USER, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-mcp-password: &clickhouse-mcp-password ${CLICKHOUSE_MCP_PASSWORD:?set CLICKHOUSE_MCP_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 x-mcp-dev-port: &mcp-dev-port ${MCP_DEV_PORT:-8001}
@@ -26,28 +27,33 @@ services:
       - ./services/webhook/src:/app/src:ro
       - ./services/webhook/config.yml:/app/config.yml:ro
       - ./services/clickhouse/migrations:/app/migrations:ro
+      - ./services/_common/src:/app/common:ro
 
   webhook-1:
     volumes:
       - ./services/webhook/src:/app/src:ro
       - ./services/webhook/config.yml:/app/config.yml:ro
+      - ./services/_common/src:/app/common:ro
     command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
   webhook-2:
     volumes:
       - ./services/webhook/src:/app/src:ro
       - ./services/webhook/config.yml:/app/config.yml:ro
+      - ./services/_common/src:/app/common:ro
     command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
   worker:
     volumes:
       - ./services/webhook/src:/app/src:ro
       - ./services/webhook/config.yml:/app/config.yml:ro
+      - ./services/_common/src:/app/common:ro
 
   metrics-reparse:
     volumes:
       - ./services/webhook/src:/app/src:ro
       - ./services/webhook/config.yml:/app/config.yml:ro
+      - ./services/_common/src:/app/common:ro
 
   mcp-dev:
     # Dev-only service - no definition in docker-compose.yml at all, so this
@@ -55,7 +61,9 @@ services:
     # (config.yml baked in); the volumes/command below bind-mount ./src over
     # /app/src and add --reload for live editing; requirements.txt changes
     # still need a rebuild either way.
-    build: ./services/mcp-dev
+    build:
+      context: .
+      dockerfile: services/mcp-dev/Dockerfile
     image: receipt-goblin-mcp-dev:${MCP_DEV_TAG:?run via `make`, not `docker compose` directly - see VERSION.yml}
     container_name: receipt-goblin-mcp-dev
     environment:
@@ -80,6 +88,7 @@ services:
     volumes:
       - ./services/mcp-dev/src:/app/src:ro
       - ./services/mcp-dev/config.yml:/app/config.yml:ro
+      - ./services/_common/src:/app/common:ro
     command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
 
   load-balancer:
@@ -94,6 +103,10 @@ services:
       - target: 8001
         published: *mcp-dev-port
         host_ip: 127.0.0.1
+
+  mcp-stats:
+    volumes:
+      - ./services/_common/src:/app/common:ro
 
   litellm:
     # Only user_configs/ - gitignored, may hold real hosts/keys, added/edited
