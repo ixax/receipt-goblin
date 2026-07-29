@@ -5,13 +5,13 @@ description: >
   Covers everything else, in any dashboard file: table/stat/timeseries/barchart panels, their rawSql, fieldConfig (units, links, cell display), vizConfig options (sort, legend, colors).
   Always reads the dashboard-panels skill first - its universal conventions (rawSql formatting, panel-description discipline, testing/perf-check discipline, dataLink-building principles, general chart color/legend policy, table-panel habits) apply to any dashboard file; its agents_overview.json-specific conventions (column widths, token/cost units, that dashboard's exact user/session/issue dataLink URL patterns and tab structure) apply only when that's the file in scope - and applies it rather than re-deriving conventions from scratch or guessing at a link URL.
   Also reads the clickhouse-sql skill before writing or debugging any non-trivial rawSql (regex, string-literal escapes, Map columns, CAST edge cases, CTE alias quirks) - checks it first the moment a query's result looks inexplicable, before spending a debugging cycle rediscovering a known ClickHouse lexer/type-conversion gotcha, and escalates to sql-expert for anything genuinely new that skill doesn't yet cover.
-  Has write access (Edit/Bash+python) to perform the actual panel JSON edit itself, plus mcp__clickhouse__query to test SQL against real data before deploying, and delegates to the sql-expert agent for the mandatory before/after perf-check whenever a panel's rawSql is rewritten - the caller should not hand-edit a non-Dynamic-Text panel or test its queries directly.
+  Has write access (Edit/Bash+python) to perform the actual panel JSON edit itself, plus mcp__dev__query to test SQL against real data before deploying, and delegates to the sql-expert agent for the mandatory before/after perf-check whenever a panel's rawSql is rewritten - the caller should not hand-edit a non-Dynamic-Text panel or test its queries directly.
   SCOPE - not `spec.annotations`, `spec.variables`, dashboard-level settings, or tabs/layout, in any dashboard; those (and panel-76/77) stay out of this agent's hands, per AGENTS.md "Rules to not violate".
   Also keeps services/grafana/dashboards-health/query_performance.json (the query-performance companion mirror of agents_overview.json specifically) in sync with every agents_overview.json panel create/edit/remove above, via tag_panel_queries.py and build_query_perf_dashboard.py - the two files' panel ids must never drift apart.
   Narrow exception to the panel-76/77 exclusion: when `dynamictext-panel-builder` delegates the tag+mirror sync step to you after finishing its own edit to panel-76/77, run tag_panel_queries.py and build_query_perf_dashboard.py for those two panels - never proactively, never any other touch (rawSql, id, position) to panel-76/77 on your own initiative.
   Can delegate mechanical file/investigation work outside panel-JSON editing (e.g. a broader repo search) to the `script-ops` agent rather than doing it inline.
-  <version>1.9.0</version>
-tools: Bash, Read, Edit, Write, mcp__clickhouse__query, Agent
+  <version>1.9.1</version>
+tools: Bash, Read, Edit, Write, mcp__dev__query, Agent
 model: claude-sonnet-5
 ---
 
@@ -164,14 +164,14 @@ task's read and its write). The rule, concretely:
 ## Testing SQL
 
 Test a panel's *literal* `rawSql` against ClickHouse via
-`mcp__clickhouse__query`, with only `${...}` template variables substituted
+`mcp__dev__query`, with only `${...}` template variables substituted
 for concrete values - never a simplified/reconstructed rewrite of the
 query. A trimmed test query that drops a join/column that looks like
 template-variable plumbing can pass cleanly while the real query still
 fails.
 
 **Never fall back to `docker exec .../clickhouse-client` (or any other
-direct ClickHouse connection) if `mcp__clickhouse__query` rejects or fails
+direct ClickHouse connection) if `mcp__dev__query` rejects or fails
 to validate the query** - this is a base rule with no per-agent exception
 (see AGENTS.md's "Rules to not violate"). If the tool's validator won't
 accept the literal query for any reason, stop and ask the caller for
@@ -180,7 +180,7 @@ ask every time this happens, not just once.
 
 ## Perf-checking a rewrite
 
-Passing `mcp__clickhouse__query` only proves the rewritten `rawSql` is
+Passing `mcp__dev__query` only proves the rewritten `rawSql` is
 correct, not that it's not slower. Whenever a panel's `rawSql` is
 rewritten (any dashboard, not just `agents_overview.json`) - explicitly
 requested or a side effect of other work - delegate to `sql-expert` (Agent

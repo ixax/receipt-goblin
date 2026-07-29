@@ -226,8 +226,8 @@
         "kind": "Panel",
         "spec": {
           "id": 3,
-          "title": "MCP server",
-          "description": "",
+          "title": "MCP dev",
+          "description": "Goal: quickly see if the mcp-dev MCP service is up.\nDescription: combines the Prometheus `up` scrape result for job mcp-dev with the blackbox exporter's HTTP health-check probe for that instance into a single UP/DOWN stat.",
           "links": [],
           "transparent": false,
           "data": {
@@ -248,7 +248,113 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "up{job=\"mcp-server\"} + on() probe_success{job=\"blackbox\", instance=~\".*mcp-server.*\"}",
+                        "expr": "up{job=\"mcp-dev\"} + on() probe_success{job=\"blackbox\", instance=~\".*mcp-dev.*\"}",
+                        "instant": true,
+                        "format": "time_series",
+                        "legendFormat": "",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {},
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "DOWN",
+                          "color": "red"
+                        },
+                        "1": {
+                          "text": "DOWN",
+                          "color": "red"
+                        },
+                        "2": {
+                          "text": "UP",
+                          "color": "green"
+                        }
+                      }
+                    }
+                  ],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "red",
+                        "value": 0
+                      },
+                      {
+                        "color": "green",
+                        "value": 2
+                      }
+                    ]
+                  },
+                  "unit": "none"
+                },
+                "overrides": []
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "showPercentChange": false
+              }
+            }
+          }
+        }
+      },
+      "panel-46": {
+        "kind": "Panel",
+        "spec": {
+          "id": 46,
+          "title": "MCP stats",
+          "description": "Goal: quickly see if the mcp-stats MCP service is up.\nDescription: combines the Prometheus `up` scrape result for job mcp-stats with the blackbox exporter's HTTP health-check probe for that instance into a single UP/DOWN stat, mirroring the \"mcp-stats is down\" alert rule's own query.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "up{job=\"mcp-stats\"} + on() probe_success{job=\"blackbox\", instance=~\".*mcp-stats.*\"}",
                         "instant": true,
                         "format": "time_series",
                         "legendFormat": "",
@@ -3694,7 +3800,7 @@
         "spec": {
           "id": 38,
           "title": "Request rate",
-          "description": "",
+          "description": "Goal: track HTTP request throughput for the mcp-dev service.\nDescription: sums the rate of http_requests_total over 5m windows for the mcp-dev instance, grouped by handler.",
           "links": [],
           "transparent": false,
           "data": {
@@ -3715,11 +3821,11 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate(http_requests_total{instance=~\"^mcp-server:.*\"}[5m])) by (handler)",
+                        "expr": "sum(rate(http_requests_total{instance=~\"^mcp-dev:.*\"}[5m])) by (handler)",
                         "instant": false,
                         "range": true,
                         "format": "time_series",
-                        "legendFormat": "mcp-server {{handler}}",
+                        "legendFormat": "mcp-dev {{handler}}",
                         "interval": ""
                       }
                     }
@@ -3806,7 +3912,7 @@
         "spec": {
           "id": 39,
           "title": "Latency (p50/p90/p95)",
-          "description": "",
+          "description": "Goal: track HTTP request latency percentiles for the mcp-dev service.\nDescription: histogram_quantile over http_request_duration_seconds_bucket for the mcp-dev instance at the 0.50/0.90/0.95 quantiles, grouped by handler.",
           "links": [],
           "transparent": false,
           "data": {
@@ -3827,11 +3933,11 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{instance=~\"^mcp-server:.*\"}[5m])) by (le, handler))",
+                        "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{instance=~\"^mcp-dev:.*\"}[5m])) by (le, handler))",
                         "instant": false,
                         "range": true,
                         "format": "time_series",
-                        "legendFormat": "mcp-server p50 {{handler}}",
+                        "legendFormat": "mcp-dev p50 {{handler}}",
                         "interval": ""
                       }
                     }
@@ -3851,11 +3957,11 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.90, sum(rate(http_request_duration_seconds_bucket{instance=~\"^mcp-server:.*\"}[5m])) by (le, handler))",
+                        "expr": "histogram_quantile(0.90, sum(rate(http_request_duration_seconds_bucket{instance=~\"^mcp-dev:.*\"}[5m])) by (le, handler))",
                         "instant": false,
                         "range": true,
                         "format": "time_series",
-                        "legendFormat": "mcp-server p90 {{handler}}",
+                        "legendFormat": "mcp-dev p90 {{handler}}",
                         "interval": ""
                       }
                     }
@@ -3875,11 +3981,283 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{instance=~\"^mcp-server:.*\"}[5m])) by (le, handler))",
+                        "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{instance=~\"^mcp-dev:.*\"}[5m])) by (le, handler))",
                         "instant": false,
                         "range": true,
                         "format": "time_series",
-                        "legendFormat": "mcp-server p95 {{handler}}",
+                        "legendFormat": "mcp-dev p95 {{handler}}",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "barAlignment": 0,
+                    "lineWidth": 1,
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "spanNulls": false,
+                    "insertNulls": false,
+                    "showPoints": "never",
+                    "pointSize": 5,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "axisPlacement": "auto",
+                    "axisLabel": "",
+                    "axisColorMode": "text",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "axisCenteredZero": false,
+                    "hideFrom": {
+                      "tooltip": false,
+                      "viz": false,
+                      "legend": false
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "none"
+                },
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "calcs": []
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-47": {
+        "kind": "Panel",
+        "spec": {
+          "id": 47,
+          "title": "Request rate",
+          "description": "Goal: track HTTP request throughput for the mcp-stats service.\nDescription: sums the rate of http_requests_total over 5m windows for the mcp-stats instance, grouped by handler.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "sum(rate(http_requests_total{instance=~\"^mcp-stats:.*\"}[5m])) by (handler)",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "mcp-stats {{handler}}",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "barAlignment": 0,
+                    "lineWidth": 1,
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "spanNulls": false,
+                    "insertNulls": false,
+                    "showPoints": "never",
+                    "pointSize": 5,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "axisPlacement": "auto",
+                    "axisLabel": "",
+                    "axisColorMode": "text",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "axisCenteredZero": false,
+                    "hideFrom": {
+                      "tooltip": false,
+                      "viz": false,
+                      "legend": false
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "unit": "reqps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "none"
+                },
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "calcs": []
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-48": {
+        "kind": "Panel",
+        "spec": {
+          "id": 48,
+          "title": "Latency (p50/p90/p95)",
+          "description": "Goal: track HTTP request latency percentiles for the mcp-stats service.\nDescription: histogram_quantile over http_request_duration_seconds_bucket for the mcp-stats instance at the 0.50/0.90/0.95 quantiles, grouped by handler.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{instance=~\"^mcp-stats:.*\"}[5m])) by (le, handler))",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "mcp-stats p50 {{handler}}",
+                        "interval": ""
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "B",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "histogram_quantile(0.90, sum(rate(http_request_duration_seconds_bucket{instance=~\"^mcp-stats:.*\"}[5m])) by (le, handler))",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "mcp-stats p90 {{handler}}",
+                        "interval": ""
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "C",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{instance=~\"^mcp-stats:.*\"}[5m])) by (le, handler))",
+                        "instant": false,
+                        "range": true,
+                        "format": "time_series",
+                        "legendFormat": "mcp-stats p95 {{handler}}",
                         "interval": ""
                       }
                     }
@@ -4778,6 +5156,19 @@
                                   "width": 3,
                                   "height": 4
                                 }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-46"
+                                  },
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 3,
+                                  "height": 4
+                                }
                               }
                             ]
                           }
@@ -5170,7 +5561,7 @@
                     {
                       "kind": "RowsLayoutRow",
                       "spec": {
-                        "title": "mcp-server",
+                        "title": "mcp-dev",
                         "collapse": false,
                         "layout": {
                           "kind": "GridLayout",
@@ -5195,6 +5586,46 @@
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-39"
+                                  },
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "mcp-stats",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-47"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-48"
                                   },
                                   "x": 12,
                                   "y": 0,

@@ -4,7 +4,7 @@ description: >
   MUST BE USED PROACTIVELY, without waiting to be asked twice, any time the user asks to run a load test / нагрузочное тестирование on the receipt-goblin stack, or asks how the stack behaves under concurrency/load.
   Owns the whole `make loadtest` workflow end to end: reads AGENTS.md's "Running the load test" section (and, if a parameter's meaning still isn't clear from there, services/webhook/src/loadtest.py's own docstring/argparse help - never guesses a flag's meaning) before running anything, gets an answer to the one required pre-flight question (shut down litellm/litellm-db first if they're up?) - via the orchestrator, since it has no AskUserQuestion tool of its own - instead of assuming it, always isolates load-test traffic into its own dedicated ClickHouse database (`CLICKHOUSE_LOADTEST_DATABASE`, defaults to `loadtest`) - ensures it exists itself every run, creating it and applying `schema.sql` fresh via `docker exec` if missing (or confirming it in place if it already has tables), always wiping it clean before the run once ready, no confirmation needed for the wipe since it never holds real data, and delegates the mandatory write-path identity switch (before and after every run, 3 services: `webhook-1`/`webhook-2`/`webhook-worker`, recreated as the `loadtest` ClickHouse role - never the `ingest` role granted onto the loadtest database, which would break role isolation) to the `dev-ops` agent rather than running `docker compose` itself - launches and monitors the run in parallel (docker stats + Prometheus), watches for the known page-cache OOM regression and stops immediately if it recurs, verifies data actually landed in ClickHouse, and hands back a full bottleneck report with concrete docker-compose.yml suggestions.
   Can delegate mechanical file/investigation work outside this workflow (e.g. large log inspection) to the `script-ops` agent rather than doing it inline.
-  <version>1.8.2</version>
+  <version>1.8.3</version>
 tools: Bash, Read, Monitor, SendMessage, Agent
 model: claude-sonnet-5
 ---
@@ -284,7 +284,7 @@ belongs in Phase 6's final report, this is just keeping the orchestrator
   `docker exec receipt-goblin-clickhouse clickhouse-client --user
   "$CLICKHOUSE_LOADTEST_USER" --password "$CLICKHOUSE_LOADTEST_PASSWORD" -q
   "SELECT count() FROM <db>.<table>"` (resolved back in Phase 2, step 1) -
-  not `mcp__clickhouse__query`, whose own `mcp` role only has `SELECT` on
+  not `mcp__dev__query`, whose own `mcp` role only has `SELECT` on
   the real `CLICKHOUSE_DATABASE`, never on `<db>` (see
   `services/init/config.yml`), so it can't read the loadtest database at
   all. Compare against the Phase 2 baseline to confirm data actually

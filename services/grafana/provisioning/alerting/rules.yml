@@ -122,8 +122,14 @@ groups:
                   reducer: {type: last, params: []}
                   type: query
 
-      - uid: alert-mcp-server-down
-        title: MCP server is down
+      - uid: alert-mcp-stats-down
+        # mcp-stats only, not mcp-dev: mcp-dev doesn't run in
+        # ENVIRONMENT=production at all (see AGENTS.md's dev/prod split), so
+        # an alert on it would misfire NoData in prod and be meaningless in
+        # dev (you'd notice immediately if your own dev container were
+        # down). mcp-stats ships in every environment, same as
+        # litellm/grafana - it belongs here.
+        title: mcp-stats is down
         condition: C
         for: 30s
         noDataState: NoData
@@ -135,7 +141,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: 'up{job="mcp-server"} + on() probe_success{job="blackbox", instance=~".*mcp-server.*"}'
+              expr: 'up{job="mcp-stats"} + on() probe_success{job="blackbox", instance=~".*mcp-stats.*"}'
           - refId: B
             datasourceUid: __expr__
             model:

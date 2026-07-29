@@ -1,8 +1,15 @@
 {
   "mcpServers": {
-    "clickhouse": {
+    "dev": {
       "type": "http",
       "url": "http://localhost:8001/mcp"
+    },
+    "stats": {
+      "type": "http",
+      "url": "http://localhost:8002/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LITELLM_VIRTUAL_KEY}"
+      }
     }
   }
 }

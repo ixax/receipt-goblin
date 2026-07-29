@@ -29,7 +29,7 @@ Three subcommands, meant to be chained:
               with stats.json's per-query profile_query results (keyed
               "<panel_id>:<query_index>") into one timestamped run record.
               stats.json is written by whichever agent actually called
-              `mcp__clickhouse__profile_query` for each resolved_sql - this
+              `mcp__dev__profile_query` for each resolved_sql - this
               script never talks to ClickHouse itself.
 
     diff      run_a.json run_b.json

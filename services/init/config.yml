@@ -59,6 +59,16 @@ roles:
       - "GRANT SELECT ON system.query_log"
       - "GRANT SYSTEM FLUSH LOGS ON *.*"
 
+  - name: mcp_stats
+    user_env: CLICKHOUSE_MCP_STATS_USER
+    password_env: CLICKHOUSE_MCP_STATS_PASSWORD
+    default_user: mcp_stats
+    grants:
+      # Only agent_usage - whatsup is the one tool today and it only reads
+      # this table. Broaden if/when mcp-stats grows tools reading more
+      # tables (see mcp-stats's own module docstring).
+      - "GRANT SELECT ON {database}.agent_usage"
+
   - name: backup
     user_env: CLICKHOUSE_BACKUP_USER
     password_env: CLICKHOUSE_BACKUP_PASSWORD
