@@ -169,7 +169,25 @@ def main() -> None:
         sys.exit(0)
     compose_files = sys.argv[1:] or DEFAULT_COMPOSE_FILES
 
+    # `config --services` only lists default-profile services, so
+    # profile-gated stacks (observability, langfuse) are invisible here even
+    # when their containers are already running.
+    # `docker compose ps -a` isn't profile-filtered - that only gates
+    # `up`/`create` - so any already-up profile service shows up there too.
+    # But `ps -a` also includes long-exited one-shot job containers from the
+    # `tools` profile (loadtest-fixtures, metrics-reparse, ...) - those ran
+    # once in the past via `docker compose run` and aren't part of the
+    # current stack, so a stale nonzero exit code from months ago shouldn't
+    # fail `make status` today.
+    # State=="running" is what separates "an extra service stack the user
+    # actually brought up" (observability/langfuse) from "leftover container
+    # of a finished one-off job" - only the former belongs in expected.
     expected = _compose_services(compose_files)
+    extra = sorted(
+        service for service, row in _compose_ps(compose_files).items()
+        if service not in expected and row.get("State") == "running"
+    )
+    expected = expected + extra
     print(f"waiting for {len(expected)} service(s) to become healthy:")
 
     deadline = time.monotonic() + TIMEOUT_S
