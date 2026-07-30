@@ -19,8 +19,6 @@ Write agent instructions, `.md` files, and comments in ASD-STE100 Simplified Tec
 - `make stop` / `make down` - tear down.
 - `make setup-client` - print CLI-proxy shell/config snippets.
 
-Single-service rebuild/restart after a config/env change routes to `dev-ops`, not inline (Agent & Skill Routing).
-
 ### Testing & Quality Assurance
 
 - `make test` - webhook pytest suite; always via `webhook-test-runner`, never inline.
@@ -37,8 +35,7 @@ Single-service rebuild/restart after a config/env change routes to `dev-ops`, no
 Read `agent_docs/*.md` on demand, when a task touches that area.
 
 Every service has its own `Dockerfile`, dependencies, config.
-Image tags: `VERSIONS.yml` (`SERVICE_TAG: X.Y.Z-{build}`), resolved by `scripts/resolve_image_version.py` into `.image-tags.mk`; `{build}` = commit hash, except `observability`/`langfuse` (static SEMVER).
-Bump a tag when its Dockerfile/image code changes.
+Image tags: `agent_docs/architecture.md`.
 Runtime tunables/settings/flags live in an explicit config file, never hardcoded.
 
 Orientation only - doc filename `<dirname>.md` under `agent_docs/services/` unless noted:
@@ -66,11 +63,12 @@ Root-level:
 - `hooks/`, `scripts/`
 - `.claude/` - agents/skills/commands/rules
 - `.claude/data/` - gitignored scratch, one subdir per purpose
+- `plans/` - approved `/plan` outputs, one file per plan
 
 ## Agent & Skill Routing
 
-**Any mention of `AGENTS.md` hands off to `harness-expert`**, before inline Read/grep/Bash - pass the request verbatim.
-Full descriptions: `agent_docs/harness-index.md`.
+Full descriptions of every agent/skill below: each one's own frontmatter `description` (Claude Code shows these natively).
+Codex CLI has no native listing - it reads `agent_docs/harness-index.md` instead (CLI adapter notes, below).
 
 **Proactive agents (no waiting to be asked):**
 
@@ -103,29 +101,16 @@ Full descriptions: `agent_docs/harness-index.md`.
 - `trace-debugging` - troubleshooting a call chain via `session_id`/`trace_id`/`turn_id`.
 - `harness-guardian` - explicit-only harness budget-audit workflow.
 
-## Code Style & Guidelines
+## Code & Anti-Patterns
 
-- Stdlib `logging`, never `print()`; bare `LOG_LEVEL` env var (`agent_docs/services/webhook.md`).
-- `services/webhook/src/fastjson.py`, never stdlib `json` (`dumps()` returns `bytes`).
-- Every `webhook`/`webhook-worker` tunable in `config.py`, never scattered `os.environ`.
-- Skills/agents/config stay CLI-agnostic - exception: names the CLI itself defines.
-- Comments cover a non-obvious *why*, never this machine's current state.
-
-## Coding Anti-Patterns
-
-- No per-service env defaults - `docker-compose.yml` is the only place `CLICKHOUSE_*`/`REDIS_*` defaults live.
-- No TTL-based auto-delete on any table - half-year `PARTITION BY` instead.
-- No per-service `README.md` under `services/*/` - playbooks live in root README.
-- Never loosen `_validate_readonly_sql` in `services/mcp-dev/src/server.py`.
-- Never derive cost from a local price table - use LiteLLM's own `response_cost`/`cost_breakdown` (`agent_docs/incidents.md`).
-- Never restart/recreate `clickhouse` or edit a dashboard as a side effect of other work.
-- Never call `docker compose build up / start / restart logs status` directly - always `make build / up start / restart / logs / status`.
+- Writing or editing code: read `agent_docs/rules/coding.md` first (style + anti-patterns).
+  Skip for a pure analysis/investigation task.
 
 ## Boundaries & Safety
 
-- **Git destructive actions** - never `checkout --`/`restore`/`reset --hard`/`clean` without asking, even on your own edit (hook-enforced). Rule: `agent_docs/git-safety.md`; why: `agent_docs/incidents.md`.
-- **ClickHouse access** - never `docker exec .../clickhouse-client`; always `mcp-dev`'s `query`/`profile_query` or `mcp-stats`'s `me`. If rejected, ask first.
-- **`litellm` restart/recreate** - never without asking; `restart` drops new env vars, only `up -d` picks them up (`agent_docs/incidents.md`).
+- **Git** - before any git action, read `agent_docs/git-safety.md` first.
+- **ClickHouse access** - before any direct ClickHouse access, read `agent_docs/rules/clickhouse-access.md` first.
+- **`litellm` restart/recreate** - before touching, read `agent_docs/rules/litellm-ops.md` first.
 - **DB/volume wipe or `TRUNCATE`** - ask first (`agent_docs/incidents.md`).
 - **Secrets** - personal LiteLLM key never in `.env` (gitignored).
 - **New incident** (destructive action, damaging bug, bad misdiagnosis) - whoever hits it appends to `agent_docs/incidents.md`.
@@ -133,6 +118,8 @@ Full descriptions: `agent_docs/harness-index.md`.
 ## Agent Working Conventions
 
 - Build a `TodoWrite` list for multiple asks; keep current.
+- `/plan` output always saves to `plans/<name>.md`, never the default scratch file.
+- After a plan's work is done, offer to delete its `plans/` file - never delete it unasked.
 - Check for an owning agent before inline Bash/Read/Grep.
 - Translate non-English subagent prompts to English (1:1 meaning).
 - A dispatch's `prompt`/`description` carry the content - no prose recap alongside.

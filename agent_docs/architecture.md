@@ -19,6 +19,13 @@ Single-service content (queue/worker split, gateway, per-file breakdowns, `fastj
   What moved is runtime role selection for the one image serving five compose services/roles (`webhook`/`webhook-worker`/`metrics-reparse`/`clickhouse-migrate`/`loadtest`, all built from `services/webhook/Dockerfile`) - see `agent_docs/services/webhook.md`'s "`APP_ROLE` dispatch" for the mechanism.
   `litellm` and `redis` get no dev override at all: both environments always run the same baked image.
 
+## Image tags
+
+`VERSIONS.yml` holds each service's `SERVICE_TAG: X.Y.Z-{build}`.
+`scripts/resolve_image_version.py` resolves these into `.image-tags.mk`.
+`{build}` is the commit hash, except `observability`/`langfuse`, which use a static SEMVER.
+Bump a tag when its Dockerfile or image code changes.
+
 ## Codex CLI adapter notes
 
 `agent_docs/harness-index.md` lists every skill/agent for Codex discovery; read it when no explicit name was given.
