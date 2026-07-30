@@ -235,3 +235,69 @@ class ChatGPTResponsesOutputRecoveryHandler(CustomLogger):
 
 
 chatgpt_responses_output_recovery_handler = ChatGPTResponsesOutputRecoveryHandler()
+
+
+# --- Generic API Logger: don't drop a whole batch on one failed flush -----
+#
+# litellm/integrations/generic_api/generic_api_callback.py's GenericAPILogger.async_send_batch() always does `finally: self.log_queue.clear()`, regardless of whether the POST succeeded - so a single failed flush (a 5xx from load-balancer, a timeout) silently drops the *entire* accumulated batch (up to batch_size events), not just the request that failed.
+# Confirmed as the root cause of a ~13min gap in agent_usage/agent_events for one real session - see agent_docs/incidents.md.
+# _post_with_retries (max_retries/retry_delay, set in config.yaml's callback_settings.metrics_webhook) already retries transient failures within one flush; this patch handles the case where those retries are also exhausted, by keeping the unsent items queued for the *next* flush instead of discarding them.
+# Same class attribute-reassignment pattern as the is_anthropic_oauth_key patch above.
+from litellm.integrations.generic_api.generic_api_callback import GenericAPILogger
+from litellm.litellm_core_utils.safe_json_dumps import safe_dumps
+
+# Mirrors webhook's own Redis stream MAXLEN~5000 bound (see agent_docs/services/webhook.md "Why a queue in front of ClickHouse") - a retry buffer needs the same kind of cap, or a sustained outage grows it unboundedly instead of just losing data, which is worse.
+_MAX_RETAINED_LOG_QUEUE = 2000
+
+
+async def _patched_async_send_batch(self: GenericAPILogger) -> None:
+    if not self.log_queue:
+        return
+
+    verbose_proxy_logger.debug(
+        f"Generic API Logger - about to flush {len(self.log_queue)} events in '{self.log_format}' format"
+    )
+
+    if self.log_format == "single":
+        pending = list(self.log_queue)
+        tasks = [self._post_with_retries(data=safe_dumps(entry)) for entry in pending]
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        unsent = []
+        for entry, result in zip(pending, responses):
+            if isinstance(result, Exception):
+                verbose_proxy_logger.exception(
+                    f"Generic API Logger - error sending log, will retry next flush: {result}"
+                )
+                unsent.append(entry)
+            else:
+                verbose_proxy_logger.debug(f"Generic API Logger - sent log, status: {result.status_code}")
+        self.log_queue = (unsent + self.log_queue[len(pending):])[-_MAX_RETAINED_LOG_QUEUE:]
+        return
+
+    if self.log_format == "json_array":
+        data = safe_dumps(self.log_queue)
+    elif self.log_format == "ndjson":
+        data = "\n".join(safe_dumps(log) for log in self.log_queue)
+    else:
+        raise ValueError(f"Unknown log_format: {self.log_format}")
+
+    try:
+        response = await self._post_with_retries(data=data)
+        verbose_proxy_logger.debug(
+            f"Generic API Logger - sent batch to {self.endpoint}, "
+            f"status: {response.status_code}, format: {self.log_format}"
+        )
+        self.log_queue.clear()
+    except Exception as e:
+        verbose_proxy_logger.exception(
+            f"Generic API Logger - flush failed, keeping {len(self.log_queue)} events queued for next flush: {e}"
+        )
+        if len(self.log_queue) > _MAX_RETAINED_LOG_QUEUE:
+            dropped = len(self.log_queue) - _MAX_RETAINED_LOG_QUEUE
+            verbose_proxy_logger.warning(
+                f"Generic API Logger - retry buffer over {_MAX_RETAINED_LOG_QUEUE} cap, dropping {dropped} oldest events"
+            )
+            del self.log_queue[:dropped]
+
+
+GenericAPILogger.async_send_batch = _patched_async_send_batch

@@ -143,3 +143,7 @@ callback_settings:
       - llm_api_success
       - llm_api_failure
     log_format: json_array
+    # GenericAPILogger defaults to max_retries=0 (litellm/integrations/generic_api/generic_api_callback.py) - a single 5xx/timeout flushing this batch to webhook was silently dropping up to batch_size events with zero retry (confirmed root cause of a real ~13min agent_usage/agent_events gap - see agent_docs/incidents.md).
+    # Retries only on litellm.Timeout/httpx.TransportError/5xx (_should_retry_exception), exponential backoff (retry_delay * 2**attempt): 1s, 2s, 4s.
+    max_retries: 3
+    retry_delay: 1.0

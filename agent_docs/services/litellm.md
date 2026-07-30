@@ -13,6 +13,8 @@ Proxy every LiteLLM-routed CLI call goes through - model list, virtual-key auth,
 - `model_group_settings.forward_client_headers_to_llm_api` - forwards the caller's own `Authorization` (OAuth token) to Anthropic for every model above. If a model moves to a real `api_key`, remove it from this list too or its credential could still get forwarded.
 - `litellm_settings.callbacks` - registered callbacks:
   - `metrics_webhook` (`generic_api`, ships the full `StandardLoggingPayload` to `webhook`'s `/api/v1/metrics` - **not** the same as a bare `success_callback: ["webhook"]`, which fires the thin alerting webhook above instead)
+    `GenericAPILogger` defaults to `max_retries: 0` - a single 5xx/timeout on flush used to silently drop the whole batch with zero retry, confirmed as a real data-loss root cause (see `agent_docs/incidents.md`); `callback_settings.metrics_webhook` now sets `max_retries: 3`/`retry_delay: 1.0` (exponential backoff: 1s/2s/4s, only for `litellm.Timeout`/`httpx.TransportError`/5xx).
+    Retries alone don't survive an outage longer than the backoff window - see `custom_callbacks.py`'s `async_send_batch` patch below for what happens after retries are exhausted.
   - `custom_callbacks.session_id_handler`
   - `custom_callbacks.chatgpt_auth_forward_handler`
   - `custom_callbacks.chatgpt_responses_output_recovery_handler`
@@ -29,3 +31,6 @@ Proxy every LiteLLM-routed CLI call goes through - model list, virtual-key auth,
 - `ChatGPTResponsesOutputRecoveryHandler` (`chatgpt_responses_output_recovery_handler`) - works around litellm's streaming iterator dropping tool-call/text output for `custom_llm_provider="chatgpt"` (Codex CLI, streamed Responses API - BerriAI/litellm#25429, unmerged fix as of writing), which otherwise leaves `StandardLoggingPayload.response.output` empty and breaks the Trace panel/ClickHouse view of what Codex did.
   Accumulates output items via `async_post_call_streaming_iterator_hook` as SSE chunks pass through, then injects them in `async_logging_hook` if `response.output` is still empty.
   The two hooks race (confirmed against live Codex traffic), so each pending `litellm_call_id` gets an `asyncio.Event` the logging hook waits on briefly (`_RECOVERY_WAIT_TIMEOUT_S`) before giving up.
+- `_patched_async_send_batch` (monkeypatches `GenericAPILogger.async_send_batch`, same class-attribute-reassignment style as the `is_anthropic_oauth_key` patch above) - the vendored method always does `finally: self.log_queue.clear()` regardless of whether the POST succeeded, so one failed flush (after `max_retries` above are exhausted) drops the entire accumulated batch, not just the failed request.
+  The patch clears the queue only on success; on failure it keeps unsent items queued for the next flush, capped at `_MAX_RETAINED_LOG_QUEUE = 2000` (mirrors `webhook`'s own Redis stream `MAXLEN~5000` bound - a retry buffer needs the same kind of cap or a sustained outage grows it unboundedly).
+  Still loses data if an outage outlasts both the retry backoff and however long it takes to refill the capped buffer past 2000 events - this narrows the loss window, it doesn't eliminate it.

@@ -33,6 +33,26 @@ Within a single session, `judge_call` `cache_creation_tokens` climbs in lockstep
 This is Claude Code's own `/goal` mechanism, not a bug in our ingestion/classification code - no fix was made here.
 Practical mitigation available to a user: keep `/goal` sessions short, or avoid `/goal` for long-running sessions, since cost scales with how large the session context has grown by the time each judge check fires (judge checks appear to fire quite frequently - one session had 19 judge calls within about 3 minutes).
 
+## Plan Mode forks a new `session_id` (unrelated to any data-loss gap)
+
+Investigated a user report that the Trace panel (panel-76) showed less activity for a session than the actual chat transcript.
+While looking for the cause, found that entering Plan Mode (the `EnterPlanMode`/`ExitPlanMode` tools, `command_name = 'plan'` in `agent_messages`) triggers a genuine new `SessionStart` in Claude Code, producing a brand-new `session_id` (with `session_id == trace_id == litellm_call_id`, i.e. no `x-claude-code-session-id` header at all) with no data-level link back to whatever conversation the user thinks of as "the same session" - not even a shared `trace_id` to join on.
+**Correction**: this was initially (wrongly) reported as the root cause of a specific ~13min gap in session `0cd1980e-...` - checking the forked session's actual prompt content later disproved that; it was a coincidentally-nearby, completely unrelated `/plan` conversation.
+The real cause of that gap is documented separately below ("LiteLLM `GenericAPILogger` drops a whole batch on one failed flush").
+The Plan Mode session-forking behavior itself is still real and still worth guarding against in the UI: the `session_id` dashboard variable (`services/grafana/dashboards/agents_overview.json`, `spec.variables`) excludes these plan-mode forks from its dropdown (`agent_messages` sessions where `sum(command_name != 'plan') = 0`), plus sessions with zero real prompts (no `agent_messages` row with non-empty `prompt_text`) - both were cluttering the session picker with fragments no one would deliberately pick.
+Lesson: don't declare a root cause from timing/shape correlation alone - check the actual payload content before writing it down (this entry originally didn't, and was wrong).
+
+## LiteLLM `GenericAPILogger` drops a whole batch on one failed flush
+
+Two real, independently-confirmed data gaps (a ~13min `agent_usage` gap in session `0cd1980e-...`, and missing `response_text` in session `ed2a5cc5-...`) both traced to the same upstream mechanism, found by reading `litellm`'s actual running code (`docker exec receipt-goblin-litellm cat .../litellm/integrations/generic_api/generic_api_callback.py`), not by inference from ClickHouse alone.
+`GenericAPILogger` (the `generic_api` callback type behind `metrics_webhook`, which ships `StandardLoggingPayload` to `webhook`'s `/api/v1/metrics` - confirmed as the real ingestion path, not a side metrics channel) defaults to `max_retries: 0`, and `services/litellm/config.yaml` didn't override it.
+Worse: `async_send_batch()`'s `finally: self.log_queue.clear()` runs unconditionally, win or lose - so one failed flush (a `load-balancer` 504, a timeout) doesn't just lose the one request, it silently discards the *entire* accumulated batch (up to `batch_size` events).
+`docker logs` on `litellm` confirmed a burst of 504s against `http://load-balancer:8000/api/v1/metrics` during the `0cd1980e` gap window, and repeated `chatgpt_responses_output_recovery_handler` timeouts during the `ed2a5cc5` window - both are flush-time failures this same zero-retry/clear-regardless pattern would silently eat.
+Fix: `services/litellm/config.yaml`'s `callback_settings.metrics_webhook` now sets `max_retries: 3`/`retry_delay: 1.0` (exponential backoff 1s/2s/4s, only for `litellm.Timeout`/`httpx.TransportError`/5xx).
+`services/litellm/custom_callbacks.py` also monkeypatches `GenericAPILogger.async_send_batch` (`_patched_async_send_batch`) to only clear the queue on success - on failure it keeps unsent items queued for the next flush, capped at `_MAX_RETAINED_LOG_QUEUE = 2000` so a sustained outage grows the retry buffer instead of unboundedly, but still eventually sheds oldest events past that cap.
+Neither fix makes loss impossible - an outage longer than the retry backoff *and* longer than however long it takes to refill the capped buffer will still lose data - it narrows the window rather than closing it.
+Separate, not yet done: root-causing *why* `load-balancer`/`webhook` returned 504s for several minutes straight in the `0cd1980e` window (was `webhook` overloaded, `redis` backlogged, or the container itself restarting) - the retry/no-clear fixes above reduce the blast radius of that class of outage, they don't explain this particular occurrence.
+
 ## Git checkout/restore clobbering uncommitted work
 
 Three past incidents (a dashboard reformat "fixed" via `git checkout -- <file>`, a misdiagnosed-corruption checkout, and a bulk edit that used `git show :path` to self-"restore") each silently discarded concurrent uncommitted work, recovered only by luck each time.
