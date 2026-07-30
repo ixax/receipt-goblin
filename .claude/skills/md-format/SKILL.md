@@ -6,13 +6,20 @@ description: >
   Covers: line wrapping, one-sentence-per-line, keep-sentences-short, enumeration-vs-list, quoting example text, table alignment.
   A PreToolUse hook enforces this mechanically, once per session, for Edit/Write and for Bash heredoc/redirect/tee writes to these extensions - not for Makefile comments or script-assembled content.
   SKIP for a single-sentence code comment, and .md files touching only code blocks/frontmatter.
-  <version>1.7.0</version>
+  <version>1.7.1</version>
 ---
 
 # md-format
 
 Conventions to apply whenever authoring or editing markdown prose or tables in this repo.
 None apply to code blocks or table cells beyond alignment - only to prose paragraphs, list formatting, and table pipe formatting.
+
+## Scope of the read-once gate
+
+The PreToolUse hook requires reading this skill only once per session, before the first qualifying edit.
+That covers the read, not compliance.
+Every `.md` write for the rest of the session still needs these rules applied by hand - the hook does not re-check later writes.
+This includes a second write of the same content to a different path, e.g. copying a plan from a scratch file into `plans/<name>.md`: reapply one-sentence-per-line, enumeration-vs-list, and table alignment to that write too, not just the first one.
 
 ## Line wrapping
 

@@ -44,6 +44,8 @@ roles:
       - "GRANT SELECT ON {database}.plan_proposals"
       - "GRANT SELECT ON {database}.ai_gateway_groups"
       - "GRANT SELECT ON {database}.ai_gateway_users"
+      - "GRANT dictGet ON {database}.ai_gateway_users_dict"
+      - "GRANT dictGet ON {database}.session_git_branch_dict"
       - "GRANT SELECT ON {database}.clients"
       - "GRANT SELECT ON {database}.agent_events"
       - "GRANT SELECT ON {database}.agent_usage"

@@ -20,8 +20,14 @@ role - a database name too for any role whose database isn't the main one,
 e.g. loadtest - username, password), THEN touch .env (copy from .env.example
 if missing, rewrite in place), bring up just the `clickhouse` service, create
 every role via `docker compose exec clickhouse clickhouse-client` (the exact
-GRANT bodies services/init/config.yml defines), then stop `clickhouse` again
-and hand control back to `make up`.
+GRANT bodies services/init/config.yml defines), then hand control back to
+`make up`.
+
+`clickhouse` is only stopped again on the way out if this script is the one
+that started it (a fresh clone's first run). Re-running this script later
+against an already-up stack - e.g. to pick up a new grant added to
+config.yml - leaves `clickhouse` running afterward instead of stopping it
+out from under the rest of the running stack.
 """
 import getpass
 import importlib.util
@@ -118,6 +124,14 @@ def _compose(compose_files: list[str], *args: str, check: bool = True, timeout: 
     return subprocess.run(cmd, cwd=REPO_ROOT, check=check, stdin=subprocess.DEVNULL, timeout=timeout)
 
 
+def _clickhouse_already_running(compose_files: list[str]) -> bool:
+    result = subprocess.run(
+        ["docker", "compose", *compose_files, "ps", "--format", "{{.State}}", "clickhouse"],
+        cwd=REPO_ROOT, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=30,
+    )
+    return result.stdout.strip() == "running"
+
+
 def _wait_for_clickhouse_healthy(compose_files: list[str], timeout_s: int = 90) -> None:
     print("waiting for clickhouse to become healthy...")
     deadline = time.monotonic() + timeout_s
@@ -210,6 +224,8 @@ def main() -> None:
 
     os.environ.update(updates)
 
+    was_already_running = _clickhouse_already_running(compose_files)
+
     print("\nstarting clickhouse...")
     _compose(compose_files, "up", "-d", "--build", "clickhouse")
     _wait_for_clickhouse_healthy(compose_files)
@@ -219,8 +235,12 @@ def main() -> None:
 
     # clickhouse is only meant to be left running for the duration of
     # provisioning below - always try to stop it again on the way out
-    # (success, error, or Ctrl-C), so a failure never silently leaves it up
-    # with no indication either way.
+    # (success, error, or Ctrl-C) if this script is the one that started it,
+    # so a failure never silently leaves it up with no indication either way.
+    # But only if it wasn't already running before this script touched it -
+    # if the rest of the stack was already up (e.g. re-running `make init`
+    # to pick up a new grant), stopping clickhouse out from under running
+    # webhook/grafana/mcp-dev containers would just break them.
     try:
         for role in ch_roles.ROLES:
             database = updates.get(role.database_env, updates["CLICKHOUSE_DATABASE"])
@@ -244,8 +264,11 @@ def main() -> None:
                     f"{grant.format(database=database)} TO {user}",
                 )
     finally:
-        print("\nstopping clickhouse...")
-        _compose(compose_files, "stop", "clickhouse", check=False)
+        if was_already_running:
+            print("\nclickhouse was already running before this script started - leaving it up.")
+        else:
+            print("\nstopping clickhouse...")
+            _compose(compose_files, "stop", "clickhouse", check=False)
 
     print("\n=== done ===")
     print(f"Database: {updates['CLICKHOUSE_DATABASE']}")

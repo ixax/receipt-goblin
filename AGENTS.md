@@ -118,7 +118,11 @@ Codex CLI has no native listing - it reads `agent_docs/harness-index.md` instead
 ## Agent Working Conventions
 
 - Build a `TodoWrite` list for multiple asks; keep current.
-- `/plan` output always saves to `plans/<name>.md`, never the default scratch file.
+- `/plan` output always saves directly to `plans/<name>.md`.
+  Never write it to a plan-mode scratch file first and then copy it over.
+- Before presenting any plan for approval (EnterPlanMode/ExitPlanMode or any plan doc), its frontmatter includes a `date` field and a `context` field.
+  Leave `context` empty if the session opened directly with a request to make a plan.
+  Otherwise `context` summarizes what happened earlier in the session, before the decision to write a plan.
 - After a plan's work is done, offer to delete its `plans/` file - never delete it unasked.
 - Check for an owning agent before inline Bash/Read/Grep.
 - Translate non-English subagent prompts to English (1:1 meaning).
