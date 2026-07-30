@@ -123,13 +123,16 @@ make status
 `make status` runs `scripts/wait_for_stack_healthy.py`, which polls every service `docker compose config --services` lists (the ones this stack's default profile actually starts - `clickhouse-migrate` and the other `tools`-profile services aren't in that list, since they never start automatically) until each is either `healthy` or exited with code `0` (the latter case is for any one-shot default-profile service with no healthcheck).
 On a real terminal it redraws a live `✔ Container <name>   OK   <elapsed>s` table in place (green `OK`, red `FAILED`), the same ANSI cursor-movement trick `docker compose up` itself uses - no extra package needed for that.
 Piped output (a log file, CI) falls back to one compact "waiting on: ..." line per poll instead.
-It prints `All services healthy. OK.` and exits `0` once everything's up; if a service crashes or reports `unhealthy`, it exits `1` immediately with that service's last 80 log lines printed, instead of waiting out the full timeout on an already-known failure (it also gives up after 180s either way, printing logs for whatever's still not done).
+It prints `All services healthy.
+OK.` and exits `0` once everything's up.
+If a service crashes or reports `unhealthy`, it exits `1` immediately with that service's last 80 log lines printed, instead of waiting out the full timeout on an already-known failure (it also gives up after 180s either way, printing logs for whatever's still not done).
 Runnable any time, not just right after `make up` - `mcp-dev` (dev only), `mcp-stats`, and `grafana` won't start until `clickhouse` shows `healthy`; `webhook`/`webhook-worker` also wait on `redis` (all `depends_on: condition: service_healthy`), so a clean `make status` run is a good general "is the stack actually up" check.
 
 ### Logs
 
 ```bash
-make logs
+make logs                    # tail logs for the whole stack
+make logs SERVICE=webhook    # tail logs for just webhook
 ```
 
 ### Open Grafana
@@ -338,7 +341,7 @@ Most are covered in more depth elsewhere in this README - follow the section poi
 | `status`                   |                                   | Waits for every service to report healthy, prints pass/fail - see "Wait until it's healthy".         |
 | `migrate`                  |                                   | Runs just the ClickHouse migration container (`migrations/*.sql` + Dictionaries), nothing else.      |
 | `stop` / `down`            |                                   | Tears down the core stack (plus Langfuse/observability, as a courtesy) - see "Stop the stack".       |
-| `logs`                     |                                   | Tails logs for the whole core stack.                                                                 |
+| `logs`                     | `SERVICE=<name>` (optional)       | Tails logs for the core stack (or a single service with `SERVICE=<name>`).                           |
 | `setup-client`             |                                   | Prints shell-export/config-file snippets to route a CLI through the local LiteLLM proxy.             |
 | `test`                     |                                   | Runs `services/webhook/tests` (needs `requirements-dev.txt` installed in `.venv` first).             |
 | `reparse`                  | `SESSION=<session_id>` (required) | Reparses one session's events from `ingest_raw` - see "Debugging ingestion".                         |
@@ -640,7 +643,9 @@ The whole point of picking `model_name` values up front is that agent/skill fron
 This table is the file-based (git-tracked) half of the mapping, and it's enough on its own for Claude-only skills/agents shared across sessions - no admin UI setup required beyond issuing personal keys.
 The `anthropic/`, `openai/`, `ollama/` prefix on every "Real model" value above is mandatory, not cosmetic - LiteLLM parses `litellm_params.model` as `<provider>/<model>` to pick which provider adapter handles the call, so a bare `gemma3:4b` or `claude-sonnet-5` (no prefix) fails to route rather than falling back to a sensible default.
 
-It stops being enough the day a skill/agent's frontmatter needs to resolve to *different* real models depending on which CLI runs it (e.g. Codex should hit `gpt-5-codex` for a name that means "the good model", while Claude Code should hit `claude-sonnet-5` for that exact same name) - `model_name` in `config.yaml` is a single flat namespace, it can't branch on which CLI asked.
+It stops being enough the day a skill/agent's frontmatter needs to resolve to *different* real models depending on which CLI runs it (e.g.
+Codex should hit `gpt-5-codex` for a name that means "the good model", while Claude Code should hit `claude-sonnet-5` for that exact same name).
+`model_name` in `config.yaml` is a single flat namespace, it can't branch on which CLI asked.
 That branching is what LiteLLM's **Team/Key Model Aliases** are for: a Team (or an individual key) can remap an alias to a different real `model_name`, so the same alias resolves differently depending on which key made the call.
 Unlike everything above, model aliases are **not** expressible in `config.yaml` - they're Team/Key configuration, which only exists once created through `/ui` or the API, persisted in `litellm-db`.
 There's no reason to set this up before `gpt-5-codex`/`gpt-5` actually exist (a real `OPENAI_API_KEY` gets added) - until then, a Team alias would just point at a model that doesn't work yet.

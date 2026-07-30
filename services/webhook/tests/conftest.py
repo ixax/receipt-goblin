@@ -17,6 +17,9 @@ os.environ.setdefault("LITELLM_BASE_URL", "http://test-litellm:4000")
 # to be imported as part of the `src` package, not a flat top-level module.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# services/ for common module (from services/_common/src)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
 CAPTURES_DIR = Path(__file__).resolve().parent / "captures"
 
 

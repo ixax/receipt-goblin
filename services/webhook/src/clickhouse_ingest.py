@@ -599,6 +599,28 @@ def _collapse_whitespace(text: str) -> str:
     return _BLANK_LINES_COLLAPSE_RE.sub("\n", text)
 
 
+def _truncate_at_word_boundary(text: str, limit: int) -> str:
+    """Caps `text` to at most `limit` characters, but never mid-word.
+    Trims back to the last whitespace before the cut, dropping the trailing
+    partial word/list-item entirely.
+    Appends a visible '...' indicator only when truncation actually
+    occurred - a shorter-than-`limit` string is returned unchanged, no
+    indicator.
+    Falls back to a hard cut at `limit` only when no whitespace exists
+    anywhere before it (one giant unbroken token) - a hard cut is still
+    better than an unbounded blob there.
+    Ported into panel-76's own SQL (see agents_overview.json) for the
+    analogous SQL-side truncation points (reply text, etc.) - keep both in
+    sync if this changes."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    boundary = max(cut.rfind(" "), cut.rfind("\n"), cut.rfind("\t"))
+    if boundary > 0:
+        cut = cut[:boundary]
+    return cut.rstrip() + "..."
+
+
 def _clean_prompt_text(prompt_text: str) -> str:
     return _SYSTEM_REMINDER_STRIP_RE.sub("", prompt_text, count=1).strip()
 
@@ -686,13 +708,13 @@ def _prompt_kind_and_display(prompt_text: str, command_name: str, response_text:
         if objective_match:
             command_args = objective_match.group(1)
     if command_args:
-        return "command", f"/{command_name} {_collapse_whitespace(command_args)[:_DISPLAY_TEXT_TRUNCATE]}", ""
+        return "command", f"/{command_name} {_truncate_at_word_boundary(_collapse_whitespace(command_args), _DISPLAY_TEXT_TRUNCATE)}", ""
 
     if prompt_text.startswith(_INTERRUPTED_PREFIX):
         stripped = _INTERRUPTED_STRIP_RE.sub("", cleaned, count=1)
-        return "interrupted", f"[interrupted] {_collapse_whitespace(stripped)[:_DISPLAY_TEXT_TRUNCATE]}", ""
+        return "interrupted", f"[interrupted] {_truncate_at_word_boundary(_collapse_whitespace(stripped), _DISPLAY_TEXT_TRUNCATE)}", ""
     if prompt_text.startswith(_SUGGESTION_MODE_PREFIX):
-        return "suggestion_mode", _collapse_whitespace(cleaned)[:_DISPLAY_TEXT_TRUNCATE], ""
+        return "suggestion_mode", _truncate_at_word_boundary(_collapse_whitespace(cleaned), _DISPLAY_TEXT_TRUNCATE), ""
     if prompt_text.startswith(_JUDGE_CALL_PREFIX):
         return "judge_call", "[goal-check judge call]", ""
     if prompt_text.startswith(_TITLE_GEN_PREFIX):
@@ -713,20 +735,20 @@ def _prompt_kind_and_display(prompt_text: str, command_name: str, response_text:
         if summary_match:
             status_match = _STATUS_TAG_RE.search(tail)
             status_text = status_match.group(1) if status_match else ""
-            summary_text = _collapse_whitespace(summary_match.group(1))[:_DISPLAY_TEXT_TRUNCATE]
+            summary_text = _truncate_at_word_boundary(_collapse_whitespace(summary_match.group(1)), _DISPLAY_TEXT_TRUNCATE)
             return "system_notification", f"[background] {status_text}", summary_text
         if tail:
-            return "system_notification", f"[background] {_collapse_whitespace(tail)[:_DISPLAY_TEXT_TRUNCATE]}", ""
+            return "system_notification", f"[background] {_truncate_at_word_boundary(_collapse_whitespace(tail), _DISPLAY_TEXT_TRUNCATE)}", ""
         return "system_notification", "[background check]", ""
     if prompt_text.startswith(_WEBPAGE_CONTENT_PREFIX):
-        excerpt = _collapse_whitespace(cleaned)[:_WEBPAGE_DISPLAY_TRUNCATE]
+        excerpt = _truncate_at_word_boundary(_collapse_whitespace(cleaned), _WEBPAGE_DISPLAY_TRUNCATE)
         return "webpage_content", f"{excerpt}...", ""
     if prompt_text.startswith(_STOP_HOOK_FEEDBACK_PREFIX):
         return "stop_hook_feedback", "[background] stop hook feedback", ""
     if prompt_text.startswith(_AWAY_RECAP_PREFIX):
         return "away_recap", "[background] away recap", ""
 
-    return "real", _collapse_whitespace(cleaned)[:_DISPLAY_TEXT_TRUNCATE], ""
+    return "real", _truncate_at_word_boundary(_collapse_whitespace(cleaned), _DISPLAY_TEXT_TRUNCATE), ""
 
 
 def _tool_display_arg(calculated_type: str, calculated_payload: dict) -> str:

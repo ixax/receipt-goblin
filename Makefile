@@ -90,7 +90,8 @@ init: check-env
 
 # `start`: Brings up containers with existing images (no rebuild/recreate).
 # `up`: Rebuilds and recreates containers - the fix for baked-in config/env/file changes.
-# Both support SERVICE=<name> to scope to a single service (default: whole stack).
+# `logs`: Streams logs; scope to a single service with SERVICE=<name>.
+# start/up support SERVICE=<name> to scope to a single service (default: whole stack).
 start: check-env
 	docker compose $(COMPOSE_FILES) up -d $(SERVICE)
 
@@ -141,7 +142,7 @@ stop down: check-env langfuse-down observability-down
 	docker compose $(COMPOSE_FILES) down
 
 logs: check-env
-	docker compose $(COMPOSE_FILES) logs -f
+	docker compose $(COMPOSE_FILES) logs -f $(SERVICE)
 
 # Opt-in Langfuse stack (see README "Langfuse"). Langfuse never starts
 # automatically - must be run explicitly. Run this directly if you want to

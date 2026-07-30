@@ -6,8 +6,8 @@ description: >
   Sole owner of every state-changing Makefile target here (build/start/up/restart, langfuse-*/observability-*, backup-*/restore-*) - picks the target, runs it, verifies the outcome; never run these inline elsewhere.
   Not for git, whole-stack `docker compose down`, or broad blast-radius calls beyond one service/target's scope. Not for `make loadtest`/`loadtest-fixtures*` (loadtest-runner's job), except accepting its delegated webhook-1/webhook-2/webhook-worker recreate with CH overrides.
   Also owns editing Makefile/docker-compose.yml.
-  <version>1.12.3</version>
-tools: Bash, Read, Grep, Glob, Edit, Write
+  <version>1.14.0</version>
+tools: Bash, Read, Grep, Glob, Edit, Write, Skill
 model: claude-haiku-4-5
 ---
 
@@ -129,6 +129,16 @@ Read the file fully before editing, keep the `check-env`/`COMPOSE_FILES`/`VERSIO
 If the edit adds, removes, or renames a `Makefile` target, or changes a target's required args, also update README.md's "Make targets" reference table (under "## Reference") in the same change - not as a separate follow-up.
 If the edit changes something this agent itself needs to know (a new target, a new service, a new env var it manages), flag that to the caller so `harness-expert` can update this file (`.claude/agents/dev-ops.md`) in the same change - you can't edit your own file directly, that's `harness-expert`'s job.
 Treat all of this as part of the same "before reporting done" checklist as the run-verification step above, not an optional extra.
+
+### Doc sync on a real behavior change
+
+An important change to `Makefile`/`docker-compose.yml` needs two doc-sync steps in the same task, not a later follow-up.
+"Important" means: a target's flags/semantics changed, a new scoping env var was added (e.g. `SERVICE`), a target was added/removed/renamed, or a service was added/removed/reconfigured.
+A trivial/cosmetic edit (typo fix, formatting) needs neither step.
+
+1. Check whether README.md needs updating to match, and update it yourself if so - you already have Read/Write/Edit for it.
+2. Delegate to `harness-expert` (via Agent/SendMessage) to check whether AGENTS.md, `agent_docs/*.md`, or any `.claude/` agent/skill/command file references the changed behavior, and have it make those patches.
+   Don't patch harness files yourself - that scope belongs to `harness-expert`, not you.
 
 ## Backup & restore (`make backup-*`/`restore-*`)
 
