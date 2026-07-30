@@ -66,6 +66,11 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/guard_destructive.py\"",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/md_format_bash_gate.py\"",
+            "timeout": 5
           }
         ]
       },

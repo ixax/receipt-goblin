@@ -4,9 +4,9 @@ description: >
   Formatting conventions for markdown prose/tables, and for multi-sentence comments/docstrings in Python and YAML.
   TRIGGER - read before EVERY Edit/Write touching .md prose or tables (agent_docs/*.md, README.md, AGENTS.md, SKILL.md, agent/command bodies, any .md), and before writing a multi-sentence `#` comment or docstring in .py/.yml/.yaml.
   Covers: line wrapping, one-sentence-per-line, keep-sentences-short, enumeration-vs-list, quoting example text, table alignment.
-  A PostToolUse hook enforces one-sentence-per-line on .py/.yml/.yaml comments mechanically - read this to know the rule before writing, not just to pass the hook.
+  A PreToolUse hook enforces this mechanically, once per session, for Edit/Write and for Bash heredoc/redirect/tee writes to these extensions - not for Makefile comments or script-assembled content.
   SKIP for a single-sentence code comment, and .md files touching only code blocks/frontmatter.
-  <version>1.6.0</version>
+  <version>1.7.0</version>
 ---
 
 # md-format

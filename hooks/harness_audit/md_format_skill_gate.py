@@ -31,6 +31,7 @@ harness-expert, dashboard-panels-builder). So "already read" means either:
 anywhere earlier in the session transcript. Once read, the skill's content
 is already in context, so the gate stays open for the rest of the session.
 """
+import difflib
 import json
 import sys
 from pathlib import Path
@@ -111,6 +112,20 @@ def has_multiline_comment_block(text: str, is_py: bool) -> bool:
     return False
 
 
+def added_lines(old_text: str, new_text: str) -> str:
+    """Lines Edit is actually introducing, excluding unchanged context that
+    old_string/new_string carry only to make the match unique.
+    Prevents the gate from firing on code edits that merely happen to sit
+    next to an existing, untouched comment block."""
+    old_lines = old_text.splitlines()
+    new_lines = new_text.splitlines()
+    added = [
+        line[2:] for line in difflib.ndiff(old_lines, new_lines)
+        if line.startswith("+ ")
+    ]
+    return "\n".join(added)
+
+
 def qualifies(path: str, text: str) -> bool:
     if path.endswith(".md"):
         return True
@@ -128,7 +143,9 @@ def main() -> int:
         return 0
 
     if tool_name == "Edit":
-        text = tool_input.get("new_string", "")
+        old_string = tool_input.get("old_string", "")
+        new_string = tool_input.get("new_string", "")
+        text = new_string if path.endswith(".md") else added_lines(old_string, new_string)
     elif tool_name == "Write":
         text = tool_input.get("content", "")
     else:
