@@ -24,6 +24,15 @@ It was removed after it was found to overcount cost by several times whenever pr
 Before the `docker-compose.yml` network's `ipam.ip_range` exclusion existed, `litellm` and what is now `mcp-dev` grabbed `172.28.0.11`/`.12` before `webhook-1`/`webhook-2` could claim their static addresses, because Docker's automatic allocator handed out addresses from the same range the static IPs needed.
 Fixed by excluding `172.28.1.x` (the static-IP range) from `ipam.ip_range` (`172.28.0.0/24`), so the allocator can never hand one of those addresses to another container first.
 
+## `/goal` judge calls never hit prompt cache
+
+Investigated `todo/judge_call.md`: whenever `/goal` is active, Claude Code periodically fires a separate `judge_call` (an LLM call that checks whether the hook's stop condition is met, same `claude-sonnet-5` model as the main session, classified via `_classify_event()`/`_JUDGE_CALL_PREFIX` in `services/webhook/src/clickhouse_ingest.py`).
+Querying `agent_usage`/`agent_events` over the last 30 days (22 `judge_call` rows across 5 sessions) confirmed this is systemic, not a one-session fluke: `cache_read_tokens = 0` on every single `judge_call`, `cache_creation_tokens` averaging ~127K tokens (essentially equal to `input_tokens`), total cost $7.07 for those 22 calls alone.
+Non-judge calls in the exact same sessions behave normally: 1795/1838 hit the cache, average `cache_creation_tokens` is only ~2.7K (incremental growth) with ~117K average `cache_read_tokens`.
+Within a single session, `judge_call` `cache_creation_tokens` climbs in lockstep with session length (40K -> 190K across one session's calls) - each judge call re-serializes and re-writes the *entire* current context to cache from scratch rather than reading the already-warm cache the main session just wrote, because (per Anthropic's cache-diagnostics docs) prompt caching is an exact-prefix match and the judge call's prompt evidently isn't byte-identical to the main session's up to some breakpoint, so every token past the first divergence is treated as new.
+This is Claude Code's own `/goal` mechanism, not a bug in our ingestion/classification code - no fix was made here.
+Practical mitigation available to a user: keep `/goal` sessions short, or avoid `/goal` for long-running sessions, since cost scales with how large the session context has grown by the time each judge check fires (judge checks appear to fire quite frequently - one session had 19 judge calls within about 3 minutes).
+
 ## Git checkout/restore clobbering uncommitted work
 
 Three past incidents (a dashboard reformat "fixed" via `git checkout -- <file>`, a misdiagnosed-corruption checkout, and a bulk edit that used `git show :path` to self-"restore") each silently discarded concurrent uncommitted work, recovered only by luck each time.

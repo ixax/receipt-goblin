@@ -9,7 +9,7 @@ description: >
 # clickhouse-migration
 
 `mcp-dev`'s `query` tool is read-only by validation (SELECT/WITH only, DDL rejected server-side) - no agent can run a schema change through it.
-Any change to `agent_events`, `agent_usage`, `agent_messages`, or `ingest_raw` (new column, engine change, new table) happens in the main conversation with Bash, the same way `services/clickhouse/migrations/001_replacing_mergetree.sql` was applied:
+Any change to database tables (new column, engine change, new table) happens in the main conversation with Bash, the same way `services/clickhouse/migrations/001_replacing_mergetree.sql` was applied:
 
 - One `.sql` file per migration in `services/clickhouse/migrations/`,
   numbered in order (`002_...`, `003_...`, ...) with a short, descriptive
