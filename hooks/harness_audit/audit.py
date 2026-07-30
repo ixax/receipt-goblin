@@ -27,6 +27,34 @@ VOLATILE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 REF_PATTERN = re.compile(r"(?:\]\(|`|\s)((?:agent_docs|thoughts|references|scripts|\.claude)/[\w./-]+\.(?:md|py|sql|json))")
+MULTI_SENTENCE_PATTERN = re.compile(r"[a-z0-9`)\]]\. [A-Z]")
+
+
+def multi_sentence_lines(text: str):
+    """Heuristic for md-format's one-sentence-per-line rule: a prose line
+    containing '. X' mid-line is probably two sentences hard-wrapped
+    together. Skips frontmatter, code fences, list/table/blockquote lines
+    (blockquotes may be deliberate before/after examples of bad style)."""
+    in_fm = False
+    in_code = False
+    hits = []
+    for i, line in enumerate(text.splitlines(), 1):
+        if line.strip() == "---":
+            in_fm = not in_fm
+            continue
+        if in_fm:
+            continue
+        if line.strip().startswith("```"):
+            in_code = not in_code
+            continue
+        if in_code:
+            continue
+        s = line.strip()
+        if not s or s.startswith(("-", "*", "|", ">", "#")) or re.match(r"^\d+\.\s", s):
+            continue
+        if MULTI_SENTENCE_PATTERN.search(s):
+            hits.append((i, s[:80]))
+    return hits
 
 
 def tokens(text: str) -> int:
@@ -111,6 +139,10 @@ def main():
             for i, line in enumerate(text.splitlines(), 1):
                 if VOLATILE_PATTERN.search(line):
                     violations.append(f"{rel}:{i}: volatile content in cached prefix -> {line.strip()[:70]}")
+
+        if kind in ("agent", "skill", "rule", "root_md", "nested_md", "deep_dive"):
+            for i, s in multi_sentence_lines(text):
+                violations.append(f"{rel}:{i}: md-format one-sentence-per-line -> {s}")
 
         base = os.path.dirname(os.path.join(ROOT, rel))
         for ref in set(REF_PATTERN.findall(text)):

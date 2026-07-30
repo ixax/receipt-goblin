@@ -1,7 +1,8 @@
 {
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
-    "clickhouse"
+    "dev",
+    "stat"
   ],
   "hooks": {
     "SessionStart": [
@@ -60,6 +61,11 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/sync_hook.py\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/comment_format_hook.py\"",
             "timeout": 10
           }
         ]

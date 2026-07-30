@@ -7,13 +7,13 @@ description: >
   explicitly by name, or read by the harness-expert subagent when it
   performs a structural audit. Deterministic checks run via the
   PostToolUse hook, not from this skill.
-  <version>1.2.0</version>
+  <version>1.2.1</version>
 ---
 
 # Harness Guardian
 
-Keep the always-loaded context layer minimal. Every rule lives at the
-cheapest layer that still guarantees the behaviour.
+Keep the always-loaded context layer minimal.
+Every rule lives at the cheapest layer that still guarantees the behaviour.
 
 ## Budgets (hard limits)
 
@@ -24,14 +24,10 @@ out of sync.
 ## Workflow
 
 ### 1. Measure
-Budget checks are deterministic and run automatically: the PostToolUse
-hook (`hooks/harness_audit/audit_hook.py`, wired in `.claude/settings.json`)
-calls `hooks/harness_audit/audit.py` after any Edit/Write touching
-the harness and feeds violations back to the editing agent (exit 2).
-For a full standalone audit, run the script from the repo root (any
-agent with Bash, or the orchestrator); harness-expert has no Bash and
-consumes hook feedback instead of running the script itself. Exit code
-1 means violations found.
+Budget checks are deterministic and run automatically: the PostToolUse hook (`hooks/harness_audit/audit_hook.py`, wired in `.claude/settings.json`) calls `hooks/harness_audit/audit.py` after any Edit/Write touching the harness and feeds violations back to the editing agent (exit 2).
+For a full standalone audit, run the script from the repo root (any agent with Bash, or the orchestrator).
+harness-expert has no Bash and consumes hook feedback instead of running the script itself.
+Exit code 1 means violations found.
 
 ### 2. Classify
 For every line in over-budget files assign exactly one tag:
@@ -48,11 +44,13 @@ For every line in over-budget files assign exactly one tag:
   delete the prose line entirely.
 - **OBSOLETE** — fixed bugs, dead workarounds, stale versions → delete.
 
-When unsure between UNIVERSAL and TASK, choose TASK: an under-triggered
-skill costs one missed load; a bloated CLAUDE.md costs every session.
+When unsure between UNIVERSAL and TASK, choose TASK.
+An under-triggered skill costs one missed load.
+A bloated CLAUDE.md costs every session.
 
 ### 3. Relocate
-Apply moves. Rules:
+Apply moves.
+Rules:
 - A rule exists in exactly one file. Delete the source line when moving.
 - Replace any inlined code snippet with a `path:line` reference.
 - Convert prose to imperative bullets; collapse near-duplicate examples
@@ -64,19 +62,14 @@ Apply moves. Rules:
   All "when to use" wording goes in the description, none in the body.
 
 ### 4. Verify
-Re-run `hooks/harness_audit/audit.py` — must exit 0. Also run
-`python3 scripts/sync_harness.py --check`; nonzero exit means
-`agent_docs/harness-index.md` is stale — regenerate via
-`make harness-index` or `python3 scripts/sync_harness.py`. Then
-sanity-check behaviour is preserved: for each ENFORCEABLE rule converted
-to a hook, trigger it once and confirm the hook blocks/fixes as the
-prose used to instruct.
+Re-run `hooks/harness_audit/audit.py` — must exit 0.
+Also run `python3 scripts/sync_harness.py --check`.
+Nonzero exit means `agent_docs/harness-index.md` is stale — regenerate via `make harness-index` or `python3 scripts/sync_harness.py`.
+Then sanity-check behaviour is preserved: for each ENFORCEABLE rule converted to a hook, trigger it once and confirm the hook blocks/fixes as the prose used to instruct.
 
 ### 5. Report
-Output a short table: file, tokens before, tokens after, lines moved
-(with destination), lines deleted. Append one line per audit to
-`thoughts/harness-audit-log.md` (date, total always-loaded tokens) so
-growth is visible as a trend.
+Output a short table: file, tokens before, tokens after, lines moved (with destination), lines deleted.
+Append one line per audit to `thoughts/harness-audit-log.md` (date, total always-loaded tokens) so growth is visible as a trend.
 
 ## Cache hygiene (always-loaded files are the cached prefix)
 
@@ -96,10 +89,12 @@ growth is visible as a trend.
 
 ## Dual-harness layout (Claude Code + Codex CLI)
 
-The harness must behave identically under both tools. Enforce this layout:
+The harness must behave identically under both tools.
+Enforce this layout:
 
 - `AGENTS.md` is the canonical root file; `CLAUDE.md` is a symlink to it.
-  Same for nested directories. Never let the two diverge as real files.
+  Same for nested directories.
+  Never let the two diverge as real files.
 - Codex concatenates the AGENTS.md chain root-down with a 32 KiB default
   cap (`project_doc_max_bytes`) and silently truncates beyond it — the
   audit script checks the combined chain size.

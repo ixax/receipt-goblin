@@ -35,6 +35,34 @@ def is_harness_path(rel: str) -> bool:
     )
 
 
+# Violation kinds that inherently span multiple files (duplicate-rule
+# detection, aggregate byte/token totals, the CLAUDE.md/AGENTS.md pairing
+# check) - these stay in the gate for every harness edit since fixing them
+# genuinely may require touching a file other than the one just edited.
+# Per-file kinds (budget, description word count, dead reference, volatile
+# content, md-format one-sentence-per-line) are filtered to the edited
+# file only, below - otherwise a large pre-existing backlog anywhere in
+# the tree would block every future unrelated edit.
+GLOBAL_VIOLATION_PREFIXES = ("duplicate rule in", "AGENTS.md chain")
+
+
+def relevant_violations(report: str, rel: str):
+    lines = []
+    for line in report.splitlines():
+        s = line.strip()
+        if not s.startswith("- "):
+            lines.append(line)
+            continue
+        body = s[2:]
+        if body.startswith(rel + ":") or body.startswith(GLOBAL_VIOLATION_PREFIXES):
+            lines.append(line)
+        elif ": CLAUDE.md and AGENTS.md are separate files" in body and (
+            rel in ("CLAUDE.md", "AGENTS.md") or rel.endswith((os.sep + "CLAUDE.md", os.sep + "AGENTS.md"))
+        ):
+            lines.append(line)
+    return "\n".join(lines)
+
+
 def main() -> int:
     payload = json.load(sys.stdin)
     path = payload.get("tool_input", {}).get("file_path", "")
@@ -54,6 +82,9 @@ def main() -> int:
         marker = "VIOLATIONS:"
         out = result.stdout
         report = out[out.index(marker):] if marker in out else out
+        report = relevant_violations(report, rel)
+        if not report.strip() or report.strip() == "VIOLATIONS:":
+            return 0
         print(f"Harness budget audit failed after editing {rel}:\n{report}", file=sys.stderr)
         return 2
     return 0

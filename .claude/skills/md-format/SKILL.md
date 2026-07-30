@@ -1,47 +1,40 @@
 ---
 name: md-format
 description: >
-  Formatting conventions for markdown prose and tables in this repo.
-  TRIGGER - read before EVERY Edit/Write that touches .md prose or tables, not just the first one in a task: agent_docs/*.md, README.md, AGENTS.md, SKILL.md and agent/command .md bodies, or any other .md file.
-  Covers: line wrapping, one-sentence-per-line, enumeration-vs-list, table pipe alignment.
-  SKIP for non-markdown files, and for .md files where only code blocks or frontmatter are touched.
-  <version>1.5.0</version>
+  Formatting conventions for markdown prose/tables, and for multi-sentence comments/docstrings in Python and YAML.
+  TRIGGER - read before EVERY Edit/Write touching .md prose or tables (agent_docs/*.md, README.md, AGENTS.md, SKILL.md, agent/command bodies, any .md), and before writing a multi-sentence `#` comment or docstring in .py/.yml/.yaml.
+  Covers: line wrapping, one-sentence-per-line, keep-sentences-short, enumeration-vs-list, quoting example text, table alignment.
+  A PostToolUse hook enforces one-sentence-per-line on .py/.yml/.yaml comments mechanically - read this to know the rule before writing, not just to pass the hook.
+  SKIP for a single-sentence code comment, and .md files touching only code blocks/frontmatter.
+  <version>1.6.0</version>
 ---
 
 # md-format
 
-Conventions to apply whenever authoring or editing markdown prose or
-tables in this repo. None apply to code blocks or table cells beyond
-alignment - only to prose paragraphs, list formatting, and table pipe
-formatting.
+Conventions to apply whenever authoring or editing markdown prose or tables in this repo.
+None apply to code blocks or table cells beyond alignment - only to prose paragraphs, list formatting, and table pipe formatting.
 
 ## Line wrapping
 
-Never wrap a line by character count - not at ~80 chars, not at ~160. A
-line runs however long the sentence needs; use the full width.
+Never wrap a line by character count - not at ~80 chars, not at ~160.
+A line runs however long the sentence needs; use the full width.
 
-When a paragraph has more than one sentence, put each sentence on its own
-line (semantic line breaks) instead. A paragraph becomes one line per
-sentence, not a ragged block of short, character-wrapped lines.
+When a paragraph has more than one sentence, put each sentence on its own line (semantic line breaks) instead.
+A paragraph becomes one line per sentence, not a ragged block of short, character-wrapped lines.
 
-This applies to prose only - not to code blocks, table cells, or
-frontmatter.
+This applies to prose only - not to code blocks, table cells, or frontmatter.
 
 ## Keep each sentence short
 
-The one-sentence-per-line rule above splits a paragraph by sentence. This
-rule makes each of those sentences short in the first place.
+The one-sentence-per-line rule above splits a paragraph by sentence.
+This rule makes each of those sentences short in the first place.
 
-A sentence with two or more independent clauses joined by "-" or ";"
-should usually become two separate sentences (two lines) instead. One
-idea per sentence. No word-count target - length isn't measured, clause
-count is: if you can split "X, and Y" or "X - Y" into "X. Y." without
-losing meaning, split it.
+A sentence with two or more independent clauses joined by "-" or ";" should usually become two separate sentences (two lines) instead.
+One idea per sentence.
+No word-count target - length isn't measured, clause count is: if you can split "X, and Y" or "X - Y" into "X. Y." without losing meaning, split it.
 
-This doesn't mean cramming everything into fragments - keep a sentence
-whole when it expresses one idea, however many words that takes. It means
-not joining two separate, already-complete ideas into one line just to
-avoid a second line.
+This doesn't mean cramming everything into fragments - keep a sentence whole when it expresses one idea, however many words that takes.
+It means not joining two separate, already-complete ideas into one line just to avoid a second line.
 
 Before (a real sentence from this repo's docs, one idea per clause, three
 clauses joined into one sentence):
@@ -62,14 +55,9 @@ After (same facts, one idea per sentence):
 
 ## Enumeration vs. inline list
 
-When a sentence's core content is itself an enumeration of 3+ independent
-parallel items, format it as a bulleted list (one item per line) instead of
-joining the items with commas/dashes into a single line. This is different
-from incidental commas inside one flowing idea ("the file is large, so X
-happens") - that's one idea, not a list, and stays inline. The signal is
-whether the items are independent and parallel, especially when each one
-carries its own parenthetical detail: that's a sign the line is actually a
-list wearing sentence clothing.
+When a sentence's core content is itself an enumeration of 3+ independent parallel items, format it as a bulleted list (one item per line) instead of joining the items with commas/dashes into a single line.
+This is different from incidental commas inside one flowing idea ("the file is large, so X happens") - that's one idea, not a list, and stays inline.
+The signal is whether the items are independent and parallel, especially when each one carries its own parenthetical detail: that's a sign the line is actually a list wearing sentence clothing.
 
 If the enumeration sits inside an existing bullet (a parent `- label - ...`
 item), nest the new list one level deeper under that bullet rather than
@@ -98,6 +86,12 @@ After (lead-in sentence kept as prose, items broken out):
 > - `prometheus` (opt-in `observability` profile)
 > - `langfuse-web` (opt-in `langfuse` profile)
 
+## Quoting example text
+
+Use `> ` (CommonMark blockquote) for any quoted or illustrative text block - example sentences, before/after pairs, quoted output.
+Never use plain space indentation for this: 1-3 spaces render as an ordinary paragraph (the indentation is silently dropped), and 4+ spaces triggers an indented code block instead (monospace, no wrapping) - neither renders as a quote.
+`>` is the only CommonMark construct that reliably renders as a distinct quoted block across renderers.
+
 ## Heading hierarchy
 
 Every file has exactly one H1 (`#`), the document title.
@@ -116,14 +110,14 @@ Key rules:
 - Use active voice.
 - Write short paragraphs. Keep one topic in each paragraph.
 
-This makes texts clear. Agents work better. Non-native readers understand the work.
+This makes texts clear.
+Agents work better.
+Non-native readers understand the work.
 
 ## Table alignment
 
-Pad every cell so the `|` column separators line up vertically across all
-rows, instead of minimal-width `| a | b |` pipes. Compute each column's
-width from its longest cell (header included) and pad every other cell in
-that column to match before placing the `|`.
+Pad every cell so the `|` column separators line up vertically across all rows, instead of minimal-width `| a | b |` pipes.
+Compute each column's width from its longest cell (header included) and pad every other cell in that column to match before placing the `|`.
 
 ## Applying all
 

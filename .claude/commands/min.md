@@ -1,23 +1,21 @@
 ---
-description: >
-  Curated context compaction — classifies session state into active work worth keeping versus resolved noise worth discarding, then compacts accordingly.
-  Manual only, CLI-agnostic (Claude Code or Codex) — invoke as /min when context has grown large but the session needs to continue, not restart.
+description: Curated context compaction - classifies session state into active work worth keeping vs. resolved noise worth discarding, then compacts accordingly. Manual only, CLI-agnostic (Claude Code or Codex); invoke as /min when context is large but the session should continue, not restart.
 disable-model-invocation: true
 ---
 
-# /min — curated compaction (Claude Code + Codex CLI)
+# /min - curated compaction (Claude Code + Codex CLI)
 
 ## 1. Classify the session before compacting
 
 Scan the conversation and sort everything into two buckets. Do not skip
-this step or hand /compact a vague instruction — the whole point of /min
+this step or hand /compact a vague instruction - the whole point of /min
 over bare /compact is this explicit split.
 
 KEEP:
 - Open tasks and unfinished work items, with their current status
 - Open bugs: symptom, where it was last traced to, what's been ruled out
 - Decisions made this session that aren't yet written to AGENTS.md/specs
-  (e.g. "we chose approach X because Y") — these would be lost forever
+  (e.g. "we chose approach X because Y") - these would be lost forever
   if dropped, since they don't exist anywhere else
 - Facts about the codebase discovered this session that contradict or
   extend what AGENTS.md/skills already say
@@ -29,7 +27,7 @@ DROP:
   abandoned, once the reason for abandoning is captured in one line)
 - Verbose tool output already synthesized into a conclusion (full file
   dumps, long grep/test output, full stack traces already summarized)
-- Errors that were hit and fixed, once the fix is known — keep only
+- Errors that were hit and fixed, once the fix is known - keep only
   "X failed because Y, fixed by Z" as one line, not the raw traceback
 - One-off questions that were fully answered and have no bearing on
   what's left to do
@@ -40,7 +38,7 @@ Write (create or overwrite) `MIN_DUMP.md` in the project root - one fixed
 path, not per-session, so a later /min or a fresh session can find it
 without knowing any session id:
 
-    # Session state — <ISO timestamp>
+    # Session state - <ISO timestamp>
     ## Open tasks
     - ...
     ## Open bugs
@@ -48,7 +46,7 @@ without knowing any session id:
     ## Decisions not yet persisted to AGENTS.md/specs
     - ...
 
-This file is the durable backup — it survives even if compaction below
+This file is the durable backup - it survives even if compaction below
 drops something the instructions didn't anticipate. It gets overwritten
 by the next /min run, so it holds the latest snapshot only, not a history.
 
@@ -73,3 +71,5 @@ attempt to compact yourself. Print exactly this and stop:
 ## 4. Report back
 
 After handing off the command, give a short summary: how many open tasks/bugs survived, and point to `MIN_DUMP.md` as the on-disk backup.
+
+<version>1.0.0</version>

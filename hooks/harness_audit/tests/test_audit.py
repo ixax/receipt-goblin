@@ -179,6 +179,28 @@ class TestCollectAndMain(unittest.TestCase):
         code, out = self.run_main()
         self.assertEqual(code, 0)
 
+    def test_multi_sentence_line_flagged(self):
+        write(
+            self.root / ".claude" / "agents" / "x.md",
+            "---\nname: x\ndescription: d\n---\n"
+            "This is one sentence. This is a second sentence on the same line.\n",
+        )
+        code, out = self.run_main()
+        self.assertEqual(code, 1)
+        self.assertIn("md-format one-sentence-per-line", out)
+
+    def test_multi_sentence_skips_frontmatter_and_code_and_lists(self):
+        write(
+            self.root / ".claude" / "agents" / "x.md",
+            "---\nname: x\ndescription: One sentence. Another sentence, still fine here.\n---\n"
+            "```\ncode. Still code.\n```\n"
+            "- A bullet. With two sentences.\n"
+            "> Quoted before-example. Two sentences.\n"
+            "One clean sentence per line here.\n",
+        )
+        code, out = self.run_main()
+        self.assertEqual(code, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

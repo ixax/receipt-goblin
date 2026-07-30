@@ -2,20 +2,17 @@
 name: dashboard-panels
 description: >
   Formatting/build conventions for panels, graphs, and widgets in this repo's Grafana dashboards.
-  Two tiers, clearly headed below: Universal conventions apply to every dashboard JSON under
-  services/grafana/dashboards/ and services/grafana/dashboards-health/ (rawSql formatting, panel-description
-  discipline, SQL-testing/perf-check discipline, dataLink-building principles, chart color/legend policy,
-  general table-panel habits). agents_overview.json-specific conventions apply only to
-  services/grafana/dashboards/agents_overview.json (its column-width table, token/cost units, its exact
-  dataLink URL patterns/template variables, its tab structure) - never copy those onto another dashboard's
-  panels.
-  TRIGGER - read this BEFORE creating a new panel, editing an existing panel's query/options, or reviewing
-  a panel edit, in any of those dashboard files.
-  SKIP for panel-76 "Trace" and its companion panel-77 in agents_overview.json specifically (those go
-  through the dynamictext-panel-builder agent instead - see AGENTS.md), and for any change to a dashboard
-  that isn't actually about a panel's own content (annotations, variables, dashboard-level settings - those
-  are plain edits, no skill needed).
-  <version>1.4.0</version>
+  Two tiers: Universal conventions apply to every dashboard JSON under services/grafana/dashboards/
+  and dashboards-health/ (rawSql formatting, panel-description discipline, SQL testing/perf-check,
+  dataLink principles, chart color/legend policy, table-panel habits). agents_overview.json-specific
+  conventions apply only to services/grafana/dashboards/agents_overview.json (column-width table,
+  token/cost units, dataLink URL/template-variable patterns, tab structure) - never copy onto another
+  dashboard's panels.
+  TRIGGER - read BEFORE creating/editing a panel's query/options, or reviewing a panel edit, in any of
+  those files.
+  SKIP for agents_overview.json's panel-76/77 "Trace" pair (handled by dynamictext-panel-builder
+  instead), and for non-panel dashboard edits (annotations, variables, dashboard-level settings).
+  <version>1.5.1</version>
 ---
 
 # dashboard-panels
@@ -33,33 +30,20 @@ Two repo-wide guardrails still live in `AGENTS.md`'s "Rules to not violate" (not
 
 ### SQL formatting
 
-Write `rawSql` the same way you'd write a formatted query file: real
-newlines (not one long line), tab/2-space indentation for nested clauses
-(CTEs, subqueries, `AND` chains) - not a minified one-liner. This is what
-every panel in every dashboard file already does; keep new/edited queries
-consistent with that rather than collapsing them for a smaller diff.
+Write `rawSql` the same way you'd write a formatted query file: real newlines (not one long line), tab/2-space indentation for nested clauses (CTEs, subqueries, `AND` chains) - not a minified one-liner.
+This is what every panel in every dashboard file already does.
+Keep new/edited queries consistent with that rather than collapsing them for a smaller diff.
 
 ### Testing a panel's SQL
 
-When validating a fix against ClickHouse, test the panel's literal `rawSql`
-with only `${...}` placeholders substituted - never a simplified/
-reconstructed rewrite. A trimmed test query that drops a join/column that
-looks like template-variable plumbing can pass cleanly while the real query
-still fails (e.g. `AMBIGUOUS_IDENTIFIER` from a dropped join that was
-actually load-bearing).
+When validating a fix against ClickHouse, test the panel's literal `rawSql` with only `${...}` placeholders substituted - never a simplified/reconstructed rewrite.
+A trimmed test query that drops a join/column that looks like template-variable plumbing can pass cleanly while the real query still fails (e.g. `AMBIGUOUS_IDENTIFIER` from a dropped join that was actually load-bearing).
 
 ### Perf-checking a rewrite
 
-Whenever a panel's `rawSql` is rewritten (in any dashboard, not just
-`agents_overview.json`) - whether the caller asked for a rewrite explicitly
-or it happens as a side effect of other work - it gets a before-run and an
-after-run via `services/grafana/scripts/query_perf.py` + the
-`query-perf-runner` agent, driven by `sql-expert` (see AGENTS.md's "Rules
-to not violate" and `sql-expert`'s own workflow). This is not optional and
-not something to skip because the change "should obviously be faster" - a
-`diff` table is a finding, a guess isn't. A brand-new panel doesn't need a
-before/after (nothing to compare against) but does still deserve a "how
-fast is this now" baseline run.
+Whenever a panel's `rawSql` is rewritten (in any dashboard, not just `agents_overview.json`) - whether the caller asked for a rewrite explicitly or it happens as a side effect of other work - it gets a before-run and an after-run via `services/grafana/scripts/query_perf.py` + the `query-perf-runner` agent, driven by `sql-expert` (see AGENTS.md's "Rules to not violate" and `sql-expert`'s own workflow).
+This is not optional and not something to skip because the change "should obviously be faster" - a `diff` table is a finding, a guess isn't.
+A brand-new panel doesn't need a before/after (nothing to compare against) but does still deserve a "how fast is this now" baseline run.
 
 ### Panel descriptions
 
@@ -75,40 +59,25 @@ Keep both lines short but substantive - a sentence each, not a paragraph.
 
 **Mandatory on creation**: every new panel gets this description filled in at creation time, not left blank or added later as an afterthought.
 
-**Mandatory on any edit to a panel's query or options**: any create or edit
-(`rawSql`, field set, grouping/join/computation, `vizConfig` options - not
-just column adds/removes/renames) must leave that panel with a non-empty,
-accurate `description` in this format when the edit is done. This applies
-regardless of the panel's description state going in - a panel that was
-already blank before the edit is not exempt from this; finding it blank is
-not a reason to leave it blank, it's the trigger to write one. Never treat
-an already-blank description as "the file's existing convention" to
-preserve - a blank description is never a convention, it's a gap this rule
-closes on the next touch.
+**Mandatory on any edit to a panel's query or options**: any create or edit (`rawSql`, field set, grouping/join/computation, `vizConfig` options - not just column adds/removes/renames) must leave that panel with a non-empty, accurate `description` in this format when the edit is done.
+This applies regardless of the panel's description state going in - a panel that was already blank before the edit is not exempt from this.
+Finding it blank is not a reason to leave it blank - it's the trigger to write one.
+Never treat an already-blank description as "the file's existing convention" to preserve - a blank description is never a convention, it's a gap this rule closes on the next touch.
 A stale description is worse than none - this was a real bug (found and fixed 2026-07-26): "Top repeating tool errors"' description said "the first 80 characters of failed_tool_error" after the underlying truncation had already been removed, because the query changed without the description being revisited.
 
 ### Table panel habits
 
-- **If a panel's data is sorted** (via SQL `ORDER BY` or a `sortBy`
-  transform), the table's `vizConfig.spec.options.sortBy` must name the same
-  field(s)/direction, so Grafana renders the sort-direction arrow in the
-  column header. `sortBy` is an array of `{"displayName": "<field>", "desc":
-  true|false}` and can list more than one entry for a multi-column sort. If
-  the `ORDER BY` is a computed expression with no matching output column
-  (e.g. `ORDER BY (a + b) DESC`), add that expression as a real aliased
-  column in the `SELECT` instead (e.g. `SELECT ..., a + b AS tokens_total`,
-  then `ORDER BY tokens_total`) rather than leaving the sort unrepresentable.
+- **If a panel's data is sorted** (via SQL `ORDER BY` or a `sortBy` transform), the table's `vizConfig.spec.options.sortBy` must name the same field(s)/direction, so Grafana renders the sort-direction arrow in the column header.
+  `sortBy` is an array of `{"displayName": "<field>", "desc": true|false}` and can list more than one entry for a multi-column sort.
+  If the `ORDER BY` is a computed expression with no matching output column (e.g. `ORDER BY (a + b) DESC`), add that expression as a real aliased column in the `SELECT` instead (e.g. `SELECT ..., a + b AS tokens_total`, then `ORDER BY tokens_total`) rather than leaving the sort unrepresentable.
 - **Long free-text columns (tool arguments, error text, excerpts, JSON payloads) get the "Cell value inspect" eye icon** so the table row stays compact and the full value opens in a drawer on click, instead of wrapping/truncating inline: set two properties on that field's `fieldConfig.overrides` entry - `custom.cellOptions: {"type": "auto"}` and `custom.inspect: true`.
   Do **not** use `custom.cellOptions: {"type": "json-view"}` for this - that's a different, older mechanism (Grafana's "JSON View" cell display mode) that only renders correctly for actual JSON values; on plain text it has long-standing, confirmed bugs where the eye icon never appears.
   `custom.inspect: true` is the dedicated, value-type-agnostic toggle Grafana added for exactly this ("Improved cell inspect in tables", 2024-08-22) and is what actually works - if any field still has `custom.cellOptions: {"type": "json-view"}`, convert it to `{"type": "auto"}` + `custom.inspect: true` rather than leaving old and new patterns mixed.
   Grafana's inspect drawer (shipped since 11.3) auto-detects whether a cell's raw text is valid JSON and shows it pretty-printed in a "Code editor" tab if so - no separate flag needed beyond `custom.inspect: true` itself.
   **Never wrap an eye-icon column's SQL in a length-limiting function (`substring(...)`, `left(...)`, etc.)** - the whole point of the eye icon is that the full value opens in the drawer on click, so cutting the value at an arbitrary character count almost always produces invalid JSON, breaking the auto-detection above. Select the full underlying column instead.
   Long free-text/JSON columns don't get a `custom.width` at all - they get the eye icon instead of a fixed width.
-- **Column order: long free-text/JSON columns (the ones getting the eye
-  icon) always go last** in a table's column order, after every other
-  column. Column order follows the `SELECT` list's order (or an explicit
-  `Organize fields` transform if one exists) - put the eye-icon column(s)
-  at the end of the `SELECT` list rather than in the middle.
+- **Column order: long free-text/JSON columns (the ones getting the eye icon) always go last** in a table's column order, after every other column.
+  Column order follows the `SELECT` list's order (or an explicit `Organize fields` transform if one exists) - put the eye-icon column(s) at the end of the `SELECT` list rather than in the middle.
 - **Don't show a raw id column next to its own display-name column.** When a
   table has both an id-shaped field and a human-readable name for the same
   entity, hide the id column (`custom.hidden: true` on that field's
@@ -140,12 +109,8 @@ A stale description is worse than none - this was a real bug (found and fixed 20
   true`), not a raw `<a href>` baked into `rawSql` output - that pattern is
   for Dynamic Text panels' freeform HTML only, not for ordinary table/stat
   panels.
-- **A single dataLink can only target one unambiguous value.** Don't build
-  a link on an aggregated multi-value column (e.g. a comma-joined list from
-  `groupUniqArray(...)`/`arrayStringConcat(...)`) - leave such columns
-  unlinked rather than pointing a link at the whole joined string. Check
-  whether a column is a single value or a joined list, not just its name
-  (a singular vs. plural column name is a hint, not proof).
+- **A single dataLink can only target one unambiguous value.** Don't build a link on an aggregated multi-value column (e.g. a comma-joined list from `groupUniqArray(...)`/`arrayStringConcat(...)`) - leave such columns unlinked rather than pointing a link at the whole joined string.
+  Check whether a column is a single value or a joined list, not just its name (a singular vs. plural column name is a hint, not proof).
 - A visible id-like column that exists mainly to be a link (not to be read
   as text) can show a short mapped label instead of the raw value - see
   `agents_overview.json`'s `session_id` "open ↗" pattern below for the
@@ -164,33 +129,20 @@ A stale description is worse than none - this was a real bug (found and fixed 20
   - If the number of series is dynamic/unbounded (split by a per-category
     field), don't hardcode a color - leave `fieldConfig.defaults.color.mode`
     as `"palette-classic"` so Grafana auto-assigns per series.
-- **Hide the legend** (`options.legend.showLegend: false`) when a panel
-  only ever plots one value field - a legend with a single fixed entry is
-  redundant. Keep the legend shown once a panel can have more than one
-  series (a fixed pair, or a dynamic per-category split).
+- **Hide the legend** (`options.legend.showLegend: false`) when a panel only ever plots one value field - a legend with a single fixed entry is redundant.
+  Keep the legend shown once a panel can have more than one series (a fixed pair, or a dynamic per-category split).
 
 ## agents_overview.json-specific conventions
 
-Everything in this section applies only to
-`services/grafana/dashboards/agents_overview.json` (and its generated
-mirror, `query_performance.json`) - it's built around this dashboard's
-specific schema (session_id/user_id/issue_id, tokens/cost), template
-variables (`var-session_id`, `var-user_id`, `var-issue_id`, etc.), and tab
-structure (`Sessions & Debugging` -> `Trace`). None of it generalizes to
-another dashboard file - don't reach for a width/unit/link pattern from
-here when editing `docker_containers.json`, `clickhouse.json`, or
-`infra_overview.json`.
+Everything in this section applies only to `services/grafana/dashboards/agents_overview.json` (and its generated mirror, `query_performance.json`) - it's built around this dashboard's specific schema (session_id/user_id/issue_id, tokens/cost), template variables (`var-session_id`, `var-user_id`, `var-issue_id`, etc.), and tab structure (`Sessions & Debugging` -> `Trace`).
+None of it generalizes to another dashboard file - don't reach for a width/unit/link pattern from here when editing `docker_containers.json`, `clickhouse.json`, or `infra_overview.json`.
 
 ### Units
 
-- **Token columns get `"unit": "locale"`** (comma-grouped, e.g. `1,234,567`)
-  - never leave a raw token-count column unitless. **Cost/dollar columns get
-  `"unit": "currencyUSD"`** (renders with a `$` prefix) - never hand-format a
-  `$` into the SQL string itself. Both are set per-field under
-  `fieldConfig.defaults.unit` (or a `fieldConfig.overrides` entry targeting
-  that one field by name if the panel has other non-money/non-token
-  columns). These are established conventions already used across ~20
-  panels each - match them, don't invent a third way.
+- **Token columns get `"unit": "locale"`** (comma-grouped, e.g. `1,234,567`) - never leave a raw token-count column unitless.
+  **Cost/dollar columns get `"unit": "currencyUSD"`** (renders with a `$` prefix) - never hand-format a `$` into the SQL string itself.
+  Both are set per-field under `fieldConfig.defaults.unit` (or a `fieldConfig.overrides` entry targeting that one field by name if the panel has other non-money/non-token columns).
+  These are established conventions already used across ~20 panels each - match them, don't invent a third way.
 - **A table never shows a bare combined `tokens` column - always show `tokens_input` and `tokens_output` as separate columns instead.**
   A single merged token count hides which direction (prompt vs. completion) actually drove the number, and this dashboard already has the standard split formula established (see "Top 10 users by tokens"/"Issue overview") - there's no reason for a table to fall back to the ephemeral combined form.
   If a total is also genuinely useful (e.g. as the sort key), add `tokens_total` alongside the two split columns, not instead of them.
@@ -199,21 +151,15 @@ here when editing `docker_containers.json`, `clickhouse.json`, or
 
 ### Column widths
 
-`custom.width` follows the column's semantic type, not ad-hoc per-panel
-guessing:
+`custom.width` follows the column's semantic type, not ad-hoc per-panel guessing:
 
 - `session_id` -> 130 (same width as user display-name, next line)
 - user display-name (`user_name` etc.) -> 130
 - token count -> 150
 - cost/dollar -> 100
-- duration/elapsed-time columns -> 130. This bucket is matched by
-  **meaning, not by a fixed field name** - anything measuring an elapsed
-  time span (a duration, a latency, a time-to-first-token, a wall-clock
-  length) gets 130 regardless of what it's called or what unit it's in
-  (`duration_s`, `latency_ms`, `ttft_ms`, `session_duration_period_s`,
-  a future `response_time_min` - all the same bucket). Don't skip this
-  width just because the field's name doesn't literally contain the word
-  "duration".
+- duration/elapsed-time columns -> 130.
+  This bucket is matched by **meaning, not by a fixed field name** - anything measuring an elapsed time span (a duration, a latency, a time-to-first-token, a wall-clock length) gets 130 regardless of what it's called or what unit it's in (`duration_s`, `latency_ms`, `ttft_ms`, `session_duration_period_s`, a future `response_time_min` - all the same bucket).
+  Don't skip this width just because the field's name doesn't literally contain the word "duration".
 - timestamp -> 170
 - issue -> 130
 - `tool_name` in any form (`tool_name`, `mcp_tool_name`, etc.), and
@@ -231,13 +177,9 @@ guessing:
   (even with a correct filter link on it), that's the universal rule not
   being applied, not an acceptable variant: hide `user_id` and show
   `user_name` with the link on it instead.
-- **Relative column order: when a table shows both `session_id` and
-  `user_name`, `session_id` must come before `user_name`** - this is a
-  relative constraint between just these two fields, not a rule about where
-  the pair sits in the table overall. Don't reorder or move any other
-  column to satisfy it - if some other field already sits before
-  `session_id`, leave it there; the only thing that must hold is
-  `session_id` appears to the left of `user_name` whenever both exist.
+- **Relative column order: when a table shows both `session_id` and `user_name`, `session_id` must come before `user_name`** - this is a relative constraint between just these two fields, not a rule about where the pair sits in the table overall.
+  Don't reorder or move any other column to satisfy it - if some other field already sits before `session_id`, leave it there.
+  The only thing that must hold is `session_id` appears to the left of `user_name` whenever both exist.
 
 ### This dashboard's exact dataLink URL patterns
 
@@ -264,16 +206,12 @@ guessing:
   percent-encoded form (`&` -> `%26`) - and set both params to that same
   encoded slug: `dtab=<encoded top-tab title>` and `<encoded top-tab
   title>-dtab=<encoded sub-tab title>`.
-- **Filter to an issue**, from any column displaying an issue (`issue_id` or
-  similarly-named): every such column is a link, using the same mechanics as
-  the user/session links above but **without** a value mapping - the cell
-  keeps showing the actual issue text as-is, it just becomes clickable.
+- **Filter to an issue**, from any column displaying an issue (`issue_id` or similarly-named): every such column is a link, using the same mechanics as the user/session links above but **without** a value mapping - the cell keeps showing the actual issue text as-is, it just becomes clickable.
   ```
   /d/${__dashboard.uid}?${__url_time_range}&var-issue_id=${__value.text}
   ```
-  `title: "Filter to this issue"`, `targetBlank: true` (same as
-  user/session). Apply this to every table panel that has an issue/issue_id
-  column, not just new ones.
+  `title: "Filter to this issue"`, `targetBlank: true` (same as user/session).
+  Apply this to every table panel that has an issue/issue_id column, not just new ones.
 - **Filter to a repo**, from a column displaying a git repo (`git_repo` or similarly-named) - same no-mapping, show-the-real-text mechanics as the issue rule above, and the variable is the repo alone, nothing else:
   ```
   /d/${__dashboard.uid}?${__url_time_range}&var-git_repo=${__value.text}

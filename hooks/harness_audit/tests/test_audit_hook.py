@@ -87,6 +87,33 @@ class TestMainEndToEnd(unittest.TestCase):
         code = self.run_hook(str(skill))
         self.assertEqual(code, 2)
 
+    def test_preexisting_violation_in_other_file_does_not_block(self):
+        """A pre-existing md-format violation in an unrelated file must not
+        block an edit to a different, clean harness file - only violations
+        in the file just edited (or genuinely cross-file kinds) should."""
+        dirty = self.root / ".claude" / "agents" / "dirty.md"
+        dirty.parent.mkdir(parents=True, exist_ok=True)
+        dirty.write_text(
+            "---\nname: dirty\ndescription: d\n---\n"
+            "One sentence here. Two sentences crammed together.\n",
+            encoding="utf-8",
+        )
+        clean = self.root / ".claude" / "agents" / "clean.md"
+        clean.write_text("---\nname: clean\ndescription: d\n---\nOne sentence.\n", encoding="utf-8")
+        code = self.run_hook(str(clean))
+        self.assertEqual(code, 0)
+
+    def test_own_violation_still_blocks(self):
+        skill = self.root / ".claude" / "skills" / "x" / "SKILL.md"
+        skill.parent.mkdir(parents=True, exist_ok=True)
+        skill.write_text(
+            "---\nname: x\ndescription: d\n---\n"
+            "One sentence here. Two sentences crammed together.\n",
+            encoding="utf-8",
+        )
+        code = self.run_hook(str(skill))
+        self.assertEqual(code, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
