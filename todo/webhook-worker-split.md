@@ -5,7 +5,8 @@
 `services/webhook/src/` is a monolith (`server.py`, `worker.py`, `queue_client.py`,
 `clickhouse_ingest.py` at 1552 lines, `loadtest.py`, `reparse.py`, `migrate.py`,
 `config.py`, `fastjson.py`) sharing one `Dockerfile`/`requirements.txt`, with
-`APP_ROLE` picking the runtime role. A prior TODO note considered splitting this
+`APP_ROLE` picking the runtime role.
+A prior TODO note considered splitting this
 but rejected it, to avoid duplicating a ~214MB image across 6 roles.
 
 Decision for this refactor: do the split anyway, accepting that image-duplication
@@ -21,7 +22,8 @@ genuinely shared code (parsing, ClickHouse I/O, Redis Streams protocol,
 config-reading, JSON) from one new shared source directory that every
 Dockerfile `COPY`s in at build time — mirroring the existing precedent of
 `services/webhook/Dockerfile` already COPYing `services/clickhouse/migrations/`
-cross-directory. No shared-Python-library convention exists in the repo yet
+cross-directory.
+No shared-Python-library convention exists in the repo yet
 (checked: no `services/common/` or similar) — this becomes the first.
 
 ## Target layout
@@ -83,7 +85,8 @@ services/
   wart as reparse's, just smaller.
 - **`ingest_db.py`** (ClickHouse I/O): `get_client()`, `clickhouse_alive()`,
   all `_insert_*`, `_BatchWriter`, `ingest_events_batch()`, `ingest_git_branch()`,
-  `ingest_plan_proposal()`. Imports specific names from `ingest_parsing`.
+  `ingest_plan_proposal()`.
+  Imports specific names from `ingest_parsing`.
   **New public function `reparse_event(client, payload, litellm_call_id,
   source_session_id, now)`** — formalizes `reparse.py`'s current 10-private-helper
   reach-through into one real API call. `reparse.py` shrinks to: decode
@@ -98,19 +101,22 @@ services/
 Per-concern modules under `_shared/config/` (`clickhouse.py`,
 `clickhouse_credentials.py`, `redis.py`, `litellm.py`, `capture.py`, `queue.py`),
 each doing the same unconditional `os.environ[...]` reads as today, no new
-defaults. Service-local config (not shared): `worker`'s `WORKER_METRICS_PORT`
+defaults.
+Service-local config (not shared): `worker`'s `WORKER_METRICS_PORT`
 constant, `reparse`'s `REPARSE_CHUNK_SIZE` (own `config.yml`), `migrate`'s
 bootstrap/ingest creds (already inline `os.environ` reads today, unaffected).
 
 Result: `migrate` drops `LITELLM_*`/`REDIS_*`/`CLICKHOUSE_USER/PASSWORD`;
 `reparse` drops `LITELLM_*`/`REDIS_*`; `loadtest` drops `CLICKHOUSE_*`/`REDIS_*`/
-`LITELLM_*` entirely; `worker` drops `LITELLM_*`. This is the actual coupling fix.
+`LITELLM_*` entirely; `worker` drops `LITELLM_*`.
+This is the actual coupling fix.
 
 ## Dockerfiles / requirements.txt
 
 Every one of the five needs `context: .` (repo root) to `COPY services/_shared/
 ./shared/` — same cross-directory-COPY pattern the current webhook Dockerfile
-already uses for `services/clickhouse/migrations/`. Per-service deps, reusing
+already uses for `services/clickhouse/migrations/`.
+Per-service deps, reusing
 the role-specific comments already in today's `requirements.txt`:
 
 | Service | Keeps | Drops (vs. today's shared superset) |
@@ -152,10 +158,12 @@ Mirror the source split: `worker/tests/test_worker.py`, `loadtest/tests/test_loa
 (both moved verbatim), `reparse/tests/test_reparse.py` (new, covers `reparse_event()`),
 `_shared/tests/` gets `test_fastjson.py`, `test_queue_client.py`, and today's
 860-line `test_clickhouse_ingest.py` split into `test_ingest_parsing.py` (pure
-functions) / `test_ingest_db.py` (client-touching). Move the `captures/*.json`
+functions) / `test_ingest_db.py` (client-touching).
+Move the `captures/*.json`
 corpus to `_shared/tests/captures/` once (not duplicated); factor
 `conftest.py`'s `load_capture()` into a small shared helper other services'
-`conftest.py`s import. Each service's `conftest.py` needs `sys.path` entries for
+`conftest.py`s import.
+Each service's `conftest.py` needs `sys.path` entries for
 both its own `src/` and `services/` (so `import shared` resolves, matching the
 container's `COPY services/_shared/ ./shared/` layout) — and should stub only
 the env vars its own `shared.config.*` imports actually read, not the old
@@ -170,10 +178,12 @@ paths instead of one.
    still building all 6 old compose services via `APP_ROLE`) to also `COPY
    services/_shared/ ./shared/`, update all old `src/*.py` imports to
    `from shared...`, delete the old `clickhouse_ingest.py`/`config.py`/
-   `fastjson.py`/`queue_client.py` from `services/webhook/src/`. Run `make test`
+   `fastjson.py`/`queue_client.py` from `services/webhook/src/`.
+   Run `make test`
    and `make up` — should be unchanged behavior, safe to land alone.
 2. **Stand up the five new service directories/Dockerfiles** without touching
-   `docker-compose.yml` yet. Build and smoke-test each new image standalone
+   `docker-compose.yml` yet.
+   Build and smoke-test each new image standalone
    (`docker build -f services/worker/Dockerfile .` + a manual `docker run`
    against the existing network) before any compose cutover.
 3. **Cut over `docker-compose.yml` one service group at a time**, lowest risk
@@ -181,7 +191,8 @@ paths instead of one.
    (recreate one replica at a time, leaning on the load-balancer's two-replica
    setup so one is always healthy) → `metrics-reparse`/`loadtest` last (both
    `profiles: [tools]`, not started by default, zero risk to the live stack).
-   Add the new `VERSION.yml` keys as each block is cut over. Only delete
+   Add the new `VERSION.yml` keys as each block is cut over.
+   Only delete
    `docker-entrypoint.sh` after every old-style block is gone.
 4. **Cleanup**: delete `services/webhook/config.yml` (now absorbed into
    `_shared/queue.yml` + `reparse/config.yml`), update `AGENTS.md`, `README.md`,
@@ -201,7 +212,8 @@ paths instead of one.
   crashing the container.
 - **Build context must stay `.` (repo root)** for all five Dockerfiles, not each
   service's own directory — every one needs `COPY services/_shared/`, and
-  `migrate` also needs `COPY services/clickhouse/migrations/`. A well-meaning
+  `migrate` also needs `COPY services/clickhouse/migrations/`.
+  A well-meaning
   "simplify the build context" edit later would silently break this.
 - **`profiles: [tools]`** on `reparse`/`loadtest` compose blocks must survive
   the rewrite verbatim, or they'd start running on every plain `docker compose up`.

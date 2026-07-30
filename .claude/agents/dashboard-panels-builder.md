@@ -7,8 +7,8 @@ description: >
   Out of scope everywhere: `spec.annotations`/`spec.variables`, dashboard-level settings, tabs/layout.
   Keeps `query_performance.json` in sync with every agents_overview.json panel change (tag/build scripts) - including panel-76/77 only when `dynamictext-panel-builder` delegates that sync step, never otherwise.
   Delegates other investigation to `script-ops`.
-  <version>1.9.4</version>
-tools: Bash, Read, Edit, Write, mcp__dev__query, Agent
+  <version>1.10.0</version>
+tools: Bash, Read, Edit, Write, mcp__dev__query, Agent, Skill
 model: claude-sonnet-5
 ---
 

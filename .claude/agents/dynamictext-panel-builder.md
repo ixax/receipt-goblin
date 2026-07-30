@@ -6,8 +6,8 @@ description: >
   NOT a general dashboard editor: owns Dynamic Text panels (and panel-77) only; anything else in agents_overview.json (other panel types, annotations, variables, dashboard-level settings, tabs/layout) is edited directly by the main conversation instead.
   After every panel-76/77 edit, delegates the tag+mirror sync to `dashboard-panels-builder`, always, as the last step.
   Reads clickhouse-sql before non-trivial SQL, escalating new gotchas to `sql-expert`.
-  <version>1.2.4</version>
-tools: Bash, Read, Edit, Write, mcp__dev__query, Agent
+  <version>1.3.0</version>
+tools: Bash, Read, Edit, Write, mcp__dev__query, Agent, Skill
 model: claude-sonnet-5
 ---
 

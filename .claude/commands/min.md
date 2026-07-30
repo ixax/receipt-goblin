@@ -7,7 +7,8 @@ disable-model-invocation: true
 
 ## 1. Classify the session before compacting
 
-Scan the conversation and sort everything into two buckets. Do not skip
+Scan the conversation and sort everything into two buckets.
+Do not skip
 this step or hand /compact a vague instruction - the whole point of /min
 over bare /compact is this explicit split.
 
@@ -47,7 +48,8 @@ without knowing any session id:
     - ...
 
 This file is the durable backup - it survives even if compaction below
-drops something the instructions didn't anticipate. It gets overwritten
+drops something the instructions didn't anticipate.
+It gets overwritten
 by the next /min run, so it holds the latest snapshot only, not a history.
 
 ## 3. Hand off compaction
@@ -56,13 +58,16 @@ Build the instruction string once:
 
     Keep only: (1) open tasks and bugs with current status, (2) decisions
     made this session not yet in AGENTS.md/specs, (3) codebase facts
-    discovered this session that update or contradict existing docs. Drop:
+    discovered this session that update or contradict existing docs.
+    Drop:
     resolved side-quests, raw tool/test output already summarized, fixed
     errors (one-line cause+fix only), fully-answered one-off questions.
 
 No tool call can trigger `/compact` from inside a turn on either CLI - it's
-a command the user types, not something invocable via a tool. Do NOT
-attempt to compact yourself. Print exactly this and stop:
+a command the user types, not something invocable via a tool.
+Do NOT
+attempt to compact yourself.
+Print exactly this and stop:
 
     Snapshot written to MIN_DUMP.md
     Run this to compact:

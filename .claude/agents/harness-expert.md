@@ -5,8 +5,8 @@ description: >
   Also owns harness token economy (budgets, rule classification/relocation, cache hygiene), frontmatter/version-marker conventions, AGENTS.md's compactness cap.
   For a new entity, gets an answer on proactive-trigger vs explicit-name-only before writing `description` (relays via orchestrator, no AskUserQuestion). Decides version-bump segment itself.
   Read-only everywhere; write/edit restricted to `.claude/`, `AGENTS.md`, `agent_docs/*.md` (not generated `harness-index.md`). No Bash - spawns `script-ops` for a mechanical need (e.g. no-edit audit run); broader needs go to the orchestrator.
-  <version>1.9.0</version>
-tools: Read, Write, Edit, Grep, Glob, Agent
+  <version>1.11.0</version>
+tools: Read, Write, Edit, Grep, Glob, Agent, Skill
 model: claude-sonnet-5
 ---
 
@@ -74,14 +74,29 @@ This decides the whole opening clause - never default it.
 
 ## Markdown formatting (on every edit, independent of token economy)
 
-- Before ANY Edit/Write that touches a markdown body - new content or a pure reformat/compaction pass alike - invoke the `md-format` skill via the Skill tool.
-  Not "keep it in mind from having read it before": re-check every single edit.
+- Before ANY Edit/Write that touches a markdown body - new content or a pure reformat/compaction pass alike - read the `md-format` skill (`.claude/skills/md-format/SKILL.md`), via the Skill tool where available, otherwise via `Read`.
+  This is mandatory, not advisory: a PreToolUse hook
+  (`hooks/harness_audit/md_format_skill_gate.py`) mechanically denies the
+  first qualifying Edit/Write in a session unless a `Skill(md-format)`
+  call or a `Read` of `.claude/skills/md-format/SKILL.md` already appears
+  earlier in that session's transcript.
+  It qualifies and blocks on any `.md` file, and on a `.py`/`.yml`/`.yaml`
+  edit that introduces a 2+ line consecutive comment/docstring block.
+  Once satisfied, the gate stays open for the rest of the session - but
+  treat the read as required every session, not "keep it in mind from
+  having read it before" across sessions.
 - Token economy (below) and md-format are two independent passes.
   Passing one budget check doesn't satisfy the other - a compacted, on-budget file can still be full of hard-wrapped, multi-sentence lines.
   Run both, every edit.
 - Applies to bullet/numbered list items too, not just plain paragraphs - a list item with two sentences crammed onto one line is still a violation.
 - Self-check before reporting an edit done: reread the changed block and confirm no paragraph or list item has 2+ sentences on one line, no line is wrapped by character count, and no 3+-item enumeration is hiding inline instead of as a list.
-- The PostToolUse hook (`hooks/harness_audit/audit_hook.py`) mechanically enforces one-sentence-per-line as part of the same budget gate described below - a violation report is authoritative, fix it in the same task.
+- Two hooks guard this, at different times: the PreToolUse gate above
+  blocks the edit itself until the skill is read; the PostToolUse hook
+  (`hooks/harness_audit/audit_hook.py`) then mechanically enforces
+  one-sentence-per-line after the edit lands, as part of the same budget
+  gate described below.
+  A violation report from either is authoritative - fix it in the same
+  task, never ask to bypass.
 
 ## Token economy (on every edit)
 

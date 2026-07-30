@@ -6,12 +6,14 @@ description: Report cost/token spend for the current Claude Code session plus th
 
 Report cost/tokens for the current Claude Code session, the last 30 days
 across all sessions/users, and the 5 most expensive operations in this
-session. Reads go through the `mcp-stats` MCP server, not `docker exec` -
+session.
+Reads go through the `mcp-stats` MCP server, not `docker exec` -
 `webhook` is still write-only, but `mcp-stats` is the dedicated read path
 for fixed statistics (see `README.md`, "MCP servers (`mcp-dev`, `mcp-stats`)").
 
 The `mcp__stats__me` tool has no way to know which session is "current" on
-its own - it requires a `session_id` argument. First run a shell command
+its own - it requires a `session_id` argument.
+First run a shell command
 to read the `CLAUDE_CODE_SESSION_ID` environment variable (e.g. `echo
 $CLAUDE_CODE_SESSION_ID` via Bash), then call `mcp__stats__me` with that
 value as `session_id`.
@@ -51,7 +53,8 @@ Top 5 most expensive operations this session:
 ```
 
 If `top_operations` is empty, say there's no usage yet in this session
-instead of printing an empty list. If `session.cost` is null or `0`, say
+instead of printing an empty list.
+If `session.cost` is null or `0`, say
 plainly there's been no spend yet this session rather than printing a
 zeroed-out report.
 

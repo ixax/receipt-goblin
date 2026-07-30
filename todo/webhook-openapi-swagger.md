@@ -3,7 +3,8 @@
 ## Контекст
 
 В репозитории FastAPI используется только в одном сервисе — `services/webhook`
-(`services/webhook/src/server.py`). Swagger/OpenAPI там уже технически включены
+(`services/webhook/src/server.py`).
+Swagger/OpenAPI там уже технически включены
 (`FastAPI()` без параметров), но бесполезны на практике:
 
 - нет `title`/`version`/`description` — в `/docs` отображается дефолтная заглушка;

@@ -6,8 +6,8 @@ description: >
   Also the delegate for mechanical, fully-specified filesystem writes/edits, absorbing the retired `file-ops` agent; keeps verbose output out of the main conversation.
   Not for `git`/state-changing `docker`, or a single trivial read/write.
   Flags (not designs) any ClickHouse SQL gotcha in exact text it's asked to write.
-  <version>1.5.2</version>
-tools: Bash, Read, Write, Edit, Glob, Grep
+  <version>1.6.0</version>
+tools: Bash, Read, Write, Edit, Glob, Grep, Skill
 model: claude-haiku-4-5
 ---
 

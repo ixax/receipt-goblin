@@ -13,7 +13,8 @@ Findings (full detail from research, condensed here):
   (`services/webhook/src/clickhouse_ingest.py:213-245`) walks backward through
   the LiteLLM payload's `messages`, skipping over Claude Code's automatic
   tool-result-only continuation turns, until it finds the real human message
-  that carried the `<command-name>` tag. Every row in that chain — not just the
+  that carried the `<command-name>` tag.
+  Every row in that chain — not just the
   first — inherits the same `command_name`.
 - **Subagent detection is reliable but Claude-Code-only.** Claude Code sends a
   genuine per-request header (`x-claude-code-agent-id`) on every call the
@@ -23,16 +24,19 @@ Findings (full detail from research, condensed here):
   fixes this after the fact).
 - **Skill detection is the real gap.** `_skill_name_and_version`
   (`clickhouse_ingest.py:572-586`) only checks whether *this specific call's own
-  response* invoked the `Skill` tool. Unlike a subagent, a skill has no
+  response* invoked the `Skill` tool.
+  Unlike a subagent, a skill has no
   distinguishing per-request header — its body is read inline into the same
   ongoing conversation — so any tool call or LLM answer that happens *after* a
   skill fires, within the same turn, currently lands with `skill_name=''`,
-  indistinguishable in ClickHouse from ordinary top-level work. This directly
+  indistinguishable in ClickHouse from ordinary top-level work.
+  This directly
   undermines "can we filter work done via a skill" — today, only the single
   triggering row is attributable.
 - **Codex CLI has zero agent/skill/command attribution**, by design — those are
   Claude Code-only CLI concepts (confirmed in `agent_docs/architecture.md:22-26`
-  and inline docstrings throughout `clickhouse_ingest.py`). Not a bug to fix.
+  and inline docstrings throughout `clickhouse_ingest.py`).
+  Not a bug to fix.
 
 This plan fixes the skill-attribution gap by mirroring the command-detection
 pattern: propagate `skill_name`/`skill_version` backward through a turn's
@@ -43,11 +47,13 @@ continuation chain, exactly like `command_name` already does.
 **File:** `services/webhook/src/clickhouse_ingest.py`
 
 1. Replace `_skill_name_and_version(payload)` with
-   `_active_skill_name_and_version(payload, messages)`. Update the one call
+   `_active_skill_name_and_version(payload, messages)`.
+   Update the one call
    site, `_derive_context` (line 355-356), to pass `messages` through.
 
 2. Algorithm — priority 1 unchanged (this call's own response invoked `Skill`
-   → return immediately, existing logic via `_response_tool_calls`). Priority 2
+   → return immediately, existing logic via `_response_tool_calls`).
+   Priority 2
    is new: walk backward through `messages`, mirroring
    `_active_command_name_and_version`'s continuation-skip check, but scanning
    **assistant**-role messages for a `Skill` `tool_use` block instead of
@@ -64,7 +70,8 @@ continuation chain, exactly like `command_name` already does.
 
 3. **Do not touch `_classify_event`** (`clickhouse_ingest.py:768-817`).
    `calculated_type`/`calculated_payload` stay strictly per-row, based only on
-   this call's own tool invocation. A downstream row keeps whatever
+   this call's own tool invocation.
+   A downstream row keeps whatever
    `calculated_type` it would already get (`tool_call`, `llm_answer`, etc.),
    now simply also carrying a populated `skill_name` — exactly how
    `command_name` and `calculated_type` already coexist independently today.
@@ -72,13 +79,15 @@ continuation chain, exactly like `command_name` already does.
 4. **Judgment call, document inline:** if a skill fires and the orchestrator
    later spawns a subagent, the orchestrator's own subsequent calls keep
    propagating the earlier skill_name (nothing removes the Skill block from
-   its own conversation history). The subagent's own calls use a separate
+   its own conversation history).
+   The subagent's own calls use a separate
    `messages` array scoped to its isolated context and naturally get `("", "")`
    unless the subagent invoked its own skill — no special-casing needed.
 
 5. Update the docstring on the renamed function to describe propagation
    through the continuation chain (mirroring the language on
-   `_active_command_name_and_version`). No change needed to the top-of-file
+   `_active_command_name_and_version`).
+   No change needed to the top-of-file
    module docstring or `AGENTS.md`/README — those describe payload sourcing,
    not per-field propagation semantics.
 
@@ -111,7 +120,8 @@ routed through LiteLLM:
 1. Ensure the Claude CLI environment is routed through the proxy
    (`ANTHROPIC_BASE_URL=http://localhost:4000`,
    `ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer <virtual key>"` — see
-   `make setup-client` / README "Connect Claude Code" section). Do not use a
+   `make setup-client` / README "Connect Claude Code" section).
+   Do not use a
    personal/production key blindly — check `.env`/existing virtual key setup
    first.
 2. Spawn a Claude CLI session (or use this session, if already routed) that

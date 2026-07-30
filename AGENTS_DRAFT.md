@@ -21,7 +21,9 @@ The `@developer` agent (Sonnet) takes over the context using the blueprint from 
 *   *Sub-spawning:* Sonnet may spin up `haiku` agents for mundane utility tasks, but it **cannot** spin up high-level planners.
 
 #### Phase 3: Emergency Escalation Trigger
-The `@developer` agent (Sonnet) must code until the goal is fully achieved. It is forbidden from yielding control back to Opus/Fable for standard errors, failing tests, or runtime bugs. It may escalate back to the master agent **ONLY** if:
+The `@developer` agent (Sonnet) must code until the goal is fully achieved.
+It is forbidden from yielding control back to Opus/Fable for standard errors, failing tests, or runtime bugs.
+It may escalate back to the master agent **ONLY** if:
 1.  A fundamental logical contradiction is discovered in the original architecture plan that makes implementation physically impossible.
 2.  An unexpected blocker forces a major structural redesign of the core system layout or database schema (ClickHouse/Redis/LiteLLM structures).
 

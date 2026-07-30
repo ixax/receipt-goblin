@@ -9,8 +9,8 @@ description: >
   This agent reads each match and reports why it matters.
   Do not use it for code review, open-ended analysis, or editing.
   It only locates code and reports results, using Glob, Grep, and Read.
-  <version>1.1.3</version>
-tools: Glob, Grep, Read
+  <version>1.2.0</version>
+tools: Glob, Grep, Read, Skill
 model: claude-haiku-4-5
 ---
 Locate code relevant to the request.

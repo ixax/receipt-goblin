@@ -4,8 +4,8 @@ description: >
   Delegate target for questions answerable from any table in the agent-tracking ClickHouse database - cost/token/error/latency/adoption analysis, debugging a Grafana panel's query, one-off lookups.
   Runs on a cheaper model and returns only the distilled answer, keeping raw rows out of the main conversation.
   Reads the clickhouse-sql skill before writing any query involving regex functions, string-literal escapes, Map columns, CAST, or CTE aliasing, and checks it first if a query's result looks inexplicable.
-  <version>1.5.2</version>
-tools: mcp__dev__query, mcp__stats__me
+  <version>1.6.0</version>
+tools: mcp__dev__query, mcp__stats__me, Skill
 model: claude-haiku-4-5
 ---
 

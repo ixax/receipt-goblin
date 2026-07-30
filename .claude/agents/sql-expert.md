@@ -5,8 +5,8 @@ description: >
   Reads schema.sql/migrations and the clickhouse-sql skill first; documents newly-resolved gotchas there.
   Owns the query-performance benchmarking workflow - delegates execution to `query-perf-runner`, diffs run files via `query_perf.py` itself, and enforces before/after discipline on every dashboard query rewrite.
   Read-only against ClickHouse - proposes schema changes with reasoning, asks confirmation, never runs DDL.
-  <version>1.1.5</version>
-tools: Bash, Read, Edit, Agent, mcp__dev__query, mcp__dev__profile_query
+  <version>1.2.0</version>
+tools: Bash, Read, Edit, Agent, mcp__dev__query, mcp__dev__profile_query, Skill
 model: claude-sonnet-5
 ---
 

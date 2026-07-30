@@ -168,6 +168,25 @@ class TestCollectAndMain(unittest.TestCase):
         files = audit.collect()
         self.assertNotIn("agent_docs/harness-index.md", files)
 
+    def test_root_readme_classified_as_other_md(self):
+        write(self.root / "README.md", "# Repo\n\nSome content.\n")
+        files = audit.collect()
+        self.assertEqual(files["README.md"][0], "other_md")
+
+    def test_other_md_has_no_token_budget(self):
+        write(self.root / "README.md", "x " * (audit.BUDGETS["root_md"] * 5))
+        code, out = self.run_main()
+        self.assertEqual(code, 0)
+
+    def test_other_md_multi_sentence_line_flagged(self):
+        write(
+            self.root / "todo" / "x.md",
+            "This is one sentence. This is a second sentence on the same line.\n",
+        )
+        code, out = self.run_main()
+        self.assertEqual(code, 1)
+        self.assertIn("md-format one-sentence-per-line", out)
+
     def test_deep_dive_dead_reference_flagged(self):
         write(self.root / "agent_docs" / "architecture.md", "See `agent_docs/does-not-exist.md` for details.\n")
         code, out = self.run_main()

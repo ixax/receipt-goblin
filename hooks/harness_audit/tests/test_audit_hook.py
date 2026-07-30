@@ -39,8 +39,10 @@ class TestIsHarnessPath(unittest.TestCase):
     def test_unrelated_path_does_not_match(self):
         self.assertFalse(audit_hook.is_harness_path(os.path.join("services", "webhook", "src", "server.py")))
 
-    def test_readme_does_not_match(self):
-        self.assertFalse(audit_hook.is_harness_path("README.md"))
+    def test_readme_matches(self):
+        # Any .md file is gated now - md-format applies repo-wide, not just
+        # to the harness tree (audit.py's "other_md" kind).
+        self.assertTrue(audit_hook.is_harness_path("README.md"))
 
 
 class TestMainEndToEnd(unittest.TestCase):

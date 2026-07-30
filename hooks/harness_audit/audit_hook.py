@@ -22,10 +22,13 @@ AUDIT_SCRIPT = HOOK_DIR / "audit.py"
 
 def is_harness_path(rel: str) -> bool:
     """True if rel is under either CLI's harness tree, under agent_docs/ (deep-dive
-    docs harness-expert owns), or is an AGENTS.md/CLAUDE.md anywhere. Dual-harness
-    aware - this repo tracks .claude/ and .codex/ equally.
+    docs harness-expert owns), is an AGENTS.md/CLAUDE.md anywhere, or is any other
+    markdown file in the repo.
+    Any other .md file gets audit.py's "other_md" kind - md-format's one-sentence-
+    per-line and dead-reference checks, no token budget.
+    Dual-harness aware - this repo tracks .claude/ and .codex/ equally.
     """
-    return (
+    return rel.endswith(".md") or (
         rel.startswith(".claude" + os.sep)
         or rel.startswith(".codex" + os.sep)
         or rel.startswith("agent_docs" + os.sep)

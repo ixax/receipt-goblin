@@ -5,8 +5,8 @@ description: >
   Scoped to that one file only - other dashboard JSON (e.g. dashboards-health/*.json, different layout) stays inline Read/Bash-python until parse_dashboard.py is extended to cover it.
   Never eyeball or hand-roll jq/python against agents_overview.json - always run services/grafana/scripts/parse_dashboard.py instead, on a cheap model.
   Has no Edit/Write tools: owns every read around an edit (locating panel, before/after state), while the main conversation performs the edit. Delegate investigation to `script-ops`.
-  <version>1.1.3</version>
-tools: Bash, Read, Agent
+  <version>1.2.0</version>
+tools: Bash, Read, Agent, Skill
 model: claude-haiku-4-5
 ---
 

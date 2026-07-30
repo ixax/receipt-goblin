@@ -5,18 +5,22 @@
 `TODO.md` item 2 flags that `hooks/report_git_branch.py`, registered for both
 `SessionStart` and `CwdChanged` in `.claude/settings.json`, is supposed to
 report a session's git branch/repo to ClickHouse's `session_git_branch` table
-whenever the working directory changes (e.g. via `EnterWorktree`). In
+whenever the working directory changes (e.g. via `EnterWorktree`).
+In
 practice, all 17 sessions captured since the hook went live
 (~2026-07-25 19:20) show `git_branch='main'` — none show a worktree branch —
 even though a manually piped payload with an explicit worktree `cwd` proved
-the endpoint/ingest/table pipeline itself works correctly. So the bug is
+the endpoint/ingest/table pipeline itself works correctly.
+So the bug is
 specifically in what `CwdChanged` sends (or whether/how it's invoked) on
-`EnterWorktree`, not in the server-side code. The hook currently has two
+`EnterWorktree`, not in the server-side code.
+The hook currently has two
 silent failure paths that could each explain this with zero visible signal:
 a `cwd = payload.get("cwd") or os.getcwd()` fallback that would resolve to
 the wrong directory if `CwdChanged`'s payload omits `cwd`, and a bare
 `if not session_id or not git_branch: return` early-out that logs nothing at
-all. This is a diagnose-then-fix task: the exact code fix can't be written
+all.
+This is a diagnose-then-fix task: the exact code fix can't be written
 until we've observed what `CwdChanged` actually sends, so the plan front-loads
 instrumentation and a real `EnterWorktree` test before prescribing the fix.
 
@@ -53,7 +57,8 @@ def _debug_log(payload, cwd, session_id, git_branch, git_repo):
   small `os.environ.get(...)` reads at module scope.
 - Path: no existing debug-file pattern to reuse in this repo. Use a fixed
   out-of-repo path, e.g. `/tmp/report_git_branch_debug.jsonl`, so it survives
-  worktree removal and is never git-tracked. Append-only JSONL, one line per
+  worktree removal and is never git-tracked.
+  Append-only JSONL, one line per
   hook invocation — easy to `tail -f` live during the Step 2 test.
 - Set `REPORT_GIT_BRANCH_DEBUG_LOG` for the diagnostic session (either in
   `.claude/settings.json`'s top-level `env` block, adding one if it doesn't
@@ -72,7 +77,8 @@ implementation begins, not derivable from static analysis:
    a live Claude Code session.
 2. Inspect the debug log for the new line from the `CwdChanged` event:
    - **No new line at all** → `CwdChanged` isn't being emitted by
-     `EnterWorktree`, or the hook process isn't spawned. Worth confirming via
+     `EnterWorktree`, or the hook process isn't spawned.
+     Worth confirming via
      any other cwd transition Claude Code exposes, to rule out a
      registration/timeout issue rather than an `EnterWorktree`-specific one.
    - **A new line appears** → read `raw_stdin_payload`, `resolved_cwd`,
@@ -89,7 +95,8 @@ a third, unanticipated cause) is actually happening.
 Symptom: `raw_stdin_payload` has no `cwd` key (or empty), `resolved_cwd` ==
 the hook subprocess's own launch cwd (likely the main checkout).
 Fix shape: stop silently falling back to `os.getcwd()` for `CwdChanged`
-specifically — that fallback only makes sense for `SessionStart`. If
+specifically — that fallback only makes sense for `SessionStart`.
+If
 `CwdChanged` carries the info under a different key, fix the key name; if it
 genuinely carries no cwd info at all, this may be a Claude Code CLI-level
 limitation rather than something fixable in `hooks/report_git_branch.py`, in
@@ -152,7 +159,8 @@ non-invisible going forward regardless of today's specific root cause.
 
 `AGENTS.md`'s description of `hooks/report_git_branch.py` currently describes
 `CwdChanged` as if it reliably reports on cwd change, with no documented
-caveat about worktree behavior. Once root cause is confirmed, it likely needs
+caveat about worktree behavior.
+Once root cause is confirmed, it likely needs
 a one-line correction (either describing the limitation or confirming it's
 fixed) — content depends entirely on Steps 2-3's findings, so this is a
 flagged follow-up rather than specified here.

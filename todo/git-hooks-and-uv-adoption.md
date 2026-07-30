@@ -3,7 +3,8 @@
 ## Context
 
 The repo has no versioned *git* hooks yet (`.git/hooks/` only contains the
-stock `.sample` files). There's a separate, unrelated hooks system already
+stock `.sample` files).
+There's a separate, unrelated hooks system already
 in place — `.claude/settings.json` wires Claude Code lifecycle hooks
 (`hooks/report_git_branch.py`, `hooks/guard_destructive.py`,
 `hooks/harness_audit/*`) — but those only fire inside Claude Code sessions,
@@ -11,28 +12,33 @@ not for every `git checkout`/`pull`/`switch` a human runs from a terminal.
 
 The ask is to add real git hooks, starting with: after a checkout or branch
 switch, check whether `uv` is installed and suggest installing it if not.
-Hooks should be bash, optionally shelling out to Python via `uv`. The
+Hooks should be bash, optionally shelling out to Python via `uv`.
+The
 second requirement is that hooks stay in sync and "hot" immediately after
 checkout/pull/branch-switch — no stale or missing hook problem.
 
 ## Approach: `core.hooksPath`, not a framework
 
 Confirmed with the user: use git's native `core.hooksPath` config pointing
-at a tracked `.githooks/` directory, not lefthook/pre-commit/husky. No new
+at a tracked `.githooks/` directory, not lefthook/pre-commit/husky.
+No new
 dependency, and it directly solves the "stay in sync" requirement almost
 for free — because hook *content* lives in the tracked directory itself.
 The moment `git checkout`/`pull` updates `.githooks/post-checkout` (or adds
 a brand-new hook file), that's what git will invoke next time, with no
-separate copy/link/reinstall step. This is the key advantage over
+separate copy/link/reinstall step.
+This is the key advantage over
 `.git/hooks/`-copying approaches (which do need a re-sync step on every
 change).
 
 The one gap `core.hooksPath` can't close on its own: a fresh clone starts
 with `core.hooksPath` unset (it's local, untracked `.git/config` state) —
-git cannot bootstrap this for itself. Confirmed with the user: fold the
+git cannot bootstrap this for itself.
+Confirmed with the user: fold the
 one-time `git config core.hooksPath .githooks` into the existing `make
 init` first-run target, as a new standalone-callable `make
-git-hooks-install` target that `init` also invokes. Anyone re-cloning
+git-hooks-install` target that `init` also invokes.
+Anyone re-cloning
 already runs `make init` per README "Getting started", so this needs no
 new step to remember, and it's re-runnable by hand if `core.hooksPath`
 ever gets cleared or exec bits get lost on a non-POSIX filesystem.
@@ -40,24 +46,32 @@ ever gets cleared or exec bits get lost on a non-POSIX filesystem.
 ## Files
 
 **`.githooks/lib/check-uv.sh`** — shared function, sourced by hook entry
-points. Pure POSIX `command -v uv` check + one-line suggestion
-(`curl -LsSf https://astral.sh/uv/install.sh | sh`). Deliberately has zero
-dependency on `uv`/`python3` itself — see Challenge 1 below. Never exits
+points.
+Pure POSIX `command -v uv` check + one-line suggestion
+(`curl -LsSf https://astral.sh/uv/install.sh | sh`).
+Deliberately has zero
+dependency on `uv`/`python3` itself — see Challenge 1 below.
+Never exits
 non-zero.
 
 **`.githooks/post-checkout`** — entry point, `chmod +x`. Signature is
 `post-checkout <prev-HEAD> <new-HEAD> <branch-flag>`; guard on
 `branch-flag == 1` so it only fires on real branch checkouts/switches, not
 every internal file-level checkout (stash, IDE operations, etc. also
-trigger `post-checkout`). Sources and calls `check-uv.sh`. Always `exit 0`.
+trigger `post-checkout`).
+Sources and calls `check-uv.sh`.
+Always `exit 0`.
 
 **`.githooks/post-merge`** — entry point, `chmod +x`, covers the "after a
 pull" case (`git pull` = fetch + merge, which fires `post-merge`, not
-`post-checkout`). Same `check-uv.sh` call. Always `exit 0`.
+`post-checkout`).
+Same `check-uv.sh` call.
+Always `exit 0`.
 
 **`scripts/install-git-hooks.sh`** — `git config core.hooksPath .githooks`
 + `chmod +x .githooks/* .githooks/lib/*` (belt-and-suspenders for the
-tracked executable bit) + a one-line confirmation echo. Idempotent, safe
+tracked executable bit) + a one-line confirmation echo.
+Idempotent, safe
 to re-run.
 
 **`Makefile`** — new `git-hooks-install` target running the script above;
@@ -75,7 +89,8 @@ in the commands table.
 1. **The uv-check hook can't depend on uv.** The stated idea was "write
    hooks in bash, optionally shell to python3 via `uv`" — but the very
    first hook's job is to *detect whether uv exists*, so that detection
-   logic must stay pure bash/POSIX, never `uv run ...`. The
+   logic must stay pure bash/POSIX, never `uv run ...`.
+   The
    python3-via-`uv` pattern is fine for *future* hooks that need real
    logic (JSON parsing, etc.), but only after they've confirmed `uv` is
    present (or they fall back to plain `python3` / skip gracefully) — this
@@ -104,6 +119,7 @@ Today there's no pinned interpreter for the repo's own dev tooling: the
 README has developers hand-build `.venv` (`.venv/bin/pip install -r
 services/webhook/requirements-dev.txt`), and `make test` runs
 `.venv/bin/python -m pytest ...` against whatever landed in that venv.
+
 The system `python3` on this machine is macOS's stock **3.9.6**, while
 `services/webhook/Dockerfile` pins `python:3.12-slim` — so a hand-built
 `.venv` can silently run tests against a materially older interpreter than
@@ -132,7 +148,8 @@ automatically — no more hand-run `pip install` step.
 services/webhook/pytest.ini services/webhook/tests` (same target,
 underlying `.venv` now uv-managed instead of hand-built); `test-harness-audit`
 stays on plain `python3` (stdlib-only `unittest`, no deps, no version
-sensitivity worth pinning). Optionally add a `lint:` target
+sensitivity worth pinning).
+Optionally add a `lint:` target
 (`uv run ruff check --fix`) since `methodics.md` already names it as the
 intended command.
 
@@ -146,7 +163,8 @@ requirements-dev.txt` step with "run any `make` target that needs it (or
 Once this lands, any *future* git hook needing real logic (not just the
 bash uv-checker) can call `uv run <script>.py`, running against this same
 pinned interpreter/deps — a first-class pattern instead of a one-off
-fallback. It does not change the Part 1 conclusion that the uv-*detection*
+fallback.
+It does not change the Part 1 conclusion that the uv-*detection*
 check itself must stay pure bash: it can't presuppose `uv` while checking
 whether `uv` is installed.
 
@@ -165,7 +183,8 @@ Fix that as part of this change:
 - Docker can't read an external file at `FROM` time, so each
   `Dockerfile`'s `FROM python:3.12-slim` stays a hardcoded literal (per
   the user's direction) rather than templated — but it must always match
-  `.python-version`'s value. Bumping the version means updating
+  `.python-version`'s value.
+  Bumping the version means updating
   `.python-version` *and* grepping/fixing every `FROM python:` line in
   the same commit: `grep -rn '^FROM python:' services/*/Dockerfile`.
 - Document this pairing once (see AGENTS.md change below) so it's a known
@@ -196,7 +215,8 @@ Don't route the existing stdlib-only scripts (`scripts/resolve_image_version.py`
 `hooks/report_git_branch.py`, `hooks/guard_destructive.py`, etc.) through
 `uv run` — they have zero third-party dependencies, so there's no
 correctness benefit, only ~tens-of-ms added startup overhead per
-invocation for no gain. Reserve `uv run` for things that actually consume
+invocation for no gain.
+Reserve `uv run` for things that actually consume
 the `pyproject.toml` environment (pytest, ruff, future hook scripts with
 real deps).
 

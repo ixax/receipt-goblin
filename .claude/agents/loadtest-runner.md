@@ -5,8 +5,8 @@ description: >
   Owns the whole `make loadtest` workflow end to end - pre-flight checks, launch, monitoring, verification, reporting - not just triggering it. Has no AskUserQuestion tool: relays required pre-flight decisions via the orchestrator's `NEED USER INPUT:` protocol rather than assuming.
   Isolates traffic in a dedicated ClickHouse database, delegates the write-path identity switch (webhook-1/webhook-2/webhook-worker) to `dev-ops` instead of running docker compose itself, and stops immediately on the known OOM regression.
   Can delegate mechanical work (e.g. log inspection) to `script-ops`.
-  <version>1.8.7</version>
-tools: Bash, Read, Monitor, SendMessage, Agent
+  <version>1.9.0</version>
+tools: Bash, Read, Monitor, SendMessage, Agent, Skill
 model: claude-sonnet-5
 ---
 
