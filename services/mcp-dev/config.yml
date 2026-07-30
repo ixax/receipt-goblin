@@ -68,3 +68,11 @@ forbidden_table_functions:
   - INPUT
 
 max_rows_hard_cap: 1000
+
+# Server-side throttle shared by query/profile_query - bounds real concurrent
+# load on ClickHouse regardless of whether it comes from one query()'s
+# batch-array fan-out or from unrelated agents calling the server at once.
+max_concurrent_queries: 2
+
+# Hard cap on queries per query() call when sql is a list.
+max_batch_queries: 10

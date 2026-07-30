@@ -17,7 +17,9 @@ security-sensitive.
 """
 import os
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import yaml
@@ -66,6 +68,17 @@ _ALLOWED_TABLES = set(_config["allowed_tables"])
 _FORBIDDEN_KEYWORDS = tuple(_config["forbidden_keywords"])
 _FORBIDDEN_TABLE_FUNCTIONS = tuple(_config["forbidden_table_functions"])
 _MAX_ROWS_HARD_CAP = _config["max_rows_hard_cap"]
+_MAX_CONCURRENT_QUERIES = _config.get("max_concurrent_queries", 2)
+_MAX_BATCH_QUERIES = _config.get("max_batch_queries", 10)
+
+# Bounds real concurrent load on ClickHouse across all four tools - both a
+# batch call's internal fan-out and unrelated single-query calls arriving at
+# the same time.
+# FastMCP runs sync tool callables off the event loop thread (see
+# ClickHouseClientFactory's threading.Lock comment, which already
+# anticipates concurrent tool dispatch), so a threading.Semaphore correctly
+# bounds real concurrency here.
+_ch_semaphore = threading.Semaphore(_MAX_CONCURRENT_QUERIES)
 
 
 def _strip_sql_comments(sql: str) -> str:
@@ -207,26 +220,17 @@ def _validate_readonly_sql(sql: str) -> str:
     return stripped
 
 
-@mcp.tool()
-def query(sql: str, max_rows: int = 200) -> dict:
-    """Run a read-only SQL query against the agent-tracking ClickHouse tables
-    (agent_events, agent_usage, agent_messages). Only a single SELECT/WITH
-    statement is allowed - no DDL/DML, no system tables, no remote/file/URL
-    table functions. Results are capped at max_rows (default 200, hard cap
-    1000); set truncated=True in the response means there were more rows
-    than that. Prefer aggregating/filtering in the query itself over relying
-    on this cap, since rows beyond it are silently dropped, not sampled.
-    The response includes execution_time_ms, the server-side query duration."""
-    validated = _validate_readonly_sql(sql)
+def _do_query(sql: str, max_rows: int) -> dict:
     capped_rows = max(1, min(max_rows, _MAX_ROWS_HARD_CAP))
 
     client = get_client()
     start = time.perf_counter()
     try:
-        result = client.query(
-            f"SELECT * FROM ({validated}) AS _query_result LIMIT {capped_rows + 1}",
-            settings={"max_execution_time": 10},
-        )
+        with _ch_semaphore:
+            result = client.query(
+                f"SELECT * FROM ({sql}) AS _query_result LIMIT {capped_rows + 1}",
+                settings={"max_execution_time": 10},
+            )
     except Exception as exc:
         logger.warning("query() failed: %s", exc)
         return {"error": str(exc), "execution_time_ms": round((time.perf_counter() - start) * 1000, 1)}
@@ -246,29 +250,46 @@ def query(sql: str, max_rows: int = 200) -> dict:
     }
 
 
-@mcp.tool()
-def profile_query(sql: str) -> dict:
-    """Run a read-only SQL query and report its real ClickHouse execution
-    cost instead of result rows: memory_usage_bytes, read_rows, read_bytes,
-    query_duration_ms. Same SELECT/WITH-only validation as `query`. Use
-    this (not `query`) when the point is comparing how expensive two
-    versions of a query are, e.g. before/after a rewrite - `query`'s
-    execution_time_ms is wall-clock only and says nothing about memory or
-    rows scanned.
+def _do_query_safe(sql: str, max_rows: int) -> dict:
+    try:
+        validated = _validate_readonly_sql(sql)
+        return _do_query(validated, max_rows)
+    except Exception as exc:
+        return {"error": str(exc)}
 
-    read_rows/read_bytes/query_duration_ms come straight back in
-    ClickHouse's own response summary (no extra round trip). memory_usage_bytes
-    needs system.query_log, which only becomes queryable after a
-    SYSTEM FLUSH LOGS - this tool does that automatically, but the lookup is
-    best-effort: if it fails (e.g. a permissions issue), memory_usage_bytes
-    comes back null with a `memory_usage_warning` explaining why, rather
-    than failing the whole call - the other three numbers are still valid
-    either way."""
-    validated = _validate_readonly_sql(sql)
+
+@mcp.tool()
+def query(sql: str | list[str], max_rows: int = 200) -> dict:
+    """Run one or several read-only SQL queries against the agent-tracking ClickHouse tables
+    (agent_events, agent_usage, agent_messages).
+    sql can be a single SQL string, or a list of independent SQL strings to run as one batch instead of looping single calls - up to max_batch_queries per call (an empty list, or one over that cap, returns a top-level {"error": "..."} without touching ClickHouse).
+    Only a single SELECT/WITH statement is allowed per query - no DDL/DML, no system tables, no remote/file/URL table functions.
+    Always returns {"results": [...]}, one entry per input query in input order (a single sql string is treated as a one-item batch): {"status": "ok", "result": {...}} on success, or {"status": "error", "error": "<message>"} on failure - one bad query in a batch doesn't abort the rest.
+    Each successful result has columns/rows/row_count/truncated/execution_time_ms; results are capped at max_rows (default 200, hard cap 1000, applied per query) - truncated=True means there were more rows than that.
+    Prefer aggregating/filtering in the query itself over relying on this cap, since rows beyond it are silently dropped, not sampled.
+    Real concurrency against ClickHouse is throttled server-side (shared with `profile_query`), so a large batch - or several callers at once - can't overload the local instance."""
+    queries = [sql] if isinstance(sql, str) else sql
+    if not queries:
+        return {"error": "sql must be a non-empty string or list of strings."}
+    if len(queries) > _MAX_BATCH_QUERIES:
+        return {"error": f"Too many queries ({len(queries)}); max_batch_queries is {_MAX_BATCH_QUERIES}."}
+
+    with ThreadPoolExecutor(max_workers=min(len(queries), _MAX_CONCURRENT_QUERIES)) as pool:
+        raw_results = list(pool.map(lambda s: _do_query_safe(s, max_rows), queries))
+
+    results = [
+        {"status": "error", **r} if "error" in r else {"status": "ok", "result": r}
+        for r in raw_results
+    ]
+    return {"results": results}
+
+
+def _do_profile(sql: str) -> dict:
     client = get_client()
     start = time.perf_counter()
     try:
-        summary = client.command(f"{validated} FORMAT Null", settings={"max_execution_time": 10})
+        with _ch_semaphore:
+            summary = client.command(f"{sql} FORMAT Null", settings={"max_execution_time": 10})
     except Exception as exc:
         logger.warning("profile_query() failed: %s", exc)
         return {"error": str(exc), "execution_time_ms": round((time.perf_counter() - start) * 1000, 1)}
@@ -279,13 +300,14 @@ def profile_query(sql: str) -> dict:
     memory_usage_bytes = None
     memory_usage_warning = None
     try:
-        client.command("SYSTEM FLUSH LOGS")
-        log_result = client.query(
-            "SELECT memory_usage FROM system.query_log "
-            "WHERE query_id = {query_id:String} AND type = 'QueryFinish' "
-            "ORDER BY event_time DESC LIMIT 1",
-            parameters={"query_id": query_id},
-        )
+        with _ch_semaphore:
+            client.command("SYSTEM FLUSH LOGS")
+            log_result = client.query(
+                "SELECT memory_usage FROM system.query_log "
+                "WHERE query_id = {query_id:String} AND type = 'QueryFinish' "
+                "ORDER BY event_time DESC LIMIT 1",
+                parameters={"query_id": query_id},
+            )
         if log_result.result_rows:
             memory_usage_bytes = log_result.result_rows[0][0]
         else:
@@ -304,3 +326,15 @@ def profile_query(sql: str) -> dict:
     if memory_usage_warning:
         result["memory_usage_warning"] = memory_usage_warning
     return result
+
+
+@mcp.tool()
+def profile_query(sql: str) -> dict:
+    """Run a read-only SQL query and report its real ClickHouse execution cost instead of result rows: memory_usage_bytes, read_rows, read_bytes, query_duration_ms.
+    Same SELECT/WITH-only validation as `query`.
+    Use this (not `query`) when the point is comparing how expensive two versions of a query are, e.g. before/after a rewrite - `query`'s execution_time_ms is wall-clock only and says nothing about memory or rows scanned.
+
+    read_rows/read_bytes/query_duration_ms come straight back in ClickHouse's own response summary (no extra round trip).
+    memory_usage_bytes needs system.query_log, which only becomes queryable after a SYSTEM FLUSH LOGS - this tool does that automatically, but the lookup is best-effort: if it fails (e.g. a permissions issue), memory_usage_bytes comes back null with a `memory_usage_warning` explaining why, rather than failing the whole call - the other three numbers are still valid either way."""
+    validated = _validate_readonly_sql(sql)
+    return _do_profile(validated)

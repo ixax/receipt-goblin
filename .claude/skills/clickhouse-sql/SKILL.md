@@ -39,7 +39,8 @@ Keep each one scannable.
 
 ## Sanctioned tools/scripts for this stack
 
-- **`mcp__dev__query`** - the only sanctioned way to run a SELECT/WITH against live data (single statement, read-only by server-side validation, `mcp-dev` service).
+- **`mcp__dev__query`** - the only sanctioned way to run a SELECT/WITH against live data (read-only by server-side validation, `mcp-dev` service).
+  Accepts either a single SQL string or a list of independent SQL strings to run as one batch instead of looping - see the tool's own docstring for the exact response shape.
   Never `docker exec .../clickhouse-client` or any other direct connection - see AGENTS.md's base ClickHouse-access rule.
 - **`mcp__dev__profile_query`** - same validation as `query`, but returns cost metrics (`memory_usage_bytes`/`read_rows`/`read_bytes`/`query_duration_ms`) instead of result rows, for comparing two versions of a query.
 - **`services/grafana/scripts/query_perf.py`** - deterministic resolve/save-run/diff/report tooling for tracking a dashboard query's cost over time (before/after a rewrite).

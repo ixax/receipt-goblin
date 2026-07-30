@@ -1,5 +1,5 @@
 """Shared plumbing for the mcp-dev/mcp-stats FastMCP servers: a lazily-built,
-thread-safe ClickHouse client, the /health route that pings it, and the
+per-thread ClickHouse client, the /health route that pings it, and the
 DNS-rebinding-protection transport_security settings both servers need.
 """
 import threading
@@ -18,26 +18,25 @@ class ClickHouseClientFactory:
         self._username = username
         self._password = password
         self._database = database
-        self._client = None
-        # Guards _client's check-then-set below: without it, two concurrent first
-        # calls (plausible under FastMCP's multi-threaded tool dispatch) could each
-        # see _client is None, each construct their own clickhouse_connect client,
-        # and race to assign the instance attribute - the loser's client leaks
-        # (never closed, its connection never reused, just abandoned).
-        self._lock = threading.Lock()
+        # One client per thread, not one shared instance.
+        # clickhouse_connect's Client tracks in-flight query/session state on the instance itself.
+        # Two threads sharing one Client and querying at the same moment hit ClickHouse's own "Attempt to execute concurrent queries within the same session" error.
+        # Confirmed by actually running concurrent queries through a shared client during mcp-dev's array-input query() rollout.
+        # threading.local gives each worker thread (FastMCP's tool dispatch pool, and query()'s own internal ThreadPoolExecutor for a batch) its own lazily-built client instead.
+        self._local = threading.local()
 
     def get_client(self):
-        if self._client is None:
-            with self._lock:
-                if self._client is None:  # re-check: another thread may have won the race while we waited
-                    self._client = clickhouse_connect.get_client(
-                        host=self._host,
-                        port=self._port,
-                        username=self._username,
-                        password=self._password,
-                        database=self._database,
-                    )
-        return self._client
+        client = getattr(self._local, "client", None)
+        if client is None:
+            client = clickhouse_connect.get_client(
+                host=self._host,
+                port=self._port,
+                username=self._username,
+                password=self._password,
+                database=self._database,
+            )
+            self._local.client = client
+        return client
 
 
 def make_health_route(get_client, logger=None):
