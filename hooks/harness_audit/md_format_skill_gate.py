@@ -55,26 +55,40 @@ def _block_satisfies_gate(block: dict) -> bool:
     return False
 
 
-def already_read(transcript_path: str) -> bool:
-    try:
-        with open(transcript_path, "r") as f:
-            lines = f.readlines()
-    except OSError:
-        return False
+def _subagent_transcripts(transcript_path: str) -> list:
+    """Task-spawned subagents get their own transcript file under
+    <session-dir>/subagents/agent-<id>.jsonl, sibling to the main
+    <session-id>.jsonl the orchestrator writes to.
+    A subagent's own Skill/Read calls land only in its own file, never in the main one.
+    So a subagent-issued Edit/Write must check both, or a compliant subagent can never satisfy this gate on its own.
+    Confirmed live: harness-expert and dev-ops each read the skill in-session and were denied on every retry regardless."""
+    p = Path(transcript_path)
+    subagents_dir = p.parent / p.stem / "subagents"
+    if not subagents_dir.is_dir():
+        return []
+    return sorted(str(f) for f in subagents_dir.glob("agent-*.jsonl"))
 
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
+
+def already_read(transcript_path: str) -> bool:
+    for path in [transcript_path, *_subagent_transcripts(transcript_path)]:
         try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:
+            with open(path, "r") as f:
+                lines = f.readlines()
+        except OSError:
             continue
-        if entry.get("type") != "assistant":
-            continue
-        for block in (entry.get("message") or {}).get("content") or []:
-            if _block_satisfies_gate(block):
-                return True
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if entry.get("type") != "assistant":
+                continue
+            for block in (entry.get("message") or {}).get("content") or []:
+                if _block_satisfies_gate(block):
+                    return True
     return False
 
 

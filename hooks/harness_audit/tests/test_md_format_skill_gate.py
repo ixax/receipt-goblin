@@ -92,6 +92,24 @@ class TestAlreadyRead(unittest.TestCase):
         path = write_transcript([entry])
         self.assertFalse(gate.already_read(path))
 
+    def test_true_when_only_subagent_transcript_has_the_read(self):
+        # Reproduces the bug where a Task-spawned subagent's own Skill/Read
+        # call landed only in its own <session>/subagents/agent-<id>.jsonl
+        # file, never in the main <session-id>.jsonl the hook was given as
+        # transcript_path - so a subagent could read the skill any number
+        # of times and still get denied forever.
+        tmp_dir = Path(tempfile.mkdtemp())
+        main_path = tmp_dir / "session123.jsonl"
+        main_path.write_text(json.dumps(OTHER_TOOL_ENTRY) + "\n")
+        subagents_dir = tmp_dir / "session123" / "subagents"
+        subagents_dir.mkdir(parents=True)
+        (subagents_dir / "agent-abc123.jsonl").write_text(json.dumps(SKILL_READ_ENTRY) + "\n")
+        self.assertTrue(gate.already_read(str(main_path)))
+
+    def test_false_when_no_subagent_dir_exists(self):
+        path = write_transcript([OTHER_TOOL_ENTRY])
+        self.assertFalse(gate.already_read(path))
+
 
 class TestQualifies(unittest.TestCase):
     def test_md_file_always_qualifies(self):
