@@ -5,7 +5,6 @@
 **Agent Tracking Stack** - tracks cost/efficiency of AI coding agents (Claude Code, Codex CLI), full call-chain tracing.
 Queue-based ingest: LiteLLM -> `webhook` (enqueue-only) -> `redis` -> `webhook-worker` (batches into ClickHouse); Grafana reads ClickHouse; CLI reads back via `mcp-dev`/`mcp-stats`.
 Dev/prod split: `agent_docs/architecture.md`; per-service detail: `agent_docs/services/<name>.md` (Project Structure below).
-Uses ClickHouse, version pinned in `VERSIONS.yml` - `agent_docs/services/clickhouse.md`.
 
 Write agent instructions, `.md` files, and comments in ASD-STE100 Simplified Technical English - rules: `md-format` skill.
 
@@ -55,6 +54,7 @@ Orientation only - doc filename `<dirname>.md` under `agent_docs/services/` unle
 - `mcp-dev/`, `mcp-stats/` - dev SQL / prod stats MCP
 - `mcp-server/` - STALE, pycache-only - pending removal
 - `backup/` - only via `dev-ops`
+- `autoheal` - no dir, restarts stuck-`unhealthy` services - `autoheal.md`
 - `alloy/blackbox/loki/node-exporter/prometheus/` - observability (opt-in) - `observability.md`
 - `langfuse-minio/`, `langfuse-redis/` - Langfuse (opt-in) - `langfuse.md`
 

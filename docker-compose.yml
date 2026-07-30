@@ -144,6 +144,8 @@ services:
     # VM's cores (see loadtest below for why that matters).
     cpus: 3.0
     restart: always
+    labels:
+      - autoheal=true
     expose:
       # HTTP (people/tools querying ClickHouse directly - e.g. clickhouse-client,
       # DBeaver, ad-hoc curl) and native protocol - both published via
@@ -235,6 +237,8 @@ services:
       CLICKHOUSE_DATABASE: *clickhouse-database
     mem_limit: 1g
     restart: always
+    labels:
+      - autoheal=true
     volumes:
       - grafana-data:/var/lib/grafana
     healthcheck:
@@ -270,6 +274,8 @@ services:
       LITELLM_BASE_URL: *litellm-base-url
     mem_limit: 256m
     restart: always
+    labels:
+      - autoheal=true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=2)"]
       interval: 5s
@@ -298,6 +304,8 @@ services:
     # burst from crowding out webhook/worker's own CPU share.
     cpus: 1.0
     restart: always
+    labels:
+      - autoheal=true
     volumes:
       - redis-data:/data
     healthcheck:
@@ -338,6 +346,8 @@ services:
     mem_limit: 128m
     cpus: 1.0
     restart: always
+    labels:
+      - autoheal=true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
       interval: 5s
@@ -361,6 +371,20 @@ services:
     networks:
       receipt-goblin:
         ipv4_address: 172.28.1.12
+
+  # Docker only marks a container "unhealthy" on failed healthcheck - it doesn't restart it.
+  # (restart: always only reacts to process exit.)
+  # This watches containers labeled autoheal=true and restarts them on unhealthy,
+  # covering the case where the process is alive but stuck (e.g. lost network/DNS to a dependency).
+  autoheal:
+    image: willfarrell/autoheal
+    container_name: receipt-goblin-autoheal
+    restart: always
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: 10
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
   load-balancer:
     # Load-balances the two webhook replicas above (real least_conn - see
@@ -418,6 +442,8 @@ services:
     # clickhouse/langfuse-web all at once, so it's worth more than 0.5 cores.
     cpus: 1.0
     restart: always
+    labels:
+      - autoheal=true
     healthcheck:
       # 127.0.0.1, not localhost - nginx.conf only binds IPv4 here, and
       # localhost resolves to ::1 first (same issue as langfuse-web above).
@@ -473,6 +499,8 @@ services:
     # load testing showed it pegged at ~97% of 1.0 under sustained load.
     cpus: 2.0
     restart: always
+    labels:
+      - autoheal=true
     healthcheck:
       test: ["CMD", "python", "-c", "from src.queue_client import get_redis; get_redis().ping()"]
       interval: 5s
@@ -712,6 +740,8 @@ services:
       LANGFUSE_HOST: *langfuse-base-url
     mem_limit: 2g
     cpus: 2.0
+    labels:
+      - autoheal=true
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=3)"]
       interval: 10s
@@ -746,6 +776,8 @@ services:
       retries: 20
     mem_limit: 256m
     restart: always
+    labels:
+      - autoheal=true
     networks:
       - receipt-goblin
 

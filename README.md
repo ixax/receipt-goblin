@@ -24,6 +24,8 @@ Once the stack is up, open **[`http://localhost`](http://localhost)** - a landin
 
 All of these are published by the single `load-balancer` (nginx) service now, not by each service's own container - see "Configuration" under "Reference" below.
 
+Core services also self-heal from a stuck-but-alive `unhealthy` state (not just a process crash) via `autoheal` - see `agent_docs/services/autoheal.md`.
+
 ## Getting started
 
 ### Environment variables
