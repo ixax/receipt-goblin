@@ -23,7 +23,18 @@ The same failure has a variant with none of the four named commands.
 The underlying rule is broader than those four commands: never hold a file's full content in memory across more than one edit, and never write a file's full content back unless every byte was just read fresh, immediately before writing.
 A large multi-edit task (5 edits or 500) does read-edit-write as one atomic cycle per edit, in a loop, not read-once/edit-many-in-memory/write-once.
 
+## `git stash` on a shared working tree
+
+`git stash` isn't one of the four named commands above, but it earns the same treatment: it snapshots and clears the *entire* working tree, not just files the current task touched.
+This repo's working tree is often shared with other concurrent Claude Code sessions - a bare `stash`/`stash pop` cycle can silently sweep up another session's in-flight uncommitted edits, and a later pop can conflict with (or, if resolved carelessly, lose) that unrelated work.
+Confirmed live: a `git stash` run mid-task grabbed dozens of files another concurrent session was actively editing, and the pop back conflicted on three of them - recovered by hand via `git merge-file` (base=`HEAD`, ours=the original stash, theirs=the newer concurrent edits captured in a second scoped stash), but only because the conflict was caught and worked through carefully.
+
+Before stashing: check `git status --short` against the list of files you yourself edited this task.
+If anything is unaccounted for, don't run a bare `git stash` - either scope it to just your own files (`git stash push -- <files>`) so the unrelated changes are never touched at all, or stop and ask the user to confirm, stating which unrecognized paths are present and why you wanted to stash.
+Never leave a stash sitting unpopped past the single command that needed a clean tree; `git stash list` should be empty again before considering the task done.
+
 ## Hook-enforcement status
 
 `git checkout --`/`git restore` are hook-enforced (`hooks/guard_destructive.py` forces a confirmation prompt), not prose-only anymore.
+`git stash` (any subcommand) is hook-enforced too: the same guard forces a confirmation prompt listing every currently-uncommitted path, so the decision of "is this safe" happens with the full picture visible, not from memory.
 The `git show :path` variant and the broader "never hold a file's full content across edits" rule remain not hook-covered: no pattern catches those, prose discipline is all that applies.
