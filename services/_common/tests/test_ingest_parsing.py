@@ -707,13 +707,15 @@ def test_agent_invocation_id_unsuccess_missing_header_returns_empty():
 def test_agent_invocation_rows_success_builds_one_row_per_spawn():
     payload = load_capture("success_with_agent_and_skill")
     now = datetime(2026, 7, 12, tzinfo=timezone.utc)
-    rows = ip._agent_invocation_rows("session-1", payload["messages"], now=now)
-    assert rows == [["aac9d05f148e9ae4a", "session-1", "test-researcher", "1.0.0", "Summarize Makefile contents", now]]
+    rows = ip._agent_invocation_rows("session-1", payload["messages"], "parent-agent-1", now=now)
+    assert rows == [
+        ["aac9d05f148e9ae4a", "session-1", "test-researcher", "1.0.0", "Summarize Makefile contents", "parent-agent-1", now]
+    ]
 
 
 def test_agent_invocation_rows_unsuccess_no_spawns_returns_empty_list():
     payload = load_capture("success_plain")
-    assert ip._agent_invocation_rows("session-1", payload["messages"]) == []
+    assert ip._agent_invocation_rows("session-1", payload["messages"], "") == []
 
 
 # ---------------------------------------------------------------------------
@@ -833,3 +835,31 @@ def test_build_event_unsuccess_failure_payload_has_no_usage_or_message_row():
     assert event["event_row"] is not None
     assert event["usage_row"] is None
     assert event["message_row"] is None
+
+
+def test_build_event_success_populates_invocation_row_parent_agent_id_from_header():
+    # success_with_agent_and_skill has no x-claude-code-agent-id header (a main-session payload).
+    # success_subagent_call's is a real subagent id.
+    # Grafting the latter's header onto the former's messages gives a payload that both spawns
+    # a fork and is itself a fork, so invocation_rows[0]'s parent_agent_id can be checked against
+    # a real (non-blank) value.
+    subagent_payload = load_capture("success_subagent_call")
+    header = subagent_payload["metadata"]["requester_custom_headers"]["x-claude-code-agent-id"]
+
+    payload = load_capture("success_with_agent_and_skill")
+    payload["metadata"]["requester_custom_headers"]["x-claude-code-agent-id"] = header
+
+    event = ip.build_event(payload)
+
+    assert event["agent_invocation_id"] == header
+    row = dict(zip(ip._INVOCATION_COLUMNS, event["invocation_rows"][0]))
+    assert row["parent_agent_id"] == header
+
+
+def test_build_event_success_blank_parent_agent_id_for_main_session():
+    payload = load_capture("success_with_agent_and_skill")
+    event = ip.build_event(payload)
+
+    assert event["agent_invocation_id"] == ""
+    row = dict(zip(ip._INVOCATION_COLUMNS, event["invocation_rows"][0]))
+    assert row["parent_agent_id"] == ""

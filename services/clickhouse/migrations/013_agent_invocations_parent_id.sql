@@ -1,0 +1,23 @@
+-- agent_invocations' only parent link today is an ASOF JOIN against the
+-- nearest-preceding agent_spawn event in agent_events, matched purely by
+-- timestamp within the session. Under dense/concurrent Agent tool dispatch
+-- (several forks spawned close together from the same session), spawn
+-- events from different forks land close enough in time that the ASOF
+-- match sometimes picks the wrong "nearest" spawner, which visually
+-- collapses/flattens Panel-99's ("Fork tree") reconstructed hierarchy.
+--
+-- The webhook/webhook-worker already knows exactly who is making each
+-- Agent tool call - _agent_invocation_id(payload) reads the caller's own
+-- x-claude-code-agent-id header (blank for main). This column records that
+-- directly on the spawned child's row at ingest time, instead of
+-- reconstructing it later by timestamp proximity in Grafana. The ASOF
+-- heuristic stays in place as a fallback for historical rows inserted
+-- before this column existed.
+--
+-- Nullable with no explicit default so pre-migration rows read back as
+-- NULL (ClickHouse serves the column's default for existing parts until
+-- merged), while every newly-inserted row always carries a real string
+-- ('' for main-spawned, or the parent's own agent_id). This makes IS NULL
+-- a clean, permanent discriminant between "we don't know" (fall back to
+-- ASOF) and "we know it's root" ('').
+ALTER TABLE agent_invocations ADD COLUMN IF NOT EXISTS parent_agent_id Nullable(String);

@@ -914,7 +914,9 @@ def _agent_invocation_id(payload: dict) -> str:
     return headers.get("x-claude-code-agent-id", "")
 
 
-_INVOCATION_COLUMNS = ["agent_id", "session_id", "subagent_type", "agent_version", "description", "spawned_at"]
+_INVOCATION_COLUMNS = [
+    "agent_id", "session_id", "subagent_type", "agent_version", "description", "parent_agent_id", "spawned_at",
+]
 _EVENT_COLUMNS = [
     "timestamp", "user_id", "group_id", "user_key_hash", "session_id", "trace_id",
     "turn_id", "event_type", "tool_name", "agent_name",
@@ -968,11 +970,13 @@ _MESSAGE_CALL_ID_IDX = _MESSAGE_COLUMNS.index("litellm_call_id")
 _MESSAGE_SESSION_ID_IDX = _MESSAGE_COLUMNS.index("session_id")
 
 
-def _agent_invocation_rows(session_id: str, messages: Any, now: Optional[datetime] = None) -> list[list]:
+def _agent_invocation_rows(
+    session_id: str, messages: Any, parent_agent_id: str, now: Optional[datetime] = None
+) -> list[list]:
     now = now or datetime.now(timezone.utc)
     invocations = _agent_invocations_from_messages(messages)
     return [
-        [agent_id, session_id, subagent_type, agent_version, description, now]
+        [agent_id, session_id, subagent_type, agent_version, description, parent_agent_id, now]
         for agent_id, subagent_type, agent_version, description in invocations
     ]
 
@@ -1274,7 +1278,7 @@ def build_event(payload: dict) -> dict:
     messages = payload.get("messages")
     now = datetime.now(timezone.utc)
     ctx = _derive_context(payload, messages)  # no client - agent_name/version stay blank
-    invocation_rows = _agent_invocation_rows(ctx.session_id, messages, now=now)
+    invocation_rows = _agent_invocation_rows(ctx.session_id, messages, ctx.agent_invocation_id, now=now)
 
     source_row = _source_row(payload, ctx.session_id, now)
 

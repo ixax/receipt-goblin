@@ -24,6 +24,12 @@ CREATE TABLE IF NOT EXISTS agent_invocations
     -- or an agent never edited since creation.
     agent_version LowCardinality(String) DEFAULT '',
     description   String,
+    -- Caller's own agent_id at spawn time (x-claude-code-agent-id header),
+    -- '' for main-spawned. NULL only for rows inserted before this column
+    -- existed - see migrations/013_agent_invocations_parent_id.sql - so
+    -- IS NULL is a clean discriminant between "unknown, fall back to ASOF"
+    -- and "known root" ('').
+    parent_agent_id Nullable(String),
     spawned_at    DateTime64(3) DEFAULT now64(3)
 )
 ENGINE = ReplacingMergeTree(spawned_at)

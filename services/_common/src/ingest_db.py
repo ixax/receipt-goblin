@@ -222,7 +222,10 @@ def ingest_standard_logging_payload(payload: dict) -> None:
         # _derive_context's DB lookup below (for *this* call's own
         # agent_invocation_id) - minimizes the race window before the
         # spawned subagent's own first call arrives and looks its row up.
-        _insert_agent_invocations(client, _agent_invocation_rows(session_id, messages, now=now))
+        parent_agent_id = _agent_invocation_id(payload)
+        _insert_agent_invocations(
+            client, _agent_invocation_rows(session_id, messages, parent_agent_id, now=now)
+        )
 
         ctx = _derive_context_with_client(payload, messages, client)
 
@@ -329,7 +332,10 @@ def reparse_event(client, payload: dict, litellm_call_id: str, source_session_id
     # _derive_context's DB lookup below (for *this* call's own
     # agent_invocation_id) - minimizes the race window before the
     # spawned subagent's own first call arrives and looks its row up.
-    _insert_agent_invocations(client, _agent_invocation_rows(session_id, messages, now=now))
+    parent_agent_id = _agent_invocation_id(payload)
+    _insert_agent_invocations(
+        client, _agent_invocation_rows(session_id, messages, parent_agent_id, now=now)
+    )
 
     ctx = _derive_context_with_client(payload, messages, client)
     ctx.session_id = session_id
