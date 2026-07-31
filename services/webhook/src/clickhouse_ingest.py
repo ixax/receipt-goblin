@@ -54,7 +54,12 @@ _AWAY_RECAP_PREFIX = "The user stepped away and is coming back."
 
 # Trace panel (panel-76) text-cleaning regexes, ported from its SQL CTEs
 # so display text is precomputed once at ingest instead of per dashboard load.
-_SYSTEM_REMINDER_STRIP_RE = re.compile(r"^<system-reminder>.*?</system-reminder>\s*", re.DOTALL)
+# "+" (not one bare block): Claude Code can inject more than one
+# system-reminder as separate leading content blocks of the same user turn
+# (e.g. a skills-listing reminder followed by a memory/claudeMd reminder) -
+# a single non-repeating match here only strips the first, leaving the
+# second sitting in front of the real prompt text untouched.
+_SYSTEM_REMINDER_STRIP_RE = re.compile(r"^(?:\s*<system-reminder>.*?</system-reminder>)+\s*", re.DOTALL)
 _COMMAND_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.DOTALL)
 _LOCAL_STDOUT_STRIP_RE = re.compile(r"^.*</local-command-stdout>", re.DOTALL)
 _INTERRUPTED_STRIP_RE = re.compile(r"^\[Request interrupted by user\]\s*")

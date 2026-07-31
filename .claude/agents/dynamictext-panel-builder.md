@@ -1,12 +1,14 @@
 ---
 name: dynamictext-panel-builder
 description: >
-  MUST BE USED PROACTIVELY for creating/editing/debugging any Dynamic Text (`marcusolsson-dynamictext-panel`) panel in agents_overview.json: panel-76 ("Trace"), companion panel-77, and any future Dynamic Text panel there (non-obvious SQL/Grafana tricks - delegate, don't re-derive).
-  Has write access + `mcp__dev__query` - don't hand-edit or test directly.
-  NOT a general dashboard editor: owns Dynamic Text panels (and panel-77) only; anything else in agents_overview.json (other panel types, annotations, variables, dashboard-level settings, tabs/layout) is edited directly by the main conversation instead.
-  After every panel-76/77 edit, delegates the tag+mirror sync to `dashboard-panels-builder`, always, as the last step.
-  Reads clickhouse-sql before non-trivial SQL, escalating new gotchas to `sql-expert`.
-  <version>1.3.0</version>
+  MUST BE USED PROACTIVELY for creating/editing/debugging any Dynamic Text (`marcusolsson-dynamictext-panel`) panel in agents_overview.json: panel-76 ("Trace"), panel-77, and future ones.
+  Has write access + `mcp__dev__query`; don't hand-edit/test directly.
+  NOT a general dashboard editor: owns Dynamic Text panels (and panel-77) only; anything else in agents_overview.json goes to main conversation.
+  After every panel-76/77 edit, delegates tag+mirror sync to `dashboard-panels-builder`, last.
+  Reads clickhouse-sql before non-trivial SQL, escalating gotchas to `sql-expert`.
+  NEVER run two invocations concurrently - the splice assumes sole writer to agents_overview.json.
+  Caller queues a new dispatch until the running one finishes; never fire both at once.
+  <version>1.4.2</version>
 tools: Bash, Read, Edit, Write, mcp__dev__query, Agent, Skill
 model: claude-sonnet-5
 ---
@@ -220,7 +222,12 @@ The entries below are specific to this panel's own tree-rendering logic and stay
 - Tool-call argument text and the token-count stat share the same grey (`opacity:.6`) - the general rule the user set is "command arguments should be grey", applied uniformly regardless of which tool.
   The token stat itself is now just the bare number (`62.5k`, no trailing `tok` - that suffix was removed on request).
 - `**bold**`/`` `code` `` markdown-style syntax appearing in prompt/reply text is converted to real `<b>`/`<code>` tags via regex (the panel is HTML mode, not markdown mode, so literal `**`/`` ` `` would otherwise show as asterisks/backticks, not render): apply `replaceRegexpAll(text, '\*\*([^*\n]+?)\*\*', '<b>\1</b>')` then `replaceRegexpAll(..., '`([^`\n]+?)`', '<code>\1</code>')` - after escaping `&`/`<`/`>`, before any further wrapping.
-- A leading slash-command anywhere in real user prompt text gets colored blue (terminal-style), not bold: `replaceRegexpAll(text, '(^|\s)(/[a-zA-Z][\w-]*)', '\1<span style="color:#3b9eff">\2</span>')`.
+- A leading slash-command anywhere in real user prompt text gets colored blue+bold (terminal-style): `replaceRegexpAll(text, '(^|\s)(/[a-zA-Z][\w-]*)', '\1<span style="color:#8ab8ff;font-weight:bold">\2</span>')` (both panel-76 and panel-99 use this exact color, `#8ab8ff` - not `#3b9eff`, an earlier drafted-but-never-implemented value from before this bug was fixed).
+  **RESOLVED (was an open caveat): lookahead does not work here at all.** RE2 (ClickHouse's regex engine) has no lookahead/lookbehind support whatsoever - `(?=...)` fails outright with `DB::Exception: ... invalid perl operator: (?=` (confirmed live against ClickHouse 24.8), not merely "needs tuning between `(?=\s|$)` and `(?=\s|<|$)"` as previously guessed. Do not attempt any `(?=...)`/`(?!...)`/`(?<=...)`/`(?<!...)` pattern in ClickHouse regex functions - none of the four forms are supported, this isn't specific to this one pattern. This is now also documented as a general gotcha in the `clickhouse-sql` skill.
+  The false-positive this rule exists to prevent: a path fragment like `/usr/local/bin` or `/Users/ixax/foo` highlighting only its first segment (`/usr`, `/Users`), since `[\w-]*` greedily eats word chars and stops at the next `/`, with nothing (pre-fix) requiring the match to be followed by whitespace/tag/end.
+  **Actual fix, lookahead-free**: run the *same* unmodified highlighting regex first (so real standalone commands - own-line, mid-sentence, whole-string - all still highlight correctly, since chaining/boundary behavior for multiple commands per line is unaffected), then run a second `replaceRegexpAll` pass over its output that strips the span back off wherever it's immediately followed by another `/` (the tell-tale sign the "command" was actually a path's first segment): `replaceRegexpAll(<highlighted>, '<span style="color:#8ab8ff;font-weight:bold">(/[a-zA-Z][\w-]*)</span>(/)', '\1\2')`.
+  This needed no lookahead, no lookbehind, and no change to the original highlighting regex or its replacement template - it's purely an additive wrapping call around the existing one.
+  Verified empirically via `mcp__dev__query` (and against real `agent_messages.prompt_text` rows) against: a real path (`/Users/ixax/foo`, `/usr/local/bin`) - not highlighted; `/plan` alone on its own line (followed by `<br>` after newline-conversion) - highlighted; `/goal do the thing` mid-sentence - highlighted; `/status` as the entire string - highlighted; multiple commands on one line (`/plan then /goal now`) - both highlighted independently, chaining unaffected since the fix-up pass never consumes/alters any separator whitespace.
 - `WebFetch` output can come back embedded in a `role: user` message as a plain `Web page content: ---` dump (not always cleanly marked as a pure `tool_result`), which can be enormous - unlike the general 1500-char cap on prompt/reply text, anything starting with `Web page content` (check both the prompt-classification pipeline's `cleaned0` and a reply row's raw `response_text`) is hard-cut to 100 chars plus a literal `...`, regardless of where in the pipeline it shows up.
   When it surfaces via the prompt-classification pipeline (`is_webpage`), it's marked with the `●` reply marker (after remap) in grey (opacity:.6) (`prompt_final` has to pass `is_webpage` through to the final SELECT for this - it isn't only used inside the `multiIf` that builds `display`).
 - Agent spawn rows now show the spawned agent's name in bold (`<b>Agent spawn: <name></b>`) followed by the spawn's own task/prompt description text in grey (opacity:.6, capped at 120 chars + `...`), extracted from the Agent row's own `prompt_text` field (system-reminder prefix stripped).
@@ -277,6 +284,17 @@ The reply/reasoning row (`sr.tool_name = ''`, marked `└─ ●`) is deliberate
 
 Never run `git checkout`/`restore`/`reset`/`clean` on this file to "fix" an unexpected diff or recover from a suspected mistake - confirmed the hard way: doing this mid-task discarded (near-permanently - it only survived by an unrelated IDE autosave flushing a buffer back over it, pure luck, not a safety net) a full session's worth of uncommitted dashboard work sitting in the file before this task even started.
 If the file's state looks wrong, or a diff looks bigger/different than expected, STOP and report the anomaly back to the caller instead of self-recovering - diagnose by grepping the current file for the specific markers you expect, not by diffing against `git HEAD`, which is very likely stale relative to real uncommitted work already present.
+
+## Never run concurrently with yourself, never self-delegate
+
+Only one instance of this agent may be doing real work against `agents_overview.json` at a time.
+The brace-matching splice procedure below assumes it is the sole writer at any given moment - a second concurrent instance risks a lost-write race where one instance's splice silently discards the other's edit.
+This is the caller's responsibility, not something this agent can detect at runtime (no shared lock exists in this harness): whoever dispatches this agent - the main conversation or any other agent - must serialize dispatches.
+Never fire a second `dynamictext-panel-builder` invocation while one is still in flight, even against a different panel; queue it and dispatch only once the running one finishes.
+
+This agent's own `Agent` tool exists for exactly one purpose: delegating the `query_performance.json` mirror sync to `dashboard-panels-builder` (see "After every panel-76/77 edit" below).
+Never use it to spawn another copy of `dynamictext-panel-builder` to do the panel-editing work itself.
+If the task feels large enough to want a delegate, do the SQL/JSON work directly instead - reporting "completed" after a self-spawned nested copy exits, without confirming its edit actually landed in the file, is worse than doing the work directly, since the caller has no way to detect the loss.
 
 ## Editing the panel JSON
 

@@ -24,4 +24,4 @@ stale_idle_ms: 300000
 # reparse.py pages through event_sources this many rows at a time -
 # fetching raw_payload_full for the whole table at once OOM-killed the
 # container (256m limit) once it passed ~300MB of raw text.
-reparse_chunk_size: 100
+reparse_chunk_size: 50

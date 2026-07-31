@@ -53,6 +53,18 @@ Fix: `services/litellm/config.yaml`'s `callback_settings.metrics_webhook` now se
 Neither fix makes loss impossible - an outage longer than the retry backoff *and* longer than however long it takes to refill the capped buffer will still lose data - it narrows the window rather than closing it.
 Separate, not yet done: root-causing *why* `load-balancer`/`webhook` returned 504s for several minutes straight in the `0cd1980e` window (was `webhook` overloaded, `redis` backlogged, or the container itself restarting) - the retry/no-clear fixes above reduce the blast radius of that class of outage, they don't explain this particular occurrence.
 
+## `display_text` only stripped the first of multiple leading `<system-reminder>` blocks
+
+While building the "Fork tree" panel (panel-99), found `display_text` (precomputed at ingest by `_prompt_kind_and_display` in `services/webhook/src/clickhouse_ingest.py`) still had a raw `<system-reminder>...</system-reminder>` block in it for some rows, instead of being fully cleaned.
+First checked a row where `display_text` looked completely unrelated to that row's own `prompt_text` (`agent_invocation_id = 'a4940dbd71e06ab00'`) and wrongly concluded it was a join/dedup mismatch between `agent_events` and `agent_messages` - disproven on closer inspection: that row's raw `prompt_text` legitimately had two content blocks (a system-reminder, then the real task text) concatenated together, and `display_text` was correctly the cleaned (second) part all along - not a mismatch at all.
+The real bug, confirmed against a genuine multi-reminder row (`litellm_call_id = 'a8199216-8d1e-44b2-91a2-f95be2bf1cd9'`, checked via `ingest_raw.raw_payload_full`): Claude Code can inject **more than one** `<system-reminder>` block as separate leading content blocks of the same user turn (e.g. a skills-listing reminder, then a memory/claudeMd reminder, then the real task text) - three blocks in that example.
+`_SYSTEM_REMINDER_STRIP_RE` only matched one leading block (`^<system-reminder>.*?</system-reminder>\s*`, applied once), so the second reminder survived into `display_text` untouched.
+Fix: changed the regex to `^(?:\s*<system-reminder>.*?</system-reminder>)+\s*` (repeats, strips every consecutive leading block in one match).
+Added `test_prompt_kind_and_display_success_strips_two_leading_system_reminders` in `services/webhook/tests/test_clickhouse_ingest.py`; full suite (116 tests) passes.
+Panel-76 ("Trace")'s own `tool_result_preview` CTE has the identical one-block-only bug in its SQL-side regex - fixed alongside (see `dynamictext-panel-builder`'s work).
+Not yet done: reparsing historical rows (`make reparse-all`) to fix already-ingested `display_text` values - the fix only applies going forward until that's run.
+Lesson (repeats the one two entries up): the first read of the data looked like a mismatch and wasn't - always trace back to the actual raw payload before concluding two fields disagree.
+
 ## Git checkout/restore clobbering uncommitted work
 
 Three past incidents (a dashboard reformat "fixed" via `git checkout -- <file>`, a misdiagnosed-corruption checkout, and a bulk edit that used `git show :path` to self-"restore") each silently discarded concurrent uncommitted work, recovered only by luck each time.

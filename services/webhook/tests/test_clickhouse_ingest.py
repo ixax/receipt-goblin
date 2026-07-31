@@ -227,6 +227,21 @@ def test_prompt_kind_and_display_success_classifies_away_recap():
     assert display_arg == ""
 
 
+def test_prompt_kind_and_display_success_strips_two_leading_system_reminders():
+    # Claude Code can inject more than one system-reminder as separate
+    # leading content blocks of the same user turn (e.g. a skills-listing
+    # reminder followed by a memory/claudeMd reminder) before the real task
+    # text - both must be stripped, not just the first.
+    text = (
+        "<system-reminder>\nSkills available: foo, bar\n</system-reminder>\n"
+        "<system-reminder>\nMemory: the user likes concise replies\n</system-reminder>\n\n"
+        "Run this exact command and report its output: make status"
+    )
+    prompt_kind, display_text, display_arg = ci._prompt_kind_and_display(text, "")
+    assert prompt_kind == "real"
+    assert display_text == "Run this exact command and report its output: make status"
+
+
 # ---------------------------------------------------------------------------
 # _failed_tool_call
 # ---------------------------------------------------------------------------
