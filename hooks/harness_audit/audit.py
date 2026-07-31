@@ -5,10 +5,17 @@ Usage: python3 audit.py [repo_root]
 Exit 0 = clean, 1 = violations found.
 
 Dual-harness aware: this repo tracks both Claude Code (.claude/) and Codex
-(.codex/) equally. Skills/rules are matched by filename/path pattern, not a
-single CLI's directory, and files reached via a symlink from both trees are
-deduped by real path so a shared skill isn't double-counted or flagged as a
-false duplicate. Subagents stay .claude-only - Codex has no Task-tool/subagent
+(.agents/, .codex/) equally.
+Skills/rules are matched by filename/path pattern, not a single CLI's
+directory.
+Skill content lives under .agents/skills/<name>/SKILL.md, the one real
+copy; .claude/skills is a directory-level symlink to it, so os.walk()
+(followlinks=False) never descends into .claude/skills and each SKILL.md
+is only ever reached via the .agents/skills/ path.
+The realpath dedup below stays in place for other symlink cases (e.g.
+.codex/ config), even though it's no longer load-bearing for skills
+specifically.
+Subagents stay .claude-only - Codex has no Task-tool/subagent
 equivalent, so there's no .codex/agents to scan.
 """
 import os
@@ -26,7 +33,7 @@ VOLATILE_PATTERN = re.compile(
     r"\b(20\d\d-\d\d-\d\d|sprint\s*[#\w-]*\d|current (branch|sprint|version|status)|as of|updated on)\b",
     re.IGNORECASE,
 )
-REF_PATTERN = re.compile(r"(?:\]\(|`|\s)((?:agent_docs|thoughts|references|scripts|\.claude)/[\w./-]+\.(?:md|py|sql|json))")
+REF_PATTERN = re.compile(r"(?:\]\(|`|\s)((?:agent_docs|thoughts|references|scripts|\.claude|\.agents)/[\w./-]+\.(?:md|py|sql|json))")
 MULTI_SENTENCE_PATTERN = re.compile(r"[a-z0-9`)\]]\. [A-Z]")
 
 
@@ -82,9 +89,11 @@ def collect():
             elif rel.startswith(os.path.join(".claude", "rules")) and fn.endswith(".md"):
                 kind = "rule"
             elif fn == "SKILL.md":
-                # Matched by filename, not a single CLI's directory - a skill shared
-                # via .claude/skills/x/SKILL.md <-> .codex/skills/x/SKILL.md picks
-                # up both paths here; the realpath dedup below collapses the pair.
+                # Matched by filename, not a single CLI's directory.
+                # The real copy lives under .agents/skills/x/SKILL.md;
+                # .claude/skills is a directory-level symlink to it, so
+                # followlinks=False keeps os.walk() from ever descending
+                # into .claude/skills.
                 kind = "skill"
             elif fn.endswith(".md") and rel.startswith(os.path.join(".claude", "agents")):
                 kind = "agent"

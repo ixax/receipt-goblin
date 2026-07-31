@@ -26,10 +26,11 @@ def is_harness_path(rel: str) -> bool:
     markdown file in the repo.
     Any other .md file gets audit.py's "other_md" kind - md-format's one-sentence-
     per-line and dead-reference checks, no token budget.
-    Dual-harness aware - this repo tracks .claude/ and .codex/ equally.
+    Dual-harness aware - this repo tracks .claude/, .agents/, and .codex/ equally.
     """
     return rel.endswith(".md") or (
         rel.startswith(".claude" + os.sep)
+        or rel.startswith(".agents" + os.sep)
         or rel.startswith(".codex" + os.sep)
         or rel.startswith("agent_docs" + os.sep)
         or os.path.basename(rel) in ("AGENTS.md", "CLAUDE.md")

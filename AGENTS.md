@@ -65,7 +65,8 @@ Root-level:
 - `docker-compose.yml`/`.dev.yml` - prod/dev split - `agent_docs/architecture.md`
 - `.env.example`/`.env` - gitignored
 - `hooks/`, `scripts/`
-- `.claude/` - agents/skills/commands/rules
+- `.claude/` - agents/commands/rules
+- `.agents/skills/` - canonical skill content; `.claude/skills` is a symlink to it
 - `.claude/data/` - gitignored scratch, one subdir per purpose
 - `plans/` - approved `/plan` outputs, one file per plan
 

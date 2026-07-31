@@ -43,7 +43,7 @@ def main() -> int:
         lines = "\n".join(f"  ~{i}: {s}" for i, s in violations)
         print(
             f"md-format one-sentence-per-line (comment) violated in {path}:\n{lines}\n"
-            "Split each flagged line so it holds one sentence, per .claude/skills/md-format/SKILL.md.",
+            "Split each flagged line so it holds one sentence, per .agents/skills/md-format/SKILL.md.",
             file=sys.stderr,
         )
         return 2

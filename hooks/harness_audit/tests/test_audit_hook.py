@@ -22,7 +22,10 @@ class TestIsHarnessPath(unittest.TestCase):
         self.assertTrue(audit_hook.is_harness_path(".claude/agents/x.md"))
 
     def test_codex_path_matches(self):
-        self.assertTrue(audit_hook.is_harness_path(".codex/skills/x/SKILL.md"))
+        self.assertTrue(audit_hook.is_harness_path(".codex/config.toml"))
+
+    def test_agents_skill_path_matches(self):
+        self.assertTrue(audit_hook.is_harness_path(".agents/skills/x/SKILL.md"))
 
     def test_root_agents_md_matches(self):
         self.assertTrue(audit_hook.is_harness_path("AGENTS.md"))
@@ -81,8 +84,8 @@ class TestMainEndToEnd(unittest.TestCase):
         code = self.run_hook(str(agents_md))
         self.assertEqual(code, 2)
 
-    def test_codex_skill_edit_over_budget_exits_two(self):
-        skill = self.root / ".codex" / "skills" / "x" / "SKILL.md"
+    def test_agents_skill_edit_over_budget_exits_two(self):
+        skill = self.root / ".agents" / "skills" / "x" / "SKILL.md"
         skill.parent.mkdir(parents=True, exist_ok=True)
         body = "\n".join(f"line {i}" for i in range(600))
         skill.write_text(f"---\nname: x\ndescription: d\n---\n{body}\n", encoding="utf-8")

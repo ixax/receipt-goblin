@@ -128,19 +128,18 @@ class TestCollectAndMain(unittest.TestCase):
         code, out = self.run_main()
         self.assertEqual(code, 0)
 
-    def test_claude_and_codex_skill_symlink_deduped(self):
-        real = self.root / ".claude" / "skills" / "shared" / "SKILL.md"
+    def test_agents_and_claude_skill_symlink_deduped(self):
+        real = self.root / ".agents" / "skills" / "shared" / "SKILL.md"
         write(real, "---\nname: shared\ndescription: d\n---\nbody\n")
-        codex_dir = self.root / ".codex" / "skills" / "shared"
-        codex_dir.mkdir(parents=True, exist_ok=True)
-        os.symlink(real, codex_dir / "SKILL.md")
+        (self.root / ".claude").mkdir(parents=True, exist_ok=True)
+        os.symlink(self.root / ".agents" / "skills", self.root / ".claude" / "skills")
 
         files = audit.collect()
         skill_entries = [rel for rel, (kind, _) in files.items() if kind == "skill"]
         self.assertEqual(len(skill_entries), 1, f"expected exactly one deduped skill entry, got {skill_entries}")
 
-    def test_codex_only_skill_still_picked_up(self):
-        write(self.root / ".codex" / "skills" / "codexonly" / "SKILL.md", "---\nname: c\ndescription: d\n---\nbody\n")
+    def test_agents_only_skill_still_picked_up(self):
+        write(self.root / ".agents" / "skills" / "agentsonly" / "SKILL.md", "---\nname: c\ndescription: d\n---\nbody\n")
         files = audit.collect()
         skill_entries = [rel for rel, (kind, _) in files.items() if kind == "skill"]
         self.assertEqual(len(skill_entries), 1)
