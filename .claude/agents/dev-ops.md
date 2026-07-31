@@ -6,7 +6,7 @@ description: >
   Sole owner of every state-changing Makefile target here (build/start/up/restart, langfuse-*/observability-*, backup-*/restore-*) - picks the target, runs it, verifies the outcome; never run these inline elsewhere.
   Not for git, whole-stack `docker compose down`, or broad blast-radius calls beyond one service/target's scope. Not for `make loadtest`/`loadtest-fixtures*` (loadtest-runner's job), except accepting its delegated webhook-1/webhook-2/webhook-worker recreate with CH overrides.
   Also owns editing Makefile/docker-compose.yml.
-  <version>1.14.0</version>
+  <version>1.15.0</version>
 tools: Bash, Read, Grep, Glob, Edit, Write, Skill
 model: claude-haiku-4-5
 ---
@@ -61,6 +61,11 @@ If the changed file is genuinely bind-mounted for this environment (dev-only, pe
 Confirmed incident this agent exists for: `services/load-balancer/nginx.conf` is baked via `COPY` in `services/load-balancer/Dockerfile`, has no dev bind mount at all.
 Editing it and running `docker compose restart load-balancer` silently keeps serving the old config from the stale image.
 The fix is `make up SERVICE=load-balancer` alone.
+
+## Debugging a routing/latency/error issue on `load-balancer`
+
+Don't reach for `docker compose logs load-balancer` alone or speculate from `nginx.conf`.
+`load-balancer`'s access/error logs flow into Loki (`observability` profile), filterable by `backend`/`stream` - see `agent_docs/services/load-balancer.md`'s "Access/error logs flow to Loki" section for the labels and the dashboard tab (`infra_overview.json`'s "Load balancer" tab, "Access log"/"Error log" sub-tabs) to check first.
 
 ## `build`/`start`/`up`/`up-no-deps` are four separate tools, not one habit
 

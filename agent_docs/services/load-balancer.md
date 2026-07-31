@@ -41,6 +41,13 @@ Without it, a routine `docker compose up -d --build <service>` recreate would 50
 ClickHouse's native protocol (port 9000, raw TCP) uses the same variable trick inside a `stream{}` block instead of `http{}`.
 `prometheus`/`langfuse-web` not existing at all (profile not enabled) behaves the same way as any other backend not being up yet - per-request 502s, no crash.
 
+## Access/error logs flow to Loki
+
+nginx's `access_log` (stdout, logfmt, `backend=<name>` field per proxied service, set per `server{}` block) and `error_log` (stderr, nginx's native format) both flow through Alloy (`services/alloy/config.alloy`) into Loki - opt-in `observability` profile, see `agent_docs/services/observability.md`.
+Query/filter in Grafana by the `container`, `stream` (`stdout`/`stderr`), and `backend` (access log only, ~8 known values) Loki labels.
+The landing page (`listen 80`) and `stub_status` (`listen 8080`) stay excluded (`access_log off;`) - no debug value, and `stub_status` is a high-frequency scrape target.
+`services/grafana/dashboards-health/infra_overview.json`'s "Load balancer" tab has "Access log"/"Error log" sub-tabs (full-height Logs panels) plus a `$backend` multi-select template variable for this - the go-to spot for diagnosing a routing/latency/error issue instead of `docker compose logs load-balancer` alone.
+
 ## No `depends_on`
 
 `load-balancer` has no `depends_on` on anything, deliberately.

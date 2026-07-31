@@ -5082,6 +5082,134 @@
             }
           }
         }
+      },
+      "panel-49": {
+        "kind": "Panel",
+        "spec": {
+          "id": 49,
+          "title": "Access log",
+          "description": "Goal: let engineers inspect raw nginx access log lines from the load balancer to debug routing/backend selection issues.\nDescription: streams Loki log lines from the load-balancer container's stdout stream, filtered to the backend(s) selected via the $backend dashboard variable.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "loki",
+                      "datasource": {
+                        "name": "DS_LOKI"
+                      },
+                      "spec": {
+                        "expr": "{container=\"receipt-goblin-load-balancer\", stream=\"stdout\", backend=~\"$backend\"}",
+                        "queryType": "range",
+                        "editorMode": "code",
+                        "maxLines": 1000
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "logs",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {}
+                },
+                "overrides": []
+              },
+              "options": {
+                "showTime": true,
+                "showLabels": false,
+                "showCommonLabels": false,
+                "wrapLogLines": false,
+                "prettifyLogMessage": false,
+                "enableLogDetails": true,
+                "dedupStrategy": "none",
+                "sortOrder": "Descending",
+                "enableInfiniteScrolling": false
+              }
+            }
+          }
+        }
+      },
+      "panel-50": {
+        "kind": "Panel",
+        "spec": {
+          "id": 50,
+          "title": "Error log",
+          "description": "Goal: let engineers inspect raw nginx error log lines from the load balancer to debug worker/upstream failures.\nDescription: streams Loki log lines from the load-balancer container's stderr stream. nginx's error_log directive can't log a $backend_name variable like access_log does, so Alloy instead derives a best-effort backend label from the port in the line's own \"host:\" field (absent on lines with no request context, e.g. worker-level errors) - no $backend filter here since it's inferred, not logged directly.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "loki",
+                      "datasource": {
+                        "name": "DS_LOKI"
+                      },
+                      "spec": {
+                        "expr": "{container=\"receipt-goblin-load-balancer\", stream=\"stderr\"}",
+                        "queryType": "range",
+                        "editorMode": "code",
+                        "maxLines": 1000
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "logs",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {}
+                },
+                "overrides": []
+              },
+              "options": {
+                "showTime": true,
+                "showLabels": false,
+                "showCommonLabels": false,
+                "wrapLogLines": false,
+                "prettifyLogMessage": false,
+                "enableLogDetails": true,
+                "dedupStrategy": "none",
+                "sortOrder": "Descending",
+                "enableInfiniteScrolling": false
+              }
+            }
+          }
+        }
       }
     },
     "layout": {
@@ -5916,6 +6044,71 @@
                 }
               }
             }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "title": "Load balancer",
+              "layout": {
+                "kind": "TabsLayout",
+                "spec": {
+                  "tabs": [
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "Access log",
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-49"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 24,
+                                  "height": 24
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "Error log",
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-50"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 24,
+                                  "height": 24
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         ]
       }
@@ -5943,6 +6136,41 @@
       "hideTimepicker": false
     },
     "title": "Infra Overview",
-    "variables": []
+    "variables": [
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "name": "backend",
+          "label": "Backend",
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          },
+          "hide": "dontHide",
+          "refresh": "onDashboardLoad",
+          "skipUrlSync": false,
+          "query": {
+            "kind": "DataQuery",
+            "group": "loki",
+            "version": "v0",
+            "datasource": {
+              "name": "DS_LOKI"
+            },
+            "spec": {
+              "type": 1,
+              "label": "backend",
+              "refId": "LokiVariableQueryEditor-VariableQuery"
+            }
+          },
+          "regex": "",
+          "sort": "alphabeticalAsc",
+          "options": [],
+          "multi": true,
+          "includeAll": true,
+          "allowCustomValue": true,
+          "allValue": ".*"
+        }
+      }
+    ]
   }
 }

@@ -17,13 +17,91 @@ discovery.relabel "containers" {
 		regex         = "/(.*)"
 		target_label  = "container"
 	}
+
+	// stdout vs stderr, e.g. load-balancer's access log (stdout) vs its
+	// error log (stderr, see nginx.conf's `error_log`) - cheap (2 values),
+	// applied to every container's lines, not just load-balancer's.
+	rule {
+		source_labels = ["__meta_docker_container_log_stream"]
+		target_label  = "stream"
+	}
 }
 
 loki.source.docker "default" {
 	host             = "unix:///var/run/docker.sock"
 	targets          = discovery.relabel.containers.output
-	forward_to       = [loki.write.default.receiver]
+	forward_to       = [loki.process.default.receiver]
 	relabel_rules    = discovery.relabel.containers.rules
+}
+
+// load-balancer's access log lines are logfmt (see services/load-balancer/
+// nginx.conf) with a `backend` field identifying which of the 8 proxied
+// services the line is for - promoted to a real Loki label here so lines
+// are filterable per backend (~8 known values, safe cardinality). Every
+// other container's lines pass through this stage untouched.
+loki.process "default" {
+	forward_to = [loki.write.default.receiver]
+
+	stage.match {
+		selector = `{container="receipt-goblin-load-balancer"}`
+
+		stage.match {
+			selector = `{stream="stdout"}`
+
+			stage.logfmt {
+				mapping = { backend = "" }
+			}
+
+			stage.labels {
+				values = { backend = "" }
+			}
+		}
+
+		// nginx's error log isn't logfmt - fixed format instead:
+		// `<date> [<level>] <pid>#<tid>: *<id> <message>, client: ...,
+		// server: ..., request: "...", host: "<host>:<port>"`. No
+		// $backend_name to log (error_log doesn't support variables like
+		// access_log does), so the backend is inferred from the port in
+		// `host:` instead - absent on lines with no `host:` field (e.g.
+		// worker-level errors unrelated to any request), which just leaves
+		// `backend` unset on those, same as an access log line that failed
+		// to logfmt-parse.
+		stage.match {
+			selector = `{stream="stderr"}`
+
+			// Reparse nginx's own leading date as the real Loki entry
+			// timestamp (accurate event time instead of scrape time), then
+			// drop it from the displayed line - otherwise it shows twice,
+			// once as the panel's own Time column and once as text baked
+			// into the message.
+			stage.regex {
+				expression = `^(?P<ts>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})`
+			}
+
+			stage.timestamp {
+				source = "ts"
+				format = "2006/01/02 15:04:05"
+			}
+
+			stage.replace {
+				expression = `^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} `
+				replace    = ""
+			}
+
+			stage.regex {
+				expression = `host: "[^"]*:(?P<port>\d+)"`
+			}
+
+			stage.template {
+				source   = "backend"
+				template = `{{ if eq .port "8000" }}webhook{{ else if eq .port "4000" }}litellm{{ else if eq .port "3000" }}grafana{{ else if eq .port "3001" }}langfuse-web{{ else if eq .port "8001" }}mcp-dev{{ else if eq .port "8002" }}mcp-stats{{ else if eq .port "9090" }}prometheus{{ else if eq .port "8123" }}clickhouse{{ end }}`
+			}
+
+			stage.labels {
+				values = { backend = "" }
+			}
+		}
+	}
 }
 
 loki.write "default" {
