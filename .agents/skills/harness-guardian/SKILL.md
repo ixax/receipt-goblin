@@ -7,7 +7,7 @@ description: >
   explicitly by name, or read by the harness-expert subagent when it
   performs a structural audit. Deterministic checks run via the
   PostToolUse hook, not from this skill.
-  <version>1.2.1</version>
+  <version>1.3.0</version>
 ---
 
 # Harness Guardian
@@ -98,8 +98,13 @@ Enforce this layout:
 - Codex concatenates the AGENTS.md chain root-down with a 32 KiB default
   cap (`project_doc_max_bytes`) and silently truncates beyond it — the
   audit script checks the combined chain size.
-- Skills follow the shared Agent Skills standard: one `skills/` directory
-  in the repo, symlinked into `.claude/skills/` and `.codex/skills/`.
+- `.agents/skills/` is the canonical directory: real skill content lives
+  there, at the Agent Skills open-standard location Codex CLI reads
+  natively.
+  `.claude/skills` is a single directory-level symlink to it, so Claude
+  Code discovers the same content with zero duplication.
+  A new skill goes directly under `.agents/skills/<name>/`; nothing
+  extra is needed on the `.claude/` side.
   Descriptions must work for both trigger mechanics (Claude implicit +
   Codex implicit/`$skill`).
 - `.claude/rules/` with globs is a Claude-only optimisation. Anything
