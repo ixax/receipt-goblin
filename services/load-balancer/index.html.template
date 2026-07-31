@@ -133,7 +133,11 @@
     <ul class="top-level">
       <li>
         <span class="plain">webhook</span>
-        <span class="note">&mdash; :${WEBHOOK_PORT}, ingest API, nothing to open here</span>
+        <span class="note">&mdash; :${WEBHOOK_PORT}, ingest API</span>
+        <ul>
+          <li><a href="http://localhost:${WEBHOOK_PORT}/docs" target="_blank" rel="noopener">Swagger UI</a></li>
+          <li><a href="http://localhost:${WEBHOOK_PORT}/redoc" target="_blank" rel="noopener">ReDoc</a></li>
+        </ul>
       </li>
       <li>
         <a href="http://localhost:${LITELLM_PORT}" target="_blank" rel="noopener">litellm</a>

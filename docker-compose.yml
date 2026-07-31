@@ -87,6 +87,7 @@ x-webhook-env: &webhook-env
   # For /key/info lookups verifying report_git_branch.py's auth header.
   LITELLM_MASTER_KEY: *litellm-master-key
   LITELLM_BASE_URL: *litellm-base-url
+  APP_VERSION: ${WEBHOOK_TAG}
 
 # Prometheus's own web UI (/graph, /targets, etc.) - lives behind the
 # `observability` compose profile (opt-in, see "Observability" in
