@@ -26,7 +26,7 @@ Fixed by excluding `172.28.1.x` (the static-IP range) from `ipam.ip_range` (`172
 
 ## `/goal` judge calls never hit prompt cache
 
-Investigated `todo/judge_call.md`: whenever `/goal` is active, Claude Code periodically fires a separate `judge_call` (an LLM call that checks whether the hook's stop condition is met, same `claude-sonnet-5` model as the main session, classified via `_classify_event()`/`_JUDGE_CALL_PREFIX` in `services/webhook/src/clickhouse_ingest.py`).
+Investigated `todo/judge_call.md`: whenever `/goal` is active, Claude Code periodically fires a separate `judge_call` (an LLM call that checks whether the hook's stop condition is met, same `claude-sonnet-5` model as the main session, classified via `_classify_event()`/`_JUDGE_CALL_PREFIX` in `services/_common/src/ingest_parsing.py`).
 Querying `agent_usage`/`agent_events` over the last 30 days (22 `judge_call` rows across 5 sessions) confirmed this is systemic, not a one-session fluke: `cache_read_tokens = 0` on every single `judge_call`, `cache_creation_tokens` averaging ~127K tokens (essentially equal to `input_tokens`), total cost $7.07 for those 22 calls alone.
 Non-judge calls in the exact same sessions behave normally: 1795/1838 hit the cache, average `cache_creation_tokens` is only ~2.7K (incremental growth) with ~117K average `cache_read_tokens`.
 Within a single session, `judge_call` `cache_creation_tokens` climbs in lockstep with session length (40K -> 190K across one session's calls) - each judge call re-serializes and re-writes the *entire* current context to cache from scratch rather than reading the already-warm cache the main session just wrote, because (per Anthropic's cache-diagnostics docs) prompt caching is an exact-prefix match and the judge call's prompt evidently isn't byte-identical to the main session's up to some breakpoint, so every token past the first divergence is treated as new.
@@ -55,12 +55,12 @@ Separate, not yet done: root-causing *why* `load-balancer`/`webhook` returned 50
 
 ## `display_text` only stripped the first of multiple leading `<system-reminder>` blocks
 
-While building the "Fork tree" panel (panel-99), found `display_text` (precomputed at ingest by `_prompt_kind_and_display` in `services/webhook/src/clickhouse_ingest.py`) still had a raw `<system-reminder>...</system-reminder>` block in it for some rows, instead of being fully cleaned.
+While building the "Fork tree" panel (panel-99), found `display_text` (precomputed at ingest by `_prompt_kind_and_display` in `services/_common/src/ingest_parsing.py`) still had a raw `<system-reminder>...</system-reminder>` block in it for some rows, instead of being fully cleaned.
 First checked a row where `display_text` looked completely unrelated to that row's own `prompt_text` (`agent_invocation_id = 'a4940dbd71e06ab00'`) and wrongly concluded it was a join/dedup mismatch between `agent_events` and `agent_messages` - disproven on closer inspection: that row's raw `prompt_text` legitimately had two content blocks (a system-reminder, then the real task text) concatenated together, and `display_text` was correctly the cleaned (second) part all along - not a mismatch at all.
 The real bug, confirmed against a genuine multi-reminder row (`litellm_call_id = 'a8199216-8d1e-44b2-91a2-f95be2bf1cd9'`, checked via `ingest_raw.raw_payload_full`): Claude Code can inject **more than one** `<system-reminder>` block as separate leading content blocks of the same user turn (e.g. a skills-listing reminder, then a memory/claudeMd reminder, then the real task text) - three blocks in that example.
 `_SYSTEM_REMINDER_STRIP_RE` only matched one leading block (`^<system-reminder>.*?</system-reminder>\s*`, applied once), so the second reminder survived into `display_text` untouched.
 Fix: changed the regex to `^(?:\s*<system-reminder>.*?</system-reminder>)+\s*` (repeats, strips every consecutive leading block in one match).
-Added `test_prompt_kind_and_display_success_strips_two_leading_system_reminders` in `services/webhook/tests/test_clickhouse_ingest.py`; full suite (116 tests) passes.
+Added `test_prompt_kind_and_display_success_strips_two_leading_system_reminders` in `services/_common/tests/test_ingest_parsing.py`; full suite (116 tests) passes.
 Panel-76 ("Trace")'s own `tool_result_preview` CTE has the identical one-block-only bug in its SQL-side regex - fixed alongside (see `dynamictext-panel-builder`'s work).
 Not yet done: reparsing historical rows (`make reparse-all`) to fix already-ingested `display_text` values - the fix only applies going forward until that's run.
 Lesson (repeats the one two entries up): the first read of the data looked like a mismatch and wasn't - always trace back to the actual raw payload before concluding two fields disagree.

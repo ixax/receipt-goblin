@@ -24,11 +24,18 @@ CLICKHOUSE_VERSION: 24.8.14.39
 # rebuild/repull of its base layers. Bump the SEMVER by hand instead, the
 # same day you actually change one of those two groups' Dockerfile/config.
 #
-# One key can (and for the six services sharing services/webhook/Dockerfile,
-# does) back several compose services at once - see docker-compose.yml's
-# `image:` lines for which services use which key.
+# One key can back several compose services at once - see
+# docker-compose.yml's `image:` lines for which services use which key.
+# webhook/worker/reparse/migrate/loadtest used to share one key
+# (services/webhook/Dockerfile's one-image/APP_ROLE design) - split into
+# five independent keys by the webhook-worker-split refactor, see
+# plans/webhook-worker-split.md.
 
-WEBHOOK_TAG: 0.1.0
+WEBHOOK_TAG: 0.2.0
+WORKER_TAG: 0.1.0
+REPARSE_TAG: 0.1.0
+MIGRATE_TAG: 0.1.0
+LOADTEST_TAG: 0.1.0
 LOADTEST_FIXTURES_TAG: 0.1.0
 MCP_DEV_TAG: 0.1.0
 MCP_STATS_TAG: 0.1.0

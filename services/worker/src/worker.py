@@ -3,7 +3,8 @@ unmodified, calls build_event() on each one here (the CPU-bound parsing -
 regex classification, message scanning, JSON work - kept off webhook's own
 request path on purpose), and writes the results into ClickHouse in
 batches via ingest_events_batch(), so ClickHouse sees a handful of large
-inserts instead of many small ones per request. See AGENTS.md.
+inserts instead of many small ones per request.
+See AGENTS.md.
 
 Runs as its own process (`python -m src.worker`), not through FastAPI/uvicorn.
 """
@@ -14,12 +15,14 @@ import time
 import redis
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
+from common import fastjson as json
+from common.config.queue import BATCH_SIZE, FLUSH_INTERVAL_MS, CONSUMER_GROUP, STALE_IDLE_MS, STREAM_KEY
+from common.ingest_db import clickhouse_alive, ingest_events_batch
+from common.ingest_parsing import build_event
 from common.logging_config import create_logger
+from common.queue_client import get_redis
 
-from . import fastjson as json
-from .clickhouse_ingest import build_event, clickhouse_alive, ingest_events_batch
-from .config import BATCH_SIZE, FLUSH_INTERVAL_MS, CONSUMER_GROUP, STALE_IDLE_MS, STREAM_KEY, WORKER_METRICS_PORT
-from .queue_client import get_redis
+from .config import WORKER_METRICS_PORT
 
 logger = create_logger("webhook.worker")
 
@@ -46,11 +49,12 @@ def _ensure_group(client: redis.Redis) -> None:
 
 def _check_dependencies(redis_client: redis.Redis) -> None:
     """Fails fast (crashes the process) if Redis or ClickHouse aren't
-    reachable at startup. Deliberately not relying on docker-compose's own
-    `depends_on` health-gating alone - a scoped `--no-deps` restart of just
-    this service (see Makefile) skips that gating entirely, and this
-    service's own `restart: always` is what should retry until the
-    dependency comes up, not a silently-stuck consumer loop."""
+    reachable at startup.
+    Deliberately not relying on docker-compose's own `depends_on`
+    health-gating alone - a scoped `--no-deps` restart of just this service
+    (see Makefile) skips that gating entirely, and this service's own
+    `restart: always` is what should retry until the dependency comes up,
+    not a silently-stuck consumer loop."""
     try:
         _ensure_group(redis_client)
     except Exception:
@@ -65,10 +69,11 @@ def _check_dependencies(redis_client: redis.Redis) -> None:
 
 def _decode_into(entries: list[tuple[str, dict]], message_ids: list[str], events: list[dict]) -> None:
     """Turns each queued raw StandardLoggingPayload into a build_event()
-    dict - this is where the CPU-bound parsing webhook itself no longer does
-    happens. One bad payload (malformed JSON, or an exception inside
-    build_event()) only drops that item, same guarantee webhook's own
-    per-payload try/except used to give when it called build_event() itself."""
+    dict - this is where the CPU-bound parsing webhook itself no longer
+    does happens.
+    One bad payload (malformed JSON, or an exception inside build_event())
+    only drops that item, same guarantee webhook's own per-payload
+    try/except used to give when it called build_event() itself."""
     for message_id, fields in entries:
         message_ids.append(message_id)
         raw = fields.get("event")

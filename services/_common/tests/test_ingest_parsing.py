@@ -1,13 +1,14 @@
 """Unit tests for the pure (no-ClickHouse-access) functions in
-clickhouse_ingest.py, exercised against real payloads in
-webhook/tests/captures/*.json. DB-touching functions are out of scope."""
+ingest_parsing.py, exercised against real payloads in
+_common/tests/captures/*.json.
+DB-touching functions are out of scope (see test_ingest_db.py)."""
 
 import json
 from datetime import datetime, timezone
 
 from conftest import load_capture
 
-from src import clickhouse_ingest as ci
+from common import ingest_parsing as ip
 
 
 # ---------------------------------------------------------------------------
@@ -15,13 +16,13 @@ from src import clickhouse_ingest as ci
 # ---------------------------------------------------------------------------
 
 def test_to_dt_success_converts_epoch_seconds():
-    dt = ci._to_dt(1750000000.5)
+    dt = ip._to_dt(1750000000.5)
     assert dt == datetime.fromtimestamp(1750000000.5, tz=timezone.utc)
 
 
 def test_to_dt_unsuccess_falls_back_to_now_for_falsy_input():
     before = datetime.now(timezone.utc)
-    dt = ci._to_dt(None)
+    dt = ip._to_dt(None)
     after = datetime.now(timezone.utc)
     assert before <= dt <= after
 
@@ -36,12 +37,12 @@ def test_flatten_content_success_joins_text_and_placeholders():
         {"type": "tool_use", "name": "Bash"},
         {"type": "tool_result", "content": "ignored"},
     ]
-    assert ci._flatten_content(content) == "hello\n[tool_use:Bash]\n[tool_result]"
+    assert ip._flatten_content(content) == "hello\n[tool_use:Bash]\n[tool_result]"
 
 
 def test_flatten_content_unsuccess_non_list_non_str_returns_empty():
-    assert ci._flatten_content(None) == ""
-    assert ci._flatten_content(42) == ""
+    assert ip._flatten_content(None) == ""
+    assert ip._flatten_content(42) == ""
 
 
 def test_flatten_content_success_extracts_responses_api_text_blocks():
@@ -49,7 +50,7 @@ def test_flatten_content_success_extracts_responses_api_text_blocks():
         {"type": "input_text", "text": "ты тут?"},
         {"type": "output_text", "text": "Да, я здесь."},
     ]
-    assert ci._flatten_content(content) == "ты тут?\nДа, я здесь."
+    assert ip._flatten_content(content) == "ты тут?\nДа, я здесь."
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +59,7 @@ def test_flatten_content_success_extracts_responses_api_text_blocks():
 
 def test_last_user_text_success_returns_plain_prompt():
     payload = load_capture("success_plain")
-    text = ci._last_user_text(payload["messages"])
+    text = ip._last_user_text(payload["messages"])
     assert "test-summarizer skill" in text
 
 
@@ -66,20 +67,20 @@ def test_last_user_text_unsuccess_skips_pure_tool_result_continuation():
     payload = load_capture("success_with_failed_tool_reaction", index=1)
     # trailing messages are all tool_result continuations - must not return
     # a bare tool_result placeholder.
-    text = ci._last_user_text(payload["messages"])
+    text = ip._last_user_text(payload["messages"])
     assert "[tool_result]" != text
     assert "test-summarizer skill" in text
 
 
 def test_last_user_text_success_returns_responses_api_prompt():
     payload = load_capture("chatgpt_responses_shape")
-    text = ci._last_user_text(payload["messages"])
+    text = ip._last_user_text(payload["messages"])
     assert text == "ты тут?"
 
 
 def test_last_user_text_unsuccess_skips_non_message_items():
     payload = load_capture("chatgpt_responses_shape")
-    text = ci._last_user_text(payload["messages"])
+    text = ip._last_user_text(payload["messages"])
     assert "tool schema listing" not in text
     assert "ls" not in text
 
@@ -105,7 +106,7 @@ def test_codex_collaboration_mode_change_success_finds_switch_notice():
         _developer_message("<collaboration_mode># Collaboration Mode: Default\n\nYou are now in Default..."),
         _user_message('<codex_internal_context source="goal">\n<objective>\ndo the thing\n</objective>'),
     ]
-    assert ci._codex_collaboration_mode_change(messages) == "Collaboration Mode: Default"
+    assert ip._codex_collaboration_mode_change(messages) == "Collaboration Mode: Default"
 
 
 def test_codex_collaboration_mode_change_success_reports_starting_mode_on_first_call():
@@ -119,7 +120,7 @@ def test_codex_collaboration_mode_change_success_reports_starting_mode_on_first_
         _user_message("# AGENTS.md instructions..."),
         _user_message("как нам посчитать количество файлов"),
     ]
-    assert ci._codex_collaboration_mode_change(messages) == "Plan Mode (Conversational)"
+    assert ip._codex_collaboration_mode_change(messages) == "Plan Mode (Conversational)"
 
 
 def test_codex_collaboration_mode_change_unsuccess_later_call_with_no_switch_stays_empty():
@@ -132,7 +133,7 @@ def test_codex_collaboration_mode_change_unsuccess_later_call_with_no_switch_sta
         {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "..."}]},
         _user_message("второй вопрос без переключения режима"),
     ]
-    assert ci._codex_collaboration_mode_change(messages) == ""
+    assert ip._codex_collaboration_mode_change(messages) == ""
 
 
 def test_codex_collaboration_mode_change_unsuccess_later_call_does_not_refire():
@@ -145,12 +146,12 @@ def test_codex_collaboration_mode_change_unsuccess_later_call_does_not_refire():
         {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "..."}]},
         _user_message('<codex_internal_context source="goal">\n<objective>\nsecond\n</objective>'),
     ]
-    assert ci._codex_collaboration_mode_change(messages) == ""
+    assert ip._codex_collaboration_mode_change(messages) == ""
 
 
 def test_codex_collaboration_mode_change_unsuccess_claude_code_payload_returns_empty():
     payload = load_capture("success_plain")
-    assert ci._codex_collaboration_mode_change(payload["messages"]) == ""
+    assert ip._codex_collaboration_mode_change(payload["messages"]) == ""
 
 
 # ---------------------------------------------------------------------------
@@ -159,15 +160,15 @@ def test_codex_collaboration_mode_change_unsuccess_claude_code_payload_returns_e
 
 def test_active_command_name_and_version_success_recovers_slash_command():
     payload = load_capture("success_with_command", index=1)
-# predates the <version> marker convention - version comes back blank.
-    assert ci._active_command_name_and_version(payload["messages"]) == ("mcp", "")
+    # predates the <version> marker convention - version comes back blank.
+    assert ip._active_command_name_and_version(payload["messages"]) == ("mcp", "")
 
 
 def test_active_command_name_and_version_success_recovers_version_marker():
     messages = [
         {"role": "user", "content": "<command-name>whatsup</command-name>\n<version>1.2.3</version>\n# whatsup\n..."},
     ]
-    assert ci._active_command_name_and_version(messages) == ("whatsup", "1.2.3")
+    assert ip._active_command_name_and_version(messages) == ("whatsup", "1.2.3")
 
 
 def test_active_command_name_and_version_success_recovers_version_marker_at_end():
@@ -176,12 +177,12 @@ def test_active_command_name_and_version_success_recovers_version_marker_at_end(
     messages = [
         {"role": "user", "content": "<command-name>whatsup</command-name>\n# whatsup\n...\n<version>1.2.3</version>"},
     ]
-    assert ci._active_command_name_and_version(messages) == ("whatsup", "1.2.3")
+    assert ip._active_command_name_and_version(messages) == ("whatsup", "1.2.3")
 
 
 def test_active_command_name_and_version_unsuccess_freeform_prompt_returns_empty():
     payload = load_capture("success_with_command", index=0)
-    assert ci._active_command_name_and_version(payload["messages"]) == ("", "")
+    assert ip._active_command_name_and_version(payload["messages"]) == ("", "")
 
 
 def test_active_command_name_and_version_success_recovers_codex_internal_context():
@@ -193,14 +194,14 @@ def test_active_command_name_and_version_success_recovers_codex_internal_context
         "</codex_internal_context>"
     )
     messages = [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}]
-    assert ci._active_command_name_and_version(messages) == ("goal", "")
+    assert ip._active_command_name_and_version(messages) == ("goal", "")
 
 
 def test_active_command_name_and_version_success_recovers_arbitrary_codex_context_source():
     # Not hardcoded to "goal" - any future context name is picked up as-is.
     text = '<codex_internal_context source="plan">\n<objective>\ndo the thing\n</objective>\n</codex_internal_context>'
     messages = [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}]
-    assert ci._active_command_name_and_version(messages) == ("plan", "")
+    assert ip._active_command_name_and_version(messages) == ("plan", "")
 
 
 def test_prompt_kind_and_display_success_renders_codex_goal_context_as_command():
@@ -210,7 +211,7 @@ def test_prompt_kind_and_display_success_renders_codex_goal_context_as_command()
         "<objective>\nпосчитать количество файлов в папке hooks\n</objective>\n"
         "</codex_internal_context>"
     )
-    prompt_kind, display_text, display_arg = ci._prompt_kind_and_display(text, "goal")
+    prompt_kind, display_text, display_arg = ip._prompt_kind_and_display(text, "goal")
     assert prompt_kind == "command"
     assert display_text == "/goal посчитать количество файлов в папке hooks"
 
@@ -221,7 +222,7 @@ def test_prompt_kind_and_display_success_classifies_away_recap():
         "1-2 plain sentences, no markdown. Lead with the overall goal and current "
         "task, then the one next action."
     )
-    prompt_kind, display_text, display_arg = ci._prompt_kind_and_display(text, "")
+    prompt_kind, display_text, display_arg = ip._prompt_kind_and_display(text, "")
     assert prompt_kind == "away_recap"
     assert display_text == "[background] away recap"
     assert display_arg == ""
@@ -237,7 +238,7 @@ def test_prompt_kind_and_display_success_strips_two_leading_system_reminders():
         "<system-reminder>\nMemory: the user likes concise replies\n</system-reminder>\n\n"
         "Run this exact command and report its output: make status"
     )
-    prompt_kind, display_text, display_arg = ci._prompt_kind_and_display(text, "")
+    prompt_kind, display_text, display_arg = ip._prompt_kind_and_display(text, "")
     assert prompt_kind == "real"
     assert display_text == "Run this exact command and report its output: make status"
 
@@ -248,7 +249,7 @@ def test_prompt_kind_and_display_success_strips_two_leading_system_reminders():
 
 def test_failed_tool_call_success_finds_paired_failing_tool_use():
     payload = load_capture("success_with_failed_tool_reaction", index=0)
-    tool_name, args_json, error_text = ci._failed_tool_call(payload["messages"])
+    tool_name, args_json, error_text = ip._failed_tool_call(payload["messages"])
     assert tool_name == "Bash"
     assert "shuf" in args_json  # args come from the failing call, not a later one
     assert "command not found" in error_text
@@ -256,30 +257,30 @@ def test_failed_tool_call_success_finds_paired_failing_tool_use():
 
 def test_failed_tool_call_unsuccess_no_trailing_error_returns_blank():
     payload = load_capture("success_plain")
-    assert ci._failed_tool_call(payload["messages"]) == ("", "", "")
+    assert ip._failed_tool_call(payload["messages"]) == ("", "", "")
 
 
 # ---------------------------------------------------------------------------
-# _session_and_trace_id
+# session_and_trace_id
 # ---------------------------------------------------------------------------
 
 def test_session_and_trace_id_success_prefers_claude_code_header():
     payload = load_capture("success_with_agent_and_skill")
-    session_id, trace_id = ci._session_and_trace_id(payload)
+    session_id, trace_id = ip.session_and_trace_id(payload)
     assert session_id == "ea219a89-9dd0-4f32-8c66-6f4d01e9788c"
     assert trace_id == payload["trace_id"]
 
 
 def test_session_and_trace_id_unsuccess_falls_back_without_headers():
     payload = {"trace_id": "", "litellm_call_id": "call-123", "metadata": {}}
-    session_id, trace_id = ci._session_and_trace_id(payload)
+    session_id, trace_id = ip.session_and_trace_id(payload)
     assert session_id == "call-123"
     assert trace_id == "call-123"
 
 
 def test_session_and_trace_id_success_uses_codex_turn_metadata():
     payload = load_capture("chatgpt_responses_cached")
-    session_id, trace_id = ci._session_and_trace_id(payload)
+    session_id, trace_id = ip.session_and_trace_id(payload)
     assert session_id == "019f8f18-0972-7110-bded-703a93ad9d6d"
     assert trace_id == payload["trace_id"]
 
@@ -295,7 +296,7 @@ def test_session_and_trace_id_success_claude_header_wins_over_codex():
             }
         },
     }
-    session_id, trace_id = ci._session_and_trace_id(payload)
+    session_id, trace_id = ip.session_and_trace_id(payload)
     assert session_id == "claude-session"
 
 
@@ -305,7 +306,7 @@ def test_session_and_trace_id_success_claude_header_wins_over_codex():
 
 def test_user_agent_success_reads_claude_cli_string():
     payload = load_capture("success_with_agent_and_skill")
-    assert ci._user_agent(payload) == "claude-cli/2.1.207 (external, cli)"
+    assert ip._user_agent(payload) == "claude-cli/2.1.207 (external, cli)"
 
 
 def test_user_agent_success_reads_codex_tui_string():
@@ -316,25 +317,25 @@ def test_user_agent_success_reads_codex_tui_string():
             "user_agent": "codex-tui/0.145.0 (Mac OS 15.2.0; x86_64) Apple_Terminal/455 (codex-tui; 0.145.0)"
         }
     }
-    assert ci._user_agent(payload) == (
+    assert ip._user_agent(payload) == (
         "codex-tui/0.145.0 (Mac OS 15.2.0; x86_64) Apple_Terminal/455 (codex-tui; 0.145.0)"
     )
 
 
 def test_user_agent_unsuccess_missing_metadata_returns_empty():
-    assert ci._user_agent({}) == ""
+    assert ip._user_agent({}) == ""
 
 
 def test_user_agent_unsuccess_absent_key_returns_empty():
-    assert ci._user_agent({"metadata": {}}) == ""
+    assert ip._user_agent({"metadata": {}}) == ""
 
 
 def test_codex_session_id_unsuccess_malformed_json_returns_empty():
-    assert ci._codex_session_id({"x-codex-turn-metadata": "not-json"}) == ""
+    assert ip._codex_session_id({"x-codex-turn-metadata": "not-json"}) == ""
 
 
 def test_codex_session_id_unsuccess_no_header_returns_empty():
-    assert ci._codex_session_id({}) == ""
+    assert ip._codex_session_id({}) == ""
 
 
 # ---------------------------------------------------------------------------
@@ -342,11 +343,11 @@ def test_codex_session_id_unsuccess_no_header_returns_empty():
 # ---------------------------------------------------------------------------
 
 def test_split_name_version_success_splits_on_last_v():
-    assert ci._split_name_version("test-researcher_v1.0.0") == ("test-researcher", "1.0.0")
+    assert ip._split_name_version("test-researcher_v1.0.0") == ("test-researcher", "1.0.0")
 
 
 def test_split_name_version_unsuccess_no_version_suffix():
-    assert ci._split_name_version("claude") == ("claude", "")
+    assert ip._split_name_version("claude") == ("claude", "")
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +360,7 @@ def test_version_marker_for_name_success_finds_marker_at_start_of_listing_line()
         "- clickhouse-analyst: <version>1.1.0</version> Delegate target for...\n"
         "- general-purpose: General-purpose agent for researching...\n"
     )
-    assert ci._version_marker_for_name(text, "clickhouse-analyst", "version") == "1.1.0"
+    assert ip._version_marker_for_name(text, "clickhouse-analyst", "version") == "1.1.0"
 
 
 def test_version_marker_for_name_success_finds_marker_in_middle_of_listing_line():
@@ -367,7 +368,7 @@ def test_version_marker_for_name_success_finds_marker_in_middle_of_listing_line(
         "Available agent types for the Agent tool:\n"
         "- clickhouse-analyst: Delegate target for... <version>1.1.0</version> more text after.\n"
     )
-    assert ci._version_marker_for_name(text, "clickhouse-analyst", "version") == "1.1.0"
+    assert ip._version_marker_for_name(text, "clickhouse-analyst", "version") == "1.1.0"
 
 
 def test_version_marker_for_name_success_finds_marker_at_end_of_listing_line():
@@ -375,13 +376,13 @@ def test_version_marker_for_name_success_finds_marker_at_end_of_listing_line():
         "Available agent types for the Agent tool:\n"
         "- clickhouse-analyst: Delegate target for questions answerable from ClickHouse. <version>1.1.0</version>\n"
     )
-    assert ci._version_marker_for_name(text, "clickhouse-analyst", "version") == "1.1.0"
+    assert ip._version_marker_for_name(text, "clickhouse-analyst", "version") == "1.1.0"
 
 
 def test_version_marker_for_name_unsuccess_name_has_no_marker_returns_empty():
     text = "- general-purpose: General-purpose agent for researching...\n"
-    assert ci._version_marker_for_name(text, "general-purpose", "version") == ""
-    assert ci._version_marker_for_name(text, "", "version") == ""
+    assert ip._version_marker_for_name(text, "general-purpose", "version") == ""
+    assert ip._version_marker_for_name(text, "", "version") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -390,30 +391,30 @@ def test_version_marker_for_name_unsuccess_name_has_no_marker_returns_empty():
 
 def test_user_id_success_reads_real_user_id():
     payload = {"metadata": {"user_api_key_user_id": "u-123", "user_api_key_alias": "someone"}}
-    assert ci._user_id(payload) == "u-123"
+    assert ip._user_id(payload) == "u-123"
 
 
 def test_user_id_falls_back_to_alias_when_no_real_id():
     payload = {"metadata": {"user_api_key_alias": "someone"}}
-    assert ci._user_id(payload) == "someone"
+    assert ip._user_id(payload) == "someone"
 
 
 def test_user_id_unsuccess_falls_back_to_unknown():
-    assert ci._user_id({}) == "unknown-user"
+    assert ip._user_id({}) == "unknown-user"
 
 
 def test_user_name_prefers_alias_over_real_id():
     payload = {"metadata": {"user_api_key_user_id": "u-123", "user_api_key_alias": "someone"}}
-    assert ci._user_name(payload) == "someone"
+    assert ip._user_name(payload) == "someone"
 
 
 def test_user_name_falls_back_to_real_id_when_no_alias():
     payload = {"metadata": {"user_api_key_user_id": "u-123"}}
-    assert ci._user_name(payload) == "u-123"
+    assert ip._user_name(payload) == "u-123"
 
 
 def test_user_name_unsuccess_falls_back_to_unknown():
-    assert ci._user_name({}) == "unknown-user"
+    assert ip._user_name({}) == "unknown-user"
 
 
 # ---------------------------------------------------------------------------
@@ -422,22 +423,22 @@ def test_user_name_unsuccess_falls_back_to_unknown():
 
 def test_group_id_success_reads_stable_team_id():
     payload = {"metadata": {"user_api_key_team_id": "cc4f422e-f253-40b2-9dcb-749f9d5e7976", "user_api_key_team_alias": "team-a"}}
-    assert ci._group_id(payload) == "cc4f422e-f253-40b2-9dcb-749f9d5e7976"
+    assert ip._group_id(payload) == "cc4f422e-f253-40b2-9dcb-749f9d5e7976"
 
 
 def test_group_id_unsuccess_no_team_falls_back_to_empty():
     payload = {"metadata": {"user_api_key_alias": "someone"}}
-    assert ci._group_id(payload) == ""
+    assert ip._group_id(payload) == ""
 
 
 def test_group_alias_success_reads_team_alias():
     payload = {"metadata": {"user_api_key_team_alias": "team-a"}}
-    assert ci._group_alias(payload) == "team-a"
+    assert ip._group_alias(payload) == "team-a"
 
 
 def test_group_alias_unsuccess_no_team_falls_back_to_empty():
     payload = {"metadata": {"user_api_key_alias": "someone"}}
-    assert ci._group_alias(payload) == ""
+    assert ip._group_alias(payload) == ""
 
 
 # ---------------------------------------------------------------------------
@@ -445,19 +446,19 @@ def test_group_alias_unsuccess_no_team_falls_back_to_empty():
 # ---------------------------------------------------------------------------
 
 def test_issue_id_from_branch_success_ticket_at_start():
-    assert ci._issue_id_from_branch("VIEW-12345-my-super-branch") == "VIEW-12345"
+    assert ip._issue_id_from_branch("VIEW-12345-my-super-branch") == "VIEW-12345"
 
 
 def test_issue_id_from_branch_success_ticket_at_end():
-    assert ci._issue_id_from_branch("my-super-branch-VIEW-12345") == "VIEW-12345"
+    assert ip._issue_id_from_branch("my-super-branch-VIEW-12345") == "VIEW-12345"
 
 
 def test_issue_id_from_branch_success_normalizes_case():
-    assert ci._issue_id_from_branch("fix-view-12345-typo") == "VIEW-12345"
+    assert ip._issue_id_from_branch("fix-view-12345-typo") == "VIEW-12345"
 
 
 def test_issue_id_from_branch_unsuccess_no_ticket_returns_empty():
-    assert ci._issue_id_from_branch("my-super-branch") == ""
+    assert ip._issue_id_from_branch("my-super-branch") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -466,7 +467,7 @@ def test_issue_id_from_branch_unsuccess_no_ticket_returns_empty():
 
 def test_agent_invocations_from_messages_success_finds_spawned_subagent():
     payload = load_capture("success_with_agent_and_skill")
-    invocations = ci._agent_invocations_from_messages(payload["messages"])
+    invocations = ip._agent_invocations_from_messages(payload["messages"])
     # predates the <agent_version> marker - falls back to splitting the
     # "_v<version>" suffix (old convention, via _split_name_version).
     assert invocations == [("aac9d05f148e9ae4a", "test-researcher", "1.0.0", "Summarize Makefile contents")]
@@ -484,13 +485,13 @@ def test_agent_invocations_from_messages_success_recovers_version_marker():
         {"role": "assistant", "content": [{"type": "tool_use", "name": "Agent", "id": "toolu_1", "input": {"subagent_type": "clickhouse-analyst", "description": "look up cost"}}]},
         {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "agentId: deadbeef"}]},
     ]
-    invocations = ci._agent_invocations_from_messages(messages)
+    invocations = ip._agent_invocations_from_messages(messages)
     assert invocations == [("deadbeef", "clickhouse-analyst", "1.1.0", "look up cost")]
 
 
 def test_agent_invocations_from_messages_unsuccess_no_agent_calls_returns_empty():
     payload = load_capture("success_plain")
-    assert ci._agent_invocations_from_messages(payload["messages"]) == []
+    assert ip._agent_invocations_from_messages(payload["messages"]) == []
 
 
 def test_agent_id_from_tool_result_unsuccess_mismatched_tool_use_id():
@@ -498,7 +499,7 @@ def test_agent_id_from_tool_result_unsuccess_mismatched_tool_use_id():
         {"role": "assistant", "content": [{"type": "tool_use", "name": "Agent", "id": "toolu_1"}]},
         {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_other", "content": "agentId: deadbeef"}]},
     ]
-    assert ci._agent_id_from_tool_result(messages, 0, "toolu_1") == ""
+    assert ip._agent_id_from_tool_result(messages, 0, "toolu_1") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -507,13 +508,13 @@ def test_agent_id_from_tool_result_unsuccess_mismatched_tool_use_id():
 
 def test_response_tool_calls_success_parses_function_arguments():
     payload = load_capture("success_with_agent_and_skill")
-    calls = ci._response_tool_calls(payload)
+    calls = ip._response_tool_calls(payload)
     assert calls == [("Skill", {"skill": "test-summarizer", "args": "Summarize /Users/ixax/PycharmProjects/claude-wrapper/README.md"})]
 
 
 def test_response_tool_calls_unsuccess_plain_text_reply_returns_empty():
     payload = load_capture("success_with_command", index=0)
-    assert ci._response_tool_calls(payload) == []
+    assert ip._response_tool_calls(payload) == []
 
 
 def test_response_tool_calls_success_parses_function_call_output():
@@ -521,7 +522,7 @@ def test_response_tool_calls_success_parses_function_call_output():
     payload["response"]["output"] = [
         {"type": "function_call", "name": "shell", "arguments": "{\"command\": \"ls\"}"}
     ]
-    assert ci._response_tool_calls(payload) == [("shell", {"command": "ls"})]
+    assert ip._response_tool_calls(payload) == [("shell", {"command": "ls"})]
 
 
 def test_response_tool_calls_success_parses_custom_tool_call_output():
@@ -531,7 +532,7 @@ def test_response_tool_calls_success_parses_custom_tool_call_output():
     payload["response"]["output"] = [
         {"type": "custom_tool_call", "name": "exec", "input": "await tools.exec_command({cmd: 'ls'})"}
     ]
-    assert ci._response_tool_calls(payload) == [
+    assert ip._response_tool_calls(payload) == [
         ("exec", {"command": "await tools.exec_command({cmd: 'ls'})"})
     ]
 
@@ -541,28 +542,28 @@ def test_response_text_success_falls_back_to_responses_output():
     payload["response"]["output"] = [
         {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Да, я здесь."}]}
     ]
-    assert ci._response_text(payload) == "Да, я здесь."
+    assert ip._response_text(payload) == "Да, я здесь."
 
 
 def test_response_text_unsuccess_empty_output_returns_blank():
     payload = load_capture("chatgpt_responses_shape")
-    assert ci._response_text(payload) == ""
+    assert ip._response_text(payload) == ""
 
 
 def test_first_tool_call_name_success_returns_first_call():
     payload = load_capture("success_with_agent_and_skill")
-    assert ci._first_tool_call_name(payload) == "Skill"
+    assert ip._first_tool_call_name(payload) == "Skill"
 
 
 def test_first_tool_call_name_unsuccess_plain_text_reply_returns_empty():
     payload = load_capture("success_with_command", index=0)
-    assert ci._first_tool_call_name(payload) == ""
+    assert ip._first_tool_call_name(payload) == ""
 
 
 def test_skill_name_and_version_success_splits_skill_argument():
     payload = load_capture("success_with_agent_and_skill")
-# predates the <skill_version> marker convention - version comes back blank.
-    assert ci._skill_name_and_version(payload) == ("test-summarizer", "")
+    # predates the <skill_version> marker convention - version comes back blank.
+    assert ip._skill_name_and_version(payload) == ("test-summarizer", "")
 
 
 def test_skill_name_and_version_success_recovers_version_marker():
@@ -580,12 +581,12 @@ def test_skill_name_and_version_success_recovers_version_marker():
             {"function": {"name": "Skill", "arguments": json.dumps({"skill": "test-linter", "args": "check foo.py"})}}
         ]}}]},
     }
-    assert ci._skill_name_and_version(payload) == ("test-linter", "2.0.0")
+    assert ip._skill_name_and_version(payload) == ("test-linter", "2.0.0")
 
 
 def test_skill_name_and_version_unsuccess_no_skill_call():
     payload = load_capture("success_plain")
-    assert ci._skill_name_and_version(payload) == ("", "")
+    assert ip._skill_name_and_version(payload) == ("", "")
 
 
 # ---------------------------------------------------------------------------
@@ -594,12 +595,12 @@ def test_skill_name_and_version_unsuccess_no_skill_call():
 
 def test_agent_invocation_id_success_reads_header():
     payload = load_capture("success_subagent_call")
-    assert ci._agent_invocation_id(payload) == "aac9d05f148e9ae4a"
+    assert ip._agent_invocation_id(payload) == "aac9d05f148e9ae4a"
 
 
 def test_agent_invocation_id_unsuccess_missing_header_returns_empty():
     payload = load_capture("success_plain")
-    assert ci._agent_invocation_id(payload) == ""
+    assert ip._agent_invocation_id(payload) == ""
 
 
 # ---------------------------------------------------------------------------
@@ -609,13 +610,13 @@ def test_agent_invocation_id_unsuccess_missing_header_returns_empty():
 def test_agent_invocation_rows_success_builds_one_row_per_spawn():
     payload = load_capture("success_with_agent_and_skill")
     now = datetime(2026, 7, 12, tzinfo=timezone.utc)
-    rows = ci._agent_invocation_rows("session-1", payload["messages"], now=now)
+    rows = ip._agent_invocation_rows("session-1", payload["messages"], now=now)
     assert rows == [["aac9d05f148e9ae4a", "session-1", "test-researcher", "1.0.0", "Summarize Makefile contents", now]]
 
 
 def test_agent_invocation_rows_unsuccess_no_spawns_returns_empty_list():
     payload = load_capture("success_plain")
-    assert ci._agent_invocation_rows("session-1", payload["messages"]) == []
+    assert ip._agent_invocation_rows("session-1", payload["messages"]) == []
 
 
 # ---------------------------------------------------------------------------
@@ -624,8 +625,8 @@ def test_agent_invocation_rows_unsuccess_no_spawns_returns_empty_list():
 
 def test_event_row_success_reports_status_and_latency():
     payload = load_capture("success_plain")
-    row = ci._event_row(payload, ci.EventContext("session-1", "trace-1"))
-    columns = ci._EVENT_COLUMNS
+    row = ip._event_row(payload, ip.EventContext("session-1", "trace-1"))
+    columns = ip._EVENT_COLUMNS
     values = dict(zip(columns, row))
     assert values["status"] == "success"
     assert values["session_id"] == "session-1"
@@ -636,8 +637,8 @@ def test_event_row_success_reports_status_and_latency():
 
 def test_event_row_unsuccess_failure_payload_has_no_tool_name_or_latency():
     payload = load_capture("failure")
-    row = ci._event_row(payload, ci.EventContext("session-1", "trace-1"))
-    values = dict(zip(ci._EVENT_COLUMNS, row))
+    row = ip._event_row(payload, ip.EventContext("session-1", "trace-1"))
+    values = dict(zip(ip._EVENT_COLUMNS, row))
     assert values["status"] == "failure"
     assert values["tool_name"] == ""
 
@@ -648,9 +649,9 @@ def test_event_row_unsuccess_failure_payload_has_no_tool_name_or_latency():
 
 def test_usage_row_success_extracts_token_counts():
     payload = load_capture("success_plain")
-    row = ci._usage_row(payload, ci.EventContext("session-1", "trace-1"))
+    row = ip._usage_row(payload, ip.EventContext("session-1", "trace-1"))
     assert row is not None
-    values = dict(zip(ci._USAGE_COLUMNS, row))
+    values = dict(zip(ip._USAGE_COLUMNS, row))
     assert values["input_tokens"] == 723
     assert values["output_tokens"] == 16
     assert values["group_id"] == "206ec527-2402-4c8b-b5b5-8bd65b8bca0f"
@@ -658,7 +659,7 @@ def test_usage_row_success_extracts_token_counts():
 
 def test_usage_row_unsuccess_no_billable_tokens_returns_none():
     payload = load_capture("failure")
-    assert ci._usage_row(payload, ci.EventContext("session-1", "trace-1")) is None
+    assert ip._usage_row(payload, ip.EventContext("session-1", "trace-1")) is None
 
 
 def test_usage_row_unsuccess_negative_ttft_clamps_to_zero():
@@ -668,22 +669,22 @@ def test_usage_row_unsuccess_negative_ttft_clamps_to_zero():
     # ttft_ms's UInt32 column and used to crash the whole insert batch.
     payload = load_capture("success_plain")
     payload = dict(payload, startTime=100.5, completionStartTime=100.4)
-    row = ci._usage_row(payload, ci.EventContext("session-1", "trace-1"))
+    row = ip._usage_row(payload, ip.EventContext("session-1", "trace-1"))
     assert row is not None
-    values = dict(zip(ci._USAGE_COLUMNS, row))
+    values = dict(zip(ip._USAGE_COLUMNS, row))
     assert values["ttft_ms"] == 0
 
 
 def test_usage_row_success_falls_back_to_responses_api_cache_fields():
     payload = load_capture("chatgpt_responses_cached")
-    row = ci._usage_row(payload, ci.EventContext("session-1", "trace-1"))
+    row = ip._usage_row(payload, ip.EventContext("session-1", "trace-1"))
     assert row is not None
-    values = dict(zip(ci._USAGE_COLUMNS, row))
+    values = dict(zip(ip._USAGE_COLUMNS, row))
     assert values["input_tokens"] == 19167
     assert values["output_tokens"] == 42
     assert values["cache_read_tokens"] == 17920
     assert values["cache_creation_tokens"] == 0
-# cache_hit is None in this payload, but cached tokens were present - counts as a hit.
+    # cache_hit is None in this payload, but cached tokens were present - counts as a hit.
     assert values["cache_hit"] == 1
 
 
@@ -693,9 +694,9 @@ def test_usage_row_success_falls_back_to_responses_api_cache_fields():
 
 def test_message_row_success_captures_prompt_and_response_text():
     payload = load_capture("success_plain")
-    row = ci._message_row(payload, ci.EventContext("session-1", "trace-1"))
+    row = ip._message_row(payload, ip.EventContext("session-1", "trace-1"))
     assert row is not None
-    values = dict(zip(ci._MESSAGE_COLUMNS, row))
+    values = dict(zip(ip._MESSAGE_COLUMNS, row))
     assert "test-summarizer skill" in values["prompt_text"]
     assert values["response_text"]
     assert values["group_id"] == "206ec527-2402-4c8b-b5b5-8bd65b8bca0f"
@@ -703,7 +704,7 @@ def test_message_row_success_captures_prompt_and_response_text():
 
 def test_message_row_unsuccess_no_prompt_or_response_text_returns_none():
     payload = {"messages": [], "response": {"choices": []}}
-    assert ci._message_row(payload, ci.EventContext("session-1", "trace-1")) is None
+    assert ip._message_row(payload, ip.EventContext("session-1", "trace-1")) is None
 
 
 # ---------------------------------------------------------------------------
@@ -713,163 +714,25 @@ def test_message_row_unsuccess_no_prompt_or_response_text_returns_none():
 
 def test_build_event_success_returns_json_safe_dict_with_source_row():
     payload = load_capture("success_plain")
-    event = ci.build_event(payload)
+    event = ip.build_event(payload)
 
     encoded = json.dumps(event)  # must not raise - safe to XADD onto Redis
     assert event["source_row"] is not None
     assert event["event_row"] is not None
     assert event["usage_row"] is not None
     assert event["message_row"] is not None
-# timestamps are ISO strings, not datetime objects, so this is safe to XADD.
-    assert isinstance(event["event_row"][ci._EVENT_TIMESTAMP_IDX], str)
-    assert isinstance(event["source_row"][ci._SOURCE_INGESTED_AT_IDX], str)
+    # timestamps are ISO strings, not datetime objects, so this is safe to XADD.
+    assert isinstance(event["event_row"][ip._EVENT_TIMESTAMP_IDX], str)
+    assert isinstance(event["source_row"][ip._SOURCE_INGESTED_AT_IDX], str)
     # the full original payload really is in there, untouched
-    source_payload = json.loads(event["source_row"][ci._SOURCE_COLUMNS.index("raw_payload_full")])
+    source_payload = json.loads(event["source_row"][ip._SOURCE_COLUMNS.index("raw_payload_full")])
     assert "messages" in source_payload
 
 
 def test_build_event_unsuccess_failure_payload_has_no_usage_or_message_row():
     payload = load_capture("failure")
-    event = ci.build_event(payload)
+    event = ip.build_event(payload)
 
     assert event["event_row"] is not None
     assert event["usage_row"] is None
     assert event["message_row"] is None
-
-
-# ---------------------------------------------------------------------------
-# ingest_events_batch - runs in webhook-worker, takes build_event() outputs
-# read back off Redis and inserts them with one client.insert() per table.
-# ---------------------------------------------------------------------------
-
-class _FakeClient:
-    def __init__(self):
-        self.inserts = []
-
-    def insert(self, table, rows, column_names):
-        self.inserts.append((table, rows, column_names))
-
-    def query(self, query, parameters=None, **kwargs):
-        class _Result:
-            result_rows = []
-        # _resolve_client_id's "SELECT cityHash64({v:String})" lookup - a
-        # fake but deterministic/positive id so batch-level dedup can be
-        # asserted without a real ClickHouse connection.
-        if parameters and "v" in parameters and "cityHash64" in query:
-            _Result.result_rows = [[abs(hash(parameters["v"])) or 1]]
-        return _Result()
-
-
-def test_ingest_events_batch_success_issues_one_insert_per_table(monkeypatch):
-    events = [
-        ci.build_event(load_capture("success_plain")),
-        ci.build_event(load_capture("success_with_command")),
-    ]
-    fake_client = _FakeClient()
-    monkeypatch.setattr(ci, "get_client", lambda: fake_client)
-
-    ci.ingest_events_batch(events)
-
-    tables = [table for table, _rows, _cols in fake_client.inserts]
-    assert tables.count("ingest_raw") == 1
-    assert tables.count("agent_events") == 1
-    assert tables.count("agent_usage") == 1
-    assert tables.count("agent_messages") == 1
-
-    event_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_events")
-    assert len(event_rows) == 2
-
-    source_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "ingest_raw")
-    assert len(source_rows) == 2
-
-
-def test_ingest_events_batch_success_dedups_dimension_rows_by_id(monkeypatch):
-    # Both captures share the same user/team, so this batch should insert
-    # one ai_gateway_users/ai_gateway_groups row, not one per event.
-    events = [
-        ci.build_event(load_capture("success_plain")),
-        ci.build_event(load_capture("success_with_command")),
-    ]
-    fake_client = _FakeClient()
-    monkeypatch.setattr(ci, "get_client", lambda: fake_client)
-
-    ci.ingest_events_batch(events)
-
-    user_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "ai_gateway_users")
-    assert len(user_rows) == 1
-
-    group_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "ai_gateway_groups")
-    assert len(group_rows) == 1
-
-
-def test_ingest_events_batch_success_resolves_and_dedups_client_rows(monkeypatch):
-    # Both captures carry the same claude-cli user_agent - one dedup'd
-    # `clients` row, and every event_row's event_client_id should match it.
-    events = [
-        ci.build_event(load_capture("success_plain")),
-        ci.build_event(load_capture("success_with_command")),
-    ]
-    fake_client = _FakeClient()
-    monkeypatch.setattr(ci, "get_client", lambda: fake_client)
-
-    ci.ingest_events_batch(events)
-
-    client_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "clients")
-    assert len(client_rows) == 1
-    assert client_rows[0][1] == "claude-cli/2.1.207 (external, cli)"
-
-    event_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_events")
-    event_client_id_idx = ci._EVENT_COLUMNS.index("event_client_id")
-    assert all(row[event_client_id_idx] == client_rows[0][0] for row in event_rows)
-
-
-def test_ingest_events_batch_unsuccess_empty_list_skips_client_entirely(monkeypatch):
-    monkeypatch.setattr(ci, "get_client", lambda: (_ for _ in ()).throw(AssertionError("get_client should not be called")))
-    ci.ingest_events_batch([])
-
-
-class _PoisonRowClient(_FakeClient):
-    """Rejects the whole-batch agent_usage insert (like a real UInt32
-    range violation) but accepts single-row inserts for every row except
-    the one belonging to poison_call_id - mirrors what ClickHouse actually
-    does: the bad row sinks a bulk insert, individual rows recover."""
-    def __init__(self, poison_call_id):
-        super().__init__()
-        self.poison_call_id = poison_call_id
-
-    def insert(self, table, rows, column_names):
-        if table == "agent_usage" and len(rows) > 1:
-            raise ValueError("simulated column range violation")
-        if table == "agent_usage" and len(rows) == 1:
-            call_id_idx = column_names.index("litellm_call_id")
-            if rows[0][call_id_idx] == self.poison_call_id:
-                raise ValueError("simulated column range violation")
-        super().insert(table, rows, column_names)
-
-
-def test_ingest_events_batch_unsuccess_poison_row_isolated_to_ingest_dlq(monkeypatch):
-    good_payload = load_capture("success_plain")
-    poison_payload = load_capture("success_with_command")
-    events = [ci.build_event(good_payload), ci.build_event(poison_payload)]
-    fake_client = _PoisonRowClient(poison_call_id=poison_payload["litellm_call_id"])
-    monkeypatch.setattr(ci, "get_client", lambda: fake_client)
-
-    ci.ingest_events_batch(events)
-
-    usage_single_inserts = [rows for table, rows, _cols in fake_client.inserts if table == "agent_usage"]
-    # The failed bulk attempt (both rows) never lands in .inserts (it
-    # raised before appending); of the two per-row retries, only the
-    # non-poison one succeeds and gets recorded.
-    assert len(usage_single_inserts) == 1
-    assert len(usage_single_inserts[0]) == 1
-
-    failure_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "ingest_dlq")
-    assert len(failure_rows) == 1
-    failure_cols = next(cols for table, _rows, cols in fake_client.inserts if table == "ingest_dlq")
-    values = dict(zip(failure_cols, failure_rows[0]))
-    assert values["stage"] == "agent_usage"
-    assert values["litellm_call_id"] == poison_payload["litellm_call_id"]
-
-    # agent_events/agent_messages (unaffected tables) still got their rows.
-    event_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_events")
-    assert len(event_rows) == 2

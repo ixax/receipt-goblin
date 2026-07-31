@@ -169,7 +169,7 @@ flagged follow-up rather than specified here.
 - `hooks/report_git_branch.py` — the hook itself, Steps 1 and 4's edits.
 - `.claude/settings.json` — hook registration; may need an `env` block for
   the Step 1 debug var.
-- `services/webhook/src/clickhouse_ingest.py` — `ingest_git_branch`, confirmed
+- `services/_common/src/ingest_db.py` — `ingest_git_branch`, confirmed
   working already, referenced for context only.
 - `AGENTS.md` — Step 6 follow-up.
 - `TODO.md` — item 2, to be resolved/updated once fixed.

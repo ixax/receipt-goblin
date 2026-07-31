@@ -16,7 +16,7 @@ Single-service content (queue/worker split, gateway, per-file breakdowns, `fastj
   `ENVIRONMENT` is captured from the shell/`.env` before `include .env` runs, and restored after.
   This stops a shell-exported `ENVIRONMENT=production make start` from being silently overwritten by `.env`'s own `development` default: `include`'s plain `=` assignment is file-origin, which GNU Make lets override an environment-origin variable - the reverse of what you'd expect.
 - Static per-image config (Grafana provisioning, LiteLLM's `config.yaml`, `redis.conf`, etc.) is still baked into each service's own image via `COPY` in its Dockerfile, in both dev and prod, unchanged.
-  What moved is runtime role selection for the one image serving five compose services/roles (`webhook`/`webhook-worker`/`metrics-reparse`/`clickhouse-migrate`/`loadtest`, all built from `services/webhook/Dockerfile`) - see `agent_docs/services/webhook.md`'s "`APP_ROLE` dispatch" for the mechanism.
+  `webhook`/`webhook-worker`/`metrics-reparse`/`clickhouse-migrate`/`loadtest` used to be one image sharing runtime role selection via `APP_ROLE` (`services/webhook/Dockerfile` + `docker-entrypoint.sh`) - the webhook-worker-split refactor (see `plans/webhook-worker-split.md`) gave each its own independent Dockerfile/image/tag instead (`services/webhook/`, `services/worker/`, `services/reparse/`, `services/migrate/`, `services/loadtest/`), all pulling shared code from `services/_common/src/`.
   `litellm` and `redis` get no dev override at all: both environments always run the same baked image.
 
 ## Image tags

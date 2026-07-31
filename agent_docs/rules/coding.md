@@ -7,8 +7,8 @@ Skip for a pure analysis/investigation task that touches no code.
 ## Style
 
 - Stdlib `logging`, never `print()`; bare `LOG_LEVEL` env var (`agent_docs/services/webhook.md`).
-- `services/webhook/src/fastjson.py`, never stdlib `json` (`dumps()` returns `bytes`).
-- Every `webhook`/`webhook-worker` tunable in `config.py`, never scattered `os.environ`.
+- `services/_common/src/fastjson.py`, never stdlib `json` (`dumps()` returns `bytes`).
+- Every `webhook`/`webhook-worker` tunable in `services/_common/src/config/`, never scattered `os.environ`.
 - Skills/agents/config stay CLI-agnostic - exception: names the CLI itself defines.
 - Comments cover a non-obvious *why*, never this machine's current state.
 

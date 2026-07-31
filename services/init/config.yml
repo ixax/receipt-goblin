@@ -1,6 +1,6 @@
 # Role/grant config for ClickHouse provisioning - read once, by `make init`
 # (services/init/init_clickhouse_users.py) only. Roles are created here and
-# nowhere else - services/webhook/src/migrate.py never touches users/grants
+# nowhere else - services/migrate/src/migrate.py never touches users/grants
 # (see its own module docstring for why: role provisioning is a `make init`
 # concern, not something re-run on every `docker compose up`).
 #

@@ -171,50 +171,30 @@ services:
       - receipt-goblin
 
   clickhouse-migrate:
-    # Applies any services/clickhouse/migrations/*.sql not yet in schema_migrations,
-    # plus the one-time dashboard Dictionaries. Idempotent, safe to re-run -
-    # see migrate.py's docstring. Never touches ClickHouse users/roles/grants
-    # - that's `make init` alone (services/init/), run once, not here.
+    # Applies any services/clickhouse/migrations/*.sql not yet in schema_migrations, plus the one-time dashboard Dictionaries.
+    # Idempotent, safe to re-run - see migrate.py's docstring.
+    # Never touches ClickHouse users/roles/grants - that's `make init` alone (services/init/), run once, not here.
     # Not started by `docker compose up` (profiles: tools) - run via `make migrate`.
-    # Operators are responsible for running it before/after adding new migration files,
-    # or before bringing up services that depend on new schema/dictionaries.
-    # Build context is the repo root - see services/webhook/Dockerfile.
+    # Operators are responsible for running it before/after adding new migration files, or before bringing up services that depend on new schema/dictionaries.
+    # Build context is the repo root - see services/migrate/Dockerfile.
     build:
       context: .
-      dockerfile: services/webhook/Dockerfile
-    image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
+      dockerfile: services/migrate/Dockerfile
+    image: receipt-goblin-migrate:${MIGRATE_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-clickhouse-migrate
     profiles:
       - tools
     restart: "no"
     environment:
-      APP_ROLE: migrate
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
       CLICKHOUSE_DATABASE: *clickhouse-database
-      # migrate.py itself never reads these (it uses the bootstrap identity
-      # below for everything) - only present because config.py is shared
-      # with webhook and reads CLICKHOUSE_USER/PASSWORD with no fallback;
-      # unset would crash on import. Reuses the ingest anchors, dead weight
-      # here, same pattern as REDIS_HOST/PORT below.
-      CLICKHOUSE_USER: *clickhouse-ingest-user
-      CLICKHOUSE_PASSWORD: *clickhouse-ingest-password
-      # Embedded (as string literals, see migrate.py's docstring) into the
-      # dashboard Dictionaries' SOURCE(CLICKHOUSE(...)) clause - the only
-      # role identity this file needs to know about.
+      # Embedded (as string literals, see migrate.py's docstring) into the dashboard Dictionaries' SOURCE(CLICKHOUSE(...)) clause - the only role identity this file needs to know about.
       CLICKHOUSE_INGEST_USER: *clickhouse-ingest-user
       CLICKHOUSE_INGEST_PASSWORD: *clickhouse-ingest-password
-      # Bootstrap superuser - migrate.py's own DDL (schema_migrations,
-      # migrations/*.sql, dictionaries) needs rights no least-privilege role
-      # should hold.
+      # Bootstrap superuser - migrate.py's own DDL (schema_migrations, migrations/*.sql, dictionaries) needs rights no least-privilege role should hold.
       CLICKHOUSE_BOOTSTRAP_USER: *clickhouse-bootstrap-user
       CLICKHOUSE_BOOTSTRAP_PASSWORD: *clickhouse-bootstrap-password
-      LITELLM_MASTER_KEY: *litellm-master-key
-      LITELLM_BASE_URL: *litellm-base-url
-      # Unused by migrate.py, but config.py is shared with webhook and reads
-      # these with no fallback - unset would crash on import.
-      REDIS_HOST: *redis-host
-      REDIS_PORT: *redis-port
     mem_limit: 256m
     depends_on:
       clickhouse:
@@ -316,12 +296,9 @@ services:
     networks:
       - receipt-goblin
 
-  # Two stateless replicas (webhook only produces onto Redis - see
-  # queue_client.py - so any request can land on either) behind load-balancer
-  # below, instead of one instance. Duplicated instead of `docker compose up
-  # --scale`: fixed names + static IPs (below) are what load-balancer's
-  # nginx.conf upstream block needs for real least_conn balancing, and each
-  # replica keeps its own container_name/healthcheck.
+  # Two stateless replicas behind load-balancer, instead of one instance (webhook only produces onto Redis - see queue_client.py - so any request can land on either).
+  # Fixed names + static IPs (below) are needed for load-balancer's nginx.conf upstream block to do real least_conn balancing.
+  # Duplicated instead of `docker compose up --scale` so each replica keeps its own container_name/healthcheck.
   webhook-1: &webhook-service
     # Prod image is self-contained (config.yml baked in; build context is
     # the repo root - see services/webhook/Dockerfile). docker-compose.dev.yml
@@ -330,12 +307,7 @@ services:
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
-    # Shared by every service built from services/webhook/Dockerfile
-    # (webhook-1/2, worker, metrics-reparse, webhook-loadtest,
-    # clickhouse-migrate - see AGENTS.md, "one image, APP_ROLE picks the
-    # role") - one explicit tag here means one build gets reused by all six
-    # instead of compose's default per-service image naming giving each its
-    # own identical copy (confirmed duplicating ~214MB x6 before this).
+    # Webhook-specific image - used only by webhook-1/2 replicas.
     image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-webhook-1
     environment: *webhook-env
@@ -465,16 +437,14 @@ services:
       - receipt-goblin
 
   worker:
-    # Same image as webhook, only APP_ROLE differs (docker-entrypoint.sh).
-    # Drains queue_client.STREAM_KEY in batches and does the ClickHouse
-    # inserts - see worker.py.
+    # Drains queue_client.STREAM_KEY in batches and does the ClickHouse inserts.
+    # See worker.py.
     build:
       context: .
-      dockerfile: services/webhook/Dockerfile
-    image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
+      dockerfile: services/worker/Dockerfile
+    image: receipt-goblin-worker:${WORKER_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-worker
     environment:
-      APP_ROLE: worker
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
       CLICKHOUSE_USER: *clickhouse-ingest-user
@@ -482,27 +452,20 @@ services:
       CLICKHOUSE_DATABASE: *clickhouse-database
       REDIS_HOST: *redis-host
       REDIS_PORT: *redis-port
-      # worker.py never calls /key/info, but config.py is shared with
-      # webhook and reads these with no fallback - unset crashes on import.
-      LITELLM_MASTER_KEY: *litellm-master-key
-      LITELLM_BASE_URL: *litellm-base-url
     expose:
       - "9200"
-    # Was 256m - steady-state usage already sat at ~75% of that; batches
-    # backing up under load (growing toward BATCH_SIZE) pushed it into
-    # silent OOM kills (no python traceback, container just restarted -
-    # confirmed via docker inspect RestartCount + logs stopping mid-batch).
+    # Was 256m - steady-state usage already sat at ~75% of that.
+    # Batches backing up under load (growing toward BATCH_SIZE) pushed it into silent OOM kills (no python traceback, container just restarted - confirmed via docker inspect RestartCount + logs stopping mid-batch).
     mem_limit: 512m
-    # Bumped from 1.0 after build_event() moved here from webhook (see
-    # AGENTS.md "Why a queue in front of ClickHouse") - worker now absorbs
-    # both the CPU-bound parsing and the ClickHouse batch inserts, and
-    # load testing showed it pegged at ~97% of 1.0 under sustained load.
+    # Bumped from 1.0 after build_event() moved here from webhook (see AGENTS.md "Why a queue in front of ClickHouse").
+    # Worker now absorbs both the CPU-bound parsing and the ClickHouse batch inserts.
+    # Load testing showed it pegged at ~97% of 1.0 under sustained load.
     cpus: 2.0
     restart: always
     labels:
       - autoheal=true
     healthcheck:
-      test: ["CMD", "python", "-c", "from src.queue_client import get_redis; get_redis().ping()"]
+      test: ["CMD", "python", "-c", "from common.queue_client import get_redis; get_redis().ping()"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -515,34 +478,25 @@ services:
       - receipt-goblin
 
   metrics-reparse:
-    # Same image as webhook/worker, CLI-only. Recomputes
-    # calculated_type/calculated_payload for existing event_sources rows -
-    # see reparse.py. Not started by `docker compose up` (profiles: tools) -
-    # run via `make reparse`/`make reparse-all`.
+    # CLI-only service that recomputes calculated_type/calculated_payload for existing event_sources rows.
+    # See reparse.py.
+    # Not started by `docker compose up` (profiles: tools) - run via `make reparse`/`make reparse-all`.
     build:
       context: .
-      dockerfile: services/webhook/Dockerfile
-    image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
+      dockerfile: services/reparse/Dockerfile
+    image: receipt-goblin-reparse:${REPARSE_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-metrics-reparse
     profiles:
       - tools
     environment:
-      APP_ROLE: reparse
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
       CLICKHOUSE_USER: *clickhouse-ingest-user
       CLICKHOUSE_PASSWORD: *clickhouse-ingest-password
       CLICKHOUSE_DATABASE: *clickhouse-database
-      # reparse.py doesn't use LITELLM_*/REDIS_*, but config.py is shared
-      # with webhook and reads them unconditionally - unset crashes on import.
-      LITELLM_MASTER_KEY: *litellm-master-key
-      LITELLM_BASE_URL: *litellm-base-url
-      REDIS_HOST: *redis-host
-      REDIS_PORT: *redis-port
       SESSION_ID: ${SESSION_ID:-}
-    # reparse.py pages event_sources REPARSE_CHUNK_SIZE rows at a time
-    # instead of buffering the whole table client-side, so this doesn't need
-    # headroom for a full 300MB+ payload-text load.
+    # reparse.py pages event_sources REPARSE_CHUNK_SIZE rows at a time instead of buffering the whole table client-side.
+    # This doesn't need headroom for a full 300MB+ payload-text load.
     mem_limit: 256m
     depends_on:
       clickhouse:
@@ -581,7 +535,9 @@ services:
     # build_fixtures.py pages ingest_raw fixtures_chunk_size rows at a time
     # instead of buffering the whole payload set client-side, same rationale
     # as metrics-reparse's mem_limit below.
-    mem_limit: 256m
+    # Bumped from 256m after real OOM confirmed on VOLUME=small (payloads
+    # average ~276KB, up to 1.8MB - bigger than the original limit assumed).
+    mem_limit: 1024m
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -589,27 +545,20 @@ services:
       - receipt-goblin
 
   loadtest:
-    # Same image as webhook/worker/metrics-reparse, CLI-only.
-    # Replays real traffic extracted into loadtest-fixtures-data (see the
-    # separate loadtest-fixtures service/src/build_fixtures.py) against
-    # webhook's own
-    # POST /api/v1/metrics at a ramping concurrency profile - see
-    # src/loadtest.py. Not started by `docker compose up` (profiles: tools) -
-    # run via `make loadtest`.
+    # CLI-only service that replays real traffic extracted into loadtest-fixtures-data.
+    # See the separate loadtest-fixtures service/src/build_fixtures.py.
+    # Replays traffic against webhook's POST /api/v1/metrics at a ramping concurrency profile - see src/loadtest.py.
+    # Not started by `docker compose up` (profiles: tools) - run via `make loadtest`.
     build:
       context: .
-      dockerfile: services/webhook/Dockerfile
-    image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
+      dockerfile: services/loadtest/Dockerfile
+    image: receipt-goblin-loadtest:${LOADTEST_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-loadtest
     profiles:
       - tools
     environment:
-      APP_ROLE: loadtest
-      # Not *webhook-metrics-url - deliberately its own override (TARGET_URL, not
-      # WEBHOOK_METRICS_URL) so this can point at a different host (staging/prod)
-      # without touching the webhook service's own URL var. Defaults at
-      # load-balancer, same as litellm's real traffic, so the load test
-      # exercises the balancer too - not just one replica directly.
+      # TARGET_URL is deliberately its own override (not WEBHOOK_METRICS_URL) so this can point at a different host (staging/prod) without touching the webhook service's own URL var.
+      # Defaults at load-balancer, same as litellm's real traffic, so the load test exercises the balancer too - not just one replica directly.
       TARGET_URL: ${TARGET_URL:-http://load-balancer:8000/api/v1/metrics}
       START_USERS: ${START_USERS:-10}
       END_USERS: ${END_USERS:-100}
@@ -618,25 +567,6 @@ services:
       HOLD_MINUTES: ${HOLD_MINUTES:-5}
       DURATION_MINUTES: ${DURATION_MINUTES:-0}
       SPEED: ${SPEED:-1.0}
-      # loadtest.py itself never touches ClickHouse directly yet (config.py
-      # is shared with webhook and reads these with no fallback - unset
-      # would crash on import), but these are now real, scoped-down
-      # credentials rather than a dead reused pair: the `loadtest` role has
-      # full (ALL) rights on its own dedicated CLICKHOUSE_LOADTEST_DATABASE
-      # only, never on the app's main CLICKHOUSE_DATABASE - see
-      # services/init/config.yml. loadtest-runner (the agent that drives
-      # `make loadtest`) checks this database exists before every run and
-      # alerts if it doesn't, rather than creating it - it's provisioned by
-      # `make init` alone, once, not by clickhouse-migrate.
-      CLICKHOUSE_HOST: *clickhouse-host
-      CLICKHOUSE_PORT: *clickhouse-port
-      CLICKHOUSE_USER: *clickhouse-loadtest-user
-      CLICKHOUSE_PASSWORD: *clickhouse-loadtest-password
-      CLICKHOUSE_DATABASE: *clickhouse-loadtest-database
-      REDIS_HOST: *redis-host
-      REDIS_PORT: *redis-port
-      LITELLM_MASTER_KEY: *litellm-master-key
-      LITELLM_BASE_URL: *litellm-base-url
     volumes:
       # Read-only - this is the replay corpus, no writes needed (unlike
       # loadtest-fixtures' own read-write mount for generating fixtures).

@@ -1,5 +1,5 @@
 """Own minimal ClickHouse client factory - deliberately not importing
-services/webhook/src/clickhouse_ingest.py's get_client(), since this
+services/_common/src/ingest_db.py's get_client(), since this
 service shares no code with webhook at all (see AGENTS.md)."""
 import clickhouse_connect
 

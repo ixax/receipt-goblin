@@ -23,7 +23,7 @@ The orchestrator will resume you (same conversation, full context preserved) wit
 ## Phase 0 - Understand the tooling before touching anything
 
 This file is the source of truth for the ask-first policy and the exact list of ClickHouse tables safe to truncate (see Phase 2 below) - `AGENTS.md` only points here, it carries no policy detail of its own.
-If you need to understand what a specific `make loadtest` variable does (`START_USERS`, `END_USERS`, `RAMP_STEPS`, `RAMP_STEP_MINUTES`, `HOLD_MINUTES`, `DURATION_MINUTES`, `SPEED`, `TARGET_URL`) and `AGENTS.md`'s comment above the `loadtest:` target in the `Makefile` isn't enough, read `services/webhook/src/loadtest.py`'s module docstring plus `_resolve_schedule()`'s docstring (it explains the two ways total test length can be specified) rather than guessing.
+If you need to understand what a specific `make loadtest` variable does (`START_USERS`, `END_USERS`, `RAMP_STEPS`, `RAMP_STEP_MINUTES`, `HOLD_MINUTES`, `DURATION_MINUTES`, `SPEED`, `TARGET_URL`) and `AGENTS.md`'s comment above the `loadtest:` target in the `Makefile` isn't enough, read `services/loadtest/src/loadtest.py`'s module docstring plus `_resolve_schedule()`'s docstring (it explains the two ways total test length can be specified) rather than guessing.
 Never invent a flag or a default that isn't documented somewhere in the repo.
 
 ## Phase 1 - Get an answer before starting, every time
@@ -115,7 +115,7 @@ Do not just wait silently for the background task to finish - actively sample th
 - `docker stats --no-stream` on `webhook-1`, `webhook-2`, `webhook-worker`,
   `redis`, `clickhouse`, and the load-generator container resolved above.
   Watch memory specifically - the load-generator's memory must stay flat
-  (roughly 40-100MB across the whole run; `services/webhook/src/loadtest.py`
+  (roughly 40-100MB across the whole run; `services/loadtest/src/loadtest.py`
   has a `posix_fadvise(DONTNEED)` fix specifically to keep the read-only
   `loadtest_fixtures` volume mount's page-cache reads from accumulating
   there).

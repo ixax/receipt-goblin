@@ -5,8 +5,9 @@ consumer_group: clickhouse-ingest
 
 # Approximate cap, not a hard byte budget - sized around events' full
 # ~360KB avg payload so 1500 * 360KB stays under redis's maxmemory (see
-# services/redis/redis.conf). XADD trims oldest past this; a backlog this
-# deep means the worker/ClickHouse is already stuck.
+# services/redis/redis.conf).
+# XADD trims oldest past this; a backlog this deep means the worker/ClickHouse
+# is already stuck.
 maxlen: 1500
 
 # Flush once this many events have accumulated in the window.
@@ -20,8 +21,3 @@ flush_interval_ms: 2000
 # XAUTOCLAIM threshold (ms) - reclaims entries left un-XACK'd this long
 # (covers a worker crashing mid-batch).
 stale_idle_ms: 300000
-
-# reparse.py pages through event_sources this many rows at a time -
-# fetching raw_payload_full for the whole table at once OOM-killed the
-# container (256m limit) once it passed ~300MB of raw text.
-reparse_chunk_size: 50

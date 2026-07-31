@@ -1,11 +1,11 @@
 # Prod image, self-contained. Build context is the repo root (not this
-# directory) so it can also bake in services/clickhouse/migrations:
+# directory), so it can also bake in services/_common:
 # `docker build -t webhook -f services/webhook/Dockerfile . && docker run -p 8000:8000 webhook`.
 # docker-compose.dev.yml reuses this image for local dev, mounting ./src
 # over /app/src and adding `--reload`.
-# One image serves four compose services - webhook/webhook-worker/
-# webhook-reparse/clickhouse-migrate - the role is picked at container start
-# by docker-entrypoint.sh via APP_ROLE, not a per-service `command:`.
+# Split out of the old one-image/APP_ROLE design (worker/reparse/migrate/
+# loadtest each have their own Dockerfile now) - see
+# plans/webhook-worker-split.md.
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -15,11 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/_common/src/ ./common/
 COPY services/webhook/src/ ./src/
-COPY services/webhook/config.yml .
-COPY --chmod=0755 services/webhook/docker-entrypoint.sh .
-# Only used by the `migrate` role, but harmless to bake into the others.
-COPY services/clickhouse/migrations/ ./migrations/
 
 EXPOSE 8000
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000"]

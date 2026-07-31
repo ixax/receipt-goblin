@@ -1,7 +1,7 @@
 """Loads the ClickHouse role/grant definitions from config.yml (same
 directory) - the single source of truth for `make init`
 (init_clickhouse_users.py, this directory) to provision every role from.
-Nothing else reads this - services/webhook/src/migrate.py never touches
+Nothing else reads this - services/migrate/src/migrate.py never touches
 users/roles/grants at all (see its own module docstring).
 
 The parser below is intentionally NOT a general YAML parser - it supports

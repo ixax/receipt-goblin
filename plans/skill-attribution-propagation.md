@@ -10,7 +10,7 @@ the Agents Overview Grafana dashboard (`services/grafana/dashboards/agents_overv
 Findings (full detail from research, condensed here):
 
 - **Command detection is chain-wide and reliable.** `_active_command_name_and_version`
-  (`services/webhook/src/clickhouse_ingest.py:213-245`) walks backward through
+  (`services/_common/src/ingest_parsing.py`, line numbers stale post-webhook-worker-split, re-verify) walks backward through
   the LiteLLM payload's `messages`, skipping over Claude Code's automatic
   tool-result-only continuation turns, until it finds the real human message
   that carried the `<command-name>` tag.
@@ -20,10 +20,10 @@ Findings (full detail from research, condensed here):
   genuine per-request header (`x-claude-code-agent-id`) on every call the
   spawned subagent itself makes, joined against the `agent_invocations` table.
   There's a known, already-mitigated race (subagent's first call can outrun the
-  orchestrator's own ingest; `services/webhook/reparse.py` / `make reparse-all`
+  orchestrator's own ingest; `services/reparse/src/reparse.py` / `make reparse-all`
   fixes this after the fact).
 - **Skill detection is the real gap.** `_skill_name_and_version`
-  (`clickhouse_ingest.py:572-586`) only checks whether *this specific call's own
+  (`services/_common/src/ingest_parsing.py`, line numbers stale post-webhook-worker-split, re-verify) only checks whether *this specific call's own
   response* invoked the `Skill` tool.
   Unlike a subagent, a skill has no
   distinguishing per-request header — its body is read inline into the same
@@ -35,7 +35,7 @@ Findings (full detail from research, condensed here):
   triggering row is attributable.
 - **Codex CLI has zero agent/skill/command attribution**, by design — those are
   Claude Code-only CLI concepts (confirmed in `agent_docs/architecture.md:22-26`
-  and inline docstrings throughout `clickhouse_ingest.py`).
+  and inline docstrings throughout `services/_common/src/ingest_parsing.py`).
   Not a bug to fix.
 
 This plan fixes the skill-attribution gap by mirroring the command-detection
@@ -44,7 +44,7 @@ continuation chain, exactly like `command_name` already does.
 
 ## Implementation
 
-**File:** `services/webhook/src/clickhouse_ingest.py`
+**File:** `services/_common/src/ingest_parsing.py`
 
 1. Replace `_skill_name_and_version(payload)` with
    `_active_skill_name_and_version(payload, messages)`.
@@ -68,7 +68,7 @@ continuation chain, exactly like `command_name` already does.
    - Version resolved via the existing `_version_marker_for_name` helper,
      unchanged.
 
-3. **Do not touch `_classify_event`** (`clickhouse_ingest.py:768-817`).
+3. **Do not touch `_classify_event`** (`services/_common/src/ingest_parsing.py`, line numbers stale post-webhook-worker-split, re-verify).
    `calculated_type`/`calculated_payload` stay strictly per-row, based only on
    this call's own tool invocation.
    A downstream row keeps whatever
@@ -94,7 +94,7 @@ continuation chain, exactly like `command_name` already does.
 6. No ClickHouse schema/migration change — `skill_name`/`skill_version`
    columns already exist and are already populated, just more sparsely.
 
-**File:** `services/webhook/tests/test_clickhouse_ingest.py`
+**File:** `services/_common/tests/test_ingest_parsing.py`
 
 Rename the existing `_skill_name_and_version` test section/tests to
 `_active_skill_name_and_version`, and add:

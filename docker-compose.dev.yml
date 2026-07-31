@@ -24,35 +24,31 @@ x-mcp-dev-port: &mcp-dev-port ${MCP_DEV_PORT:-8001}
 services:
   clickhouse-migrate:
     volumes:
-      - ./services/webhook/src:/app/src:ro
-      - ./services/webhook/config.yml:/app/config.yml:ro
+      - ./services/migrate/src:/app/src:ro
       - ./services/clickhouse/migrations:/app/migrations:ro
       - ./services/_common/src:/app/common:ro
 
   webhook-1:
     volumes:
       - ./services/webhook/src:/app/src:ro
-      - ./services/webhook/config.yml:/app/config.yml:ro
       - ./services/_common/src:/app/common:ro
     command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
   webhook-2:
     volumes:
       - ./services/webhook/src:/app/src:ro
-      - ./services/webhook/config.yml:/app/config.yml:ro
       - ./services/_common/src:/app/common:ro
     command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
   worker:
     volumes:
-      - ./services/webhook/src:/app/src:ro
-      - ./services/webhook/config.yml:/app/config.yml:ro
+      - ./services/worker/src:/app/src:ro
       - ./services/_common/src:/app/common:ro
 
   metrics-reparse:
     volumes:
-      - ./services/webhook/src:/app/src:ro
-      - ./services/webhook/config.yml:/app/config.yml:ro
+      - ./services/reparse/src:/app/src:ro
+      - ./services/reparse/config.yml:/app/config.yml:ro
       - ./services/_common/src:/app/common:ro
 
   mcp-dev:

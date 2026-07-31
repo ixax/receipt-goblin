@@ -10,7 +10,7 @@ than a package import, since this script runs on the host, outside any
 container.
 
 This is the *only* place ClickHouse users/roles/grants get created - not on
-every `docker compose up` (see services/webhook/src/migrate.py's own
+every `docker compose up` (see services/migrate/src/migrate.py's own
 docstring for why that changed). Re-running this script is always safe
 (existing usernames/passwords already in .env are reused, not regenerated;
 every `CREATE USER`/`GRANT` statement it issues is idempotent).

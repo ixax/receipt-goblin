@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from src import queue_client
+from common import queue_client
 
 
 def _run(coro):

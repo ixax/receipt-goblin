@@ -6,7 +6,7 @@
 -- "virtual keys" (metadata.user_api_key_hash) - one internal user can hold
 -- any number of keys. user_key_hash adds that per-call key identity
 -- alongside user_id (additive, not a replacement - see _user_key_hash in
--- clickhouse_ingest.py). user_agent (metadata.user_agent, e.g.
+-- services/_common/src/ingest_parsing.py). user_agent (metadata.user_agent, e.g.
 -- "claude-cli/2.1.207") records which client each internal user calls from,
 -- stored as the latest-seen value per user in ai_gateway_users (see
 -- _user_agent/_user_row).

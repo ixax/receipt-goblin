@@ -17,7 +17,7 @@
 --
 -- 1. Pause webhook-worker's ClickHouse writes before running this file -
 --    e.g. `docker compose stop webhook-worker`. The Redis queue buffers
---    incoming events during the window (see services/webhook/src/queue_client.py) -
+--    incoming events during the window (see services/_common/src/queue_client.py) -
 --    resume webhook-worker once step 7 (RENAME) below has completed for all
 --    three tables.
 --
@@ -209,7 +209,7 @@ RENAME TABLE agent_messages TO agent_messages_old, agent_messages_new TO agent_m
 -- then once event_sources has accumulated enough history, run
 -- `make reparse-all` (or `make reparse SESSION=<id>` per session) to fill
 -- in real calculated_type/calculated_payload/provider for rows that have an
--- event_sources counterpart - see webhook/src/reparse.py.
+-- event_sources counterpart - see services/reparse/src/reparse.py.
 --
 -- Force the dedup merge immediately, since most dashboard queries don't use
 -- FINAL (for performance) and would otherwise see duplicate old+new rows

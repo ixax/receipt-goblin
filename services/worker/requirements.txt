@@ -1,0 +1,8 @@
+clickhouse-connect==0.8.3
+redis==5.0.8
+PyYAML==6.0.2
+prometheus-client==0.21.0
+# Rust-based, faster than stdlib json for the full ~360KB-1.5MB
+# StandardLoggingPayload round-trips (worker.py's decode) - see AGENTS.md
+# "Why a queue in front of ClickHouse".
+orjson==3.10.7

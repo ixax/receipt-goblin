@@ -54,15 +54,19 @@ import statistics
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 import aiohttp
 
 from common.logging_config import create_logger
 
-from .config import FIXTURES_DIR
-
 logger = create_logger("webhook.loadtest")
+
+# Where loadtest.py reads its replay corpus from - a dedicated Docker
+# volume in prod, written by the separate loadtest-fixtures service
+# (services/loadtest-fixtures/, see AGENTS.md) and mounted ro here.
+FIXTURES_DIR = Path(os.environ.get("FIXTURES_DIR", "/app/loadtest_fixtures"))
 
 DEFAULT_TARGET_URL = "http://webhook:8000/api/v1/metrics"
 

@@ -4,7 +4,7 @@
 -- Why: branch names often embed a ticket key (e.g. "VIEW-12345" out of
 -- "VIEW-12345-my-super-branch" or "my-super-branch-VIEW-12345"), which
 -- nothing parsed out before - see _issue_id_from_branch in
--- clickhouse_ingest.py for the extraction regex (case-insensitive,
+-- services/_common/src/ingest_parsing.py for the extraction regex (case-insensitive,
 -- normalized to uppercase). Unlike agent_events/agent_usage/agent_messages,
 -- session_git_branch isn't backed by event_sources, so there's no
 -- `make reparse-all` path to recompute this from raw payloads - the ticket

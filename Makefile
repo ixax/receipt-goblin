@@ -181,14 +181,31 @@ observability-logs: check-env
 observability-status: check-env
 	docker compose $(COMPOSE_FILES) --profile observability ps $(OBSERVABILITY_SERVICES)
 
-# Runs services/webhook/tests (pure clickhouse_ingest.py functions, no live
-# ClickHouse needed - see services/webhook/tests/conftest.py). Needs
-# services/webhook/requirements-dev.txt installed in .venv first: `pip install -r
-# services/webhook/requirements-dev.txt`. services/webhook/pytest.ini forces per-test verbose
-# output (-v) and silences dependency warnings (urllib3/clickhouse-connect
-# deprecation noise unrelated to this repo's own code).
+# Runs each service's test directory as its own pytest invocation, plus
+# services/_common/tests (the shared ingest_parsing/ingest_db/fastjson/
+# queue_client suite, split out of services/webhook by the
+# webhook-worker-split refactor - see plans/webhook-worker-split.md).
+# Deliberately NOT one combined `pytest a b c d e` invocation: every
+# service's src/ is a bare top-level `src` package (e.g. `from src import
+# worker`), so a single pytest process collecting multiple services would
+# cache the first one it imports in sys.modules and silently resolve every
+# later service's `from .config import ...` against that first service's
+# config instead of its own - confirmed via a real ImportError when this
+# was tried. Separate invocations sidestep that entirely.
+# services/webhook/tests has no test files of its own right now (server.py
+# has none) - not included here since an empty dir makes pytest exit
+# non-zero ("no tests collected") and abort `make`; add it back once
+# services/webhook/tests/test_server.py exists. No live ClickHouse needed -
+# see each dir's conftest.py. Needs services/webhook/requirements-dev.txt
+# installed in .venv first: `pip install -r
+# services/webhook/requirements-dev.txt`. services/webhook/pytest.ini silences
+# dependency warnings (urllib3/clickhouse-connect deprecation noise
+# unrelated to this repo's own code).
 test: check-env
-	.venv/bin/python -m pytest -c services/webhook/pytest.ini services/webhook/tests
+	.venv/bin/python -m pytest -c services/webhook/pytest.ini services/worker/tests
+	.venv/bin/python -m pytest -c services/webhook/pytest.ini services/reparse/tests
+	.venv/bin/python -m pytest -c services/webhook/pytest.ini services/loadtest/tests
+	.venv/bin/python -m pytest -c services/webhook/pytest.ini services/_common/tests
 
 # Runs hooks/harness_audit/tests (pure Python unittest, no dependencies).
 test-harness-audit:

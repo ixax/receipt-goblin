@@ -1,6 +1,7 @@
 """CLI-only reparse tool - recomputes agent_events/agent_usage/agent_messages/
 agent_invocations/ai_gateway_users/ai_gateway_groups for events already in
-ingest_raw, reusing clickhouse_ingest.py's classification logic directly.
+ingest_raw, reusing common.ingest_db's reparse_event() classification logic
+directly.
 Run via `make reparse-all` or `make reparse SESSION=<session_id>`; no HTTP
 API, one-shot `python -m src.reparse` only.
 
@@ -12,28 +13,12 @@ ReplacingMergeTree, keyed so this run's now() always wins.
 """
 import argparse
 import json
+from datetime import datetime, timezone
 
+from common.ingest_db import get_client, reparse_event
 from common.logging_config import create_logger
 
-from .clickhouse_ingest import (
-    _agent_invocation_rows,
-    _derive_context,
-    _event_row,
-    _group_row,
-    _insert_agent_invocations,
-    _insert_ai_gateway_groups,
-    _insert_ai_gateway_users,
-    _insert_event,
-    _insert_message,
-    _insert_usage,
-    _message_row,
-    _session_and_trace_id,
-    _usage_row,
-    _user_row,
-    get_client,
-)
 from .config import REPARSE_CHUNK_SIZE
-from datetime import datetime, timezone
 
 logger = create_logger("webhook.reparse")
 
@@ -47,42 +32,14 @@ def _reparse_one(client, litellm_call_id: str, source_session_id: str, raw_paylo
 
     now = datetime.now(timezone.utc)
     try:
-        messages = payload.get("messages")
-        session_id, _trace_id = _session_and_trace_id(payload)
-        session_id = session_id or source_session_id
-        # Insert this call's own spawned-subagent rows before doing
-        # _derive_context's DB lookup below (for *this* call's own
-        # agent_invocation_id) - minimizes the race window before the
-        # spawned subagent's own first call arrives and looks its row up.
-        _insert_agent_invocations(client, _agent_invocation_rows(session_id, messages, now=now))
-
-        ctx = _derive_context(payload, messages, client=client)
-        ctx.session_id = session_id
-
-        group_row = _group_row(payload, now=now)
-        if group_row is not None:
-            _insert_ai_gateway_groups(client, [group_row])
-        user_row = _user_row(payload, now=now)
-        if user_row is not None:
-            _insert_ai_gateway_users(client, [user_row])
-
-        _insert_event(client, _event_row(payload, ctx, now))
-
-        if payload.get("status") == "success":
-            usage_row = _usage_row(payload, ctx, now)
-            if usage_row is not None:
-                _insert_usage(client, usage_row)
-
-            message_row = _message_row(payload, ctx, now)
-            if message_row is not None:
-                _insert_message(client, message_row)
+        reparse_event(client, payload, litellm_call_id, source_session_id, now)
     except Exception:
         logger.exception("failed to reparse event (litellm_call_id=%s)", litellm_call_id)
 
 
 def reparse(session_id: str = "") -> int:
-    """session_id="" reparses every row in ingest_raw. Returns rows
-    processed.
+    """session_id="" reparses every row in ingest_raw.
+    Returns rows processed.
 
     Pages REPARSE_CHUNK_SIZE rows at a time (keyset pagination on
     litellm_call_id) instead of pulling every raw_payload_full in one

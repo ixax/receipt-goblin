@@ -8,17 +8,16 @@ in batches - see AGENTS.md.
 from fastapi import FastAPI, HTTPException, Request
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from common.litellm_auth import virtual_key_is_valid
-from common.logging_config import create_logger
-
-from .clickhouse_ingest import (
+from common.config.litellm import LITELLM_BASE_URL, LITELLM_MASTER_KEY
+from common.ingest_db import (
     clickhouse_alive,
     ingest_git_branch,
     ingest_litellm_alert,
     ingest_plan_proposal,
 )
-from .config import LITELLM_BASE_URL, LITELLM_MASTER_KEY
-from .queue_client import enqueue_raw, get_async_redis
+from common.litellm_auth import virtual_key_is_valid
+from common.logging_config import create_logger
+from common.queue_client import enqueue_raw, get_async_redis
 
 logger = create_logger("webhook.server")
 

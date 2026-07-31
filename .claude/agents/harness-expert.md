@@ -49,7 +49,7 @@ The whole prompt you receive *is* the ask.
   the command's body (after frontmatter) for Command.
 - Why there: only `name:`/`description:` (and a command's expanded body) ever ride into the LiteLLM-logged `messages`, via Claude Code's "Available agent types"/"available skills" system-reminder listings or the triggering message.
   A frontmatter `version:` key is never sent anywhere and is invisible to the ingest parser.
-  Recovered by `services/webhook/src/clickhouse_ingest.py`'s `_version_marker_for_name` (Subagent/Skill) and `_active_command_name_and_version` (Command).
+  Recovered by `services/_common/src/ingest_parsing.py`'s `_version_marker_for_name` (Subagent/Skill) and `_active_command_name_and_version` (Command).
 - Never rename the identifier (`name:`, skill directory, command filename) to encode a version - breaks an in-flight session still referencing the old name.
 - New entity: add `<version>1.0.0</version>` immediately.
   Never leave unmarked.

@@ -3,7 +3,7 @@
 -- StandardLoggingPayload callback can't reconstruct: budget/spend threshold
 -- crossings, deployment outages, DB exceptions, hung/too-slow requests
 -- flagged by LiteLLM's own internal logic. This table stores those events,
--- fed by services/webhook/src/clickhouse_ingest.py's ingest_litellm_alert(),
+-- fed by services/_common/src/ingest_db.py's ingest_litellm_alert(),
 -- called from server.py's new POST /api/v1/litellm-alert route.
 --
 -- Modeled on ingest_dlq's shape: raw-payload-preserving (only the

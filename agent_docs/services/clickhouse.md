@@ -30,7 +30,7 @@ Must live under `users.d`, not `config.d` - ClickHouse merges the two into `conf
 
 ## `services/init/` - role/user provisioning (`make init`)
 
-- `init_clickhouse_users.py` - interactive, stdlib-only first-run script (`make init`), the *only* place ClickHouse users/roles/grants get created (not on every `docker compose up` - see `services/webhook/src/migrate.py`'s own docstring for why that changed).
+- `init_clickhouse_users.py` - interactive, stdlib-only first-run script (`make init`), the *only* place ClickHouse users/roles/grants get created (not on every `docker compose up` - see `services/migrate/src/migrate.py`'s own docstring for why that changed).
   Asks every question first (database name, bootstrap creds, then per role), writes `.env` once at the end, brings up `clickhouse` alone, issues every `CREATE USER`/`GRANT` via `docker compose exec clickhouse clickhouse-client`, then stops `clickhouse` again.
   Idempotent - safe to re-run; existing usernames/passwords already in `.env` are reused, not regenerated.
 - `ch_roles.py` - loads `config.yml`'s role/grant definitions via a deliberately restricted (not general-YAML) parser: one top-level `roles:` list, flat scalar fields plus one nested `grants:` list.
@@ -59,7 +59,7 @@ The half-year `PARTITION BY` convention itself is documented in `AGENTS.md`'s Co
 
 ## Migrations (`services/clickhouse/migrations/`)
 
-Applied by the `clickhouse-migrate` role (`services/webhook/src/migrate.py`, same image as `webhook`) against `services/clickhouse/migrations/*.sql`, in order, via `make migrate` - explicit-only, never automatic on `up`.
+Applied by the `clickhouse-migrate` service (`services/migrate/src/migrate.py`, its own image built from `services/migrate/Dockerfile`) against `services/clickhouse/migrations/*.sql`, in order, via `make migrate` - explicit-only, never automatic on `up`.
 See `.claude/skills/clickhouse-migration/SKILL.md` before creating/editing a migration file - this section is what exists, not how to add to it.
 `009`/`010` don't exist in the sequence - no evidence in the migration files themselves of why; a factual gap, not an invented explanation.
 

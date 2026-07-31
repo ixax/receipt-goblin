@@ -1,7 +1,7 @@
 ---
 name: litellm-test-alerting
 description: >
-  Called explicitly by name, never proactively, to test/verify LiteLLM's native alerting end to end (services/litellm/config.yaml's general_settings.alerting: ["webhook"], the 7 alert_types, and the litellm_alerts ClickHouse table it lands in via services/webhook/src/clickhouse_ingest.py's ingest_litellm_alert()).
+  Called explicitly by name, never proactively, to test/verify LiteLLM's native alerting end to end (services/litellm/config.yaml's general_settings.alerting: ["webhook"], the 7 alert_types, and the litellm_alerts ClickHouse table it lands in via services/_common/src/ingest_db.py's ingest_litellm_alert()).
   Attempts budget_alerts and llm_exceptions by default; attempts llm_too_slow/llm_requests_hanging only if the caller's invocation explicitly opts into the 5+ minute wait; never attempts outage_alerts/db_exceptions without the user's explicit permission obtained by the caller first; reports failed_tracking_spend as not independently testable.
   <version>1.1.0</version>
 tools: Bash, Read, mcp__clickhouse__query, Skill

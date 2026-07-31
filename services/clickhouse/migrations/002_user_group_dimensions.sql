@@ -11,7 +11,7 @@
 -- their comments in schema.sql), drops the now-redundant group_alias
 -- column, and backfills both tables plus corrected user_id values from
 -- event_sources.raw_payload_full via `make reparse-all`
--- (services/webhook/src/reparse.py) - NOT via SQL here, since the real ids/
+-- (services/reparse/src/reparse.py) - NOT via SQL here, since the real ids/
 -- names only exist inside each row's original LiteLLM payload, not
 -- anywhere queryable in agent_events itself.
 --

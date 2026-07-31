@@ -1,9 +1,9 @@
 # Fixture-extraction tuning, this service's own copy - not shared with
-# services/webhook/config.yml (see AGENTS.md: loadtest-fixtures is an
+# services/reparse/config.yml (see AGENTS.md: loadtest-fixtures is an
 # isolated service, not another webhook APP_ROLE).
 
 # ingest_raw payload-fetch chunk size for build_fixtures.py's phase-2 query -
-# same OOM rationale as services/webhook/src/reparse.py's reparse_chunk_size.
+# same OOM rationale as services/reparse/src/reparse.py's reparse_chunk_size.
 fixtures_chunk_size: 500
 
 # loadtest-runner treats a generated fixture set as stale once its

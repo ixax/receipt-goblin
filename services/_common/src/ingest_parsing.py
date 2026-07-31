@@ -1,38 +1,30 @@
-"""Parses LiteLLM's StandardLoggingPayload webhook events and inserts them
-into ClickHouse (agent_events, agent_usage, agent_messages). agent_name/
-skill_name are recovered from the payload's own messages (Agent/Skill
-tool_use blocks), not from a CLI-side hook - see AGENTS.md.
+"""Pure, DB-free half of ingesting LiteLLM's StandardLoggingPayload webhook
+events: parses/classifies a payload and builds the per-table row lists
+consumed by ingest_db.py.
+No ClickHouse import anywhere in this module - see ingest_db.py's docstring
+for the DB-touching half and AGENTS.md for the overall ingest pipeline.
+agent_name/skill_name are recovered from the payload's own messages
+(Agent/Skill tool_use blocks), not from a CLI-side hook.
 """
 import json
-import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
-
-import clickhouse_connect
-
-from . import fastjson
-from .config import (
-    CLICKHOUSE_DATABASE,
-    CLICKHOUSE_HOST,
-    CLICKHOUSE_PASSWORD,
-    CLICKHOUSE_PORT,
-    CLICKHOUSE_USER,
-)
 
 _AGENT_ID_RE = re.compile(r"agentId:\s*([0-9a-f]+)")
 _COMMAND_NAME_RE = re.compile(r"<command-name>/?(.*?)</command-name>")
 _COMMAND_VERSION_RE = re.compile(r"<version>(.*?)</version>")
 # Codex CLI's own persistent-context continuation wrapper - its equivalent
 # of this repo's Claude Code /goal Stop hook, re-injected as the "prompt" on
-# every turn the underlying context (goal, plan, ...) stays active. Its
-# "source" attribute names which one (e.g. "goal") - treated as a synthetic
-# command by that name (see _active_command_name_and_version/
+# every turn the underlying context (goal, plan, ...) stays active.
+# Its "source" attribute names which one (e.g. "goal") - treated as a
+# synthetic command by that name (see _active_command_name_and_version/
 # _prompt_kind_and_display) so it rolls up into the same command_name
 # accounting as a real Claude Code slash command, with the <objective> text
-# standing in for <command-args>. Not hardcoded to "goal" specifically -
-# whatever Codex names a future context (e.g. "plan") is picked up as-is.
+# standing in for <command-args>.
+# Not hardcoded to "goal" specifically - whatever Codex names a future
+# context (e.g. "plan") is picked up as-is.
 _CODEX_INTERNAL_CONTEXT_RE = re.compile(r'<codex_internal_context\s+source="([^"]+)">')
 _OBJECTIVE_TAG_RE = re.compile(r"<objective>\s*(.*?)\s*</objective>", re.DOTALL)
 # Codex's collaboration-mode-switch notice - see _codex_collaboration_mode_change.
@@ -83,30 +75,6 @@ _TOOL_ARG_KEY_PREFERENCE = ("file_path", "command", "sql", "url", "query", "desc
 # ingest instead of duplicated across ~30 Grafana panels.
 _PROVIDER_OPENAI_RE = re.compile(r"^(gpt-|chatgpt-|o[0-9]|text-embedding-|dall-e-|whisper|tts-)")
 
-logger = logging.getLogger("webhook.clickhouse_ingest")
-
-_client = None
-
-
-def get_client():
-    global _client
-    if _client is None:
-        _client = clickhouse_connect.get_client(
-            host=CLICKHOUSE_HOST,
-            port=CLICKHOUSE_PORT,
-            username=CLICKHOUSE_USER,
-            password=CLICKHOUSE_PASSWORD,
-            database=CLICKHOUSE_DATABASE,
-        )
-    return _client
-
-
-def clickhouse_alive() -> None:
-    """Raises if ClickHouse isn't reachable. Shared by server.py's /health
-    and worker.py's startup dependency check, so the liveness probe itself
-    (currently just SELECT 1) only has one place to change."""
-    get_client().command("SELECT 1")
-
 
 def _to_dt(epoch_seconds: Optional[float]) -> datetime:
     if not epoch_seconds:
@@ -139,10 +107,10 @@ def _flatten_content(content: Any) -> str:
 
 def _last_user_text(messages: Any) -> str:
     """Most recent human-typed turn - skips tool_result continuations, which
-    are also role="user" but automatic, not human input. Also skips non-turn
-    items from Responses-API-shaped messages (the "chatgpt" provider mixes
-    "reasoning"/"custom_tool_call"/etc. items into the same flat list -
-    only "message" items are actual chat turns)."""
+    are also role="user" but automatic, not human input.
+    Also skips non-turn items from Responses-API-shaped messages (the
+    "chatgpt" provider mixes "reasoning"/"custom_tool_call"/etc. items into
+    the same flat list - only "message" items are actual chat turns)."""
     if not isinstance(messages, list):
         return ""
     for message in reversed(messages):
@@ -162,11 +130,13 @@ def _codex_collaboration_mode_change(messages: Any) -> str:
     """Codex CLI only - Codex occasionally injects a fresh role="developer"
     message announcing a collaboration-mode switch (e.g. leaving Plan Mode
     for "Collaboration Mode: Default") immediately before the next real
-    user turn. Returns that mode's header line (e.g. "Collaboration Mode:
+    user turn.
+    Returns that mode's header line (e.g. "Collaboration Mode:
     Default") only on the call where the switch just happened - the notice
     stays in `messages` history afterward, but on later calls it no longer
     sits immediately before the latest user turn, so this won't re-fire for
-    the same switch. "" when no such notice preceded this turn (the normal
+    the same switch.
+    "" when no such notice preceded this turn (the normal
     case, and always the case for Claude Code payloads, which have no
     role="developer" messages at all).
 
@@ -175,7 +145,8 @@ def _codex_collaboration_mode_change(messages: Any) -> str:
     sits several messages before the first real user turn, separated by
     AGENTS.md/environment_context - see _CODEX_INTERNAL_CONTEXT_RE's own
     comment for that ordering), so without this the session would silently
-    start "in" a mode with no indication of which one. Detected by there
+    start "in" a mode with no indication of which one.
+    Detected by there
     being no assistant turn yet anywhere in `messages` - true only for a
     session's first call - in which case the first <collaboration_mode>
     block found anywhere (the preamble's) is reported instead."""
@@ -219,14 +190,16 @@ def _active_command_name_and_version(messages: Any) -> tuple[str, str]:
     """Walks back to the human-originated turn that started this chain of
     calls, looking for Claude Code's "<command-name>/foo</command-name>" tag
     (slash-command invocation) and an optional "<version>" marker in
-    the same expanded body. Returns ("", "") for a freeform prompt.
+    the same expanded body.
+    Returns ("", "") for a freeform prompt.
 
     Also recognizes Codex CLI's "<codex_internal_context source=\"...\">"
     continuation wrapper (see _CODEX_INTERNAL_CONTEXT_RE) as a synthetic
     command named after its "source" attribute (e.g. "goal"), version
     always "" - Codex's own equivalent of this repo's Claude Code /goal
     Stop hook, re-injected as the prompt on every turn that context stays
-    active. Everything else here (a real Claude Code command, or no command
+    active.
+    Everything else here (a real Claude Code command, or no command
     at all) still applies to Codex payloads exactly as documented - only
     this one wrapper is Codex-specific."""
     if not isinstance(messages, list):
@@ -313,9 +286,10 @@ def _codex_session_id(headers: dict) -> str:
     return data.get("session_id") or data.get("thread_id") or ""
 
 
-def _session_and_trace_id(payload: dict) -> tuple[str, str]:
+def session_and_trace_id(payload: dict) -> tuple[str, str]:
     """Shared dispatcher: tries Claude Code's session header first, then
-    Codex CLI's (_codex_session_id), before falling back to trace/call id."""
+    Codex CLI's (_codex_session_id), before falling back to trace/call id.
+    Public - server.py reaches into this directly for capture-file naming."""
     trace_id = payload.get("trace_id") or ""
     headers = ((payload.get("metadata") or {}).get("requester_custom_headers")) or {}
     session_id = (
@@ -332,8 +306,8 @@ def _session_and_trace_id(payload: dict) -> tuple[str, str]:
 class EventContext:
     """Per-call identity/attribution fields shared by _event_row/_usage_row/
     _message_row - avoids passing the same 9 positional values through all
-    three call sites (ingest_standard_logging_payload, build_event,
-    reparse._reparse_one)."""
+    three call sites (build_event, ingest_db.reparse_event, and their
+    shared callers)."""
     session_id: str
     trace_id: str
     agent_name: str = ""
@@ -347,14 +321,18 @@ class EventContext:
 
 def _derive_context(payload: dict, messages: Any, client=None) -> EventContext:
     """Computes an EventContext for one payload. agent_name/agent_version
-    need a DB round-trip (_agent_name_and_version_for_invocation), so they're
-    left blank when client is None - the DB-free build_event() path, where
-    ingest_events_batch() patches them in afterward once the batch's own
-    invocation_rows are inserted."""
-    session_id, trace_id = _session_and_trace_id(payload)
+    need a DB round-trip (ingest_db._agent_name_and_version_for_invocation),
+    so they're left blank when client is None - the DB-free build_event()
+    path, where ingest_db.ingest_events_batch() patches them in afterward
+    once the batch's own invocation_rows are inserted.
+
+    `client` is kept optional (not a hard dependency on ingest_db) so this
+    module never imports ingest_db - ingest_db already imports extensively
+    from this module, and importing it back here would create a cycle."""
+    session_id, trace_id = session_and_trace_id(payload)
     agent_invocation_id = _agent_invocation_id(payload)
     if client is not None:
-        agent_name, agent_version = _agent_name_and_version_for_invocation(client, agent_invocation_id)
+        agent_name, agent_version = client.agent_name_and_version_for_invocation(agent_invocation_id)
     else:
         agent_name, agent_version = "", ""
     skill_name, skill_version = _skill_name_and_version(payload)
@@ -374,10 +352,12 @@ def _derive_context(payload: dict, messages: Any, client=None) -> EventContext:
 
 def _split_name_version(value: str) -> tuple[str, str]:
     """Claude Code only - subagents/skills are a Claude Code concept, Codex
-    CLI has neither. Splits on the last "_v" - the old naming convention
-    (e.g. "test-researcher_v1.0.0"), superseded by _version_marker_for_name.
+    CLI has neither.
+    Splits on the last "_v" - the old naming convention (e.g.
+    "test-researcher_v1.0.0"), superseded by _version_marker_for_name.
     Kept as a fallback for subagent_type values with no version marker and
-    for historical rows. Agents only; skills have no such suffix convention."""
+    for historical rows.
+    Agents only; skills have no such suffix convention."""
     idx = value.rfind("_v")
     if idx == -1 or idx + 2 >= len(value):
         return value, ""
@@ -387,8 +367,9 @@ def _split_name_version(value: str) -> tuple[str, str]:
 def _flatten_messages_text(messages: Any) -> str:
     """Every message's text, joined - used to search for the "Available
     agent types"/"available skills" listings Claude Code injects, where
-    <version> markers surface. Not restricted to one message since the
-    listing can sit several turns back."""
+    <version> markers surface.
+    Not restricted to one message since the listing can sit several turns
+    back."""
     if not isinstance(messages, list):
         return ""
     parts = []
@@ -403,12 +384,14 @@ def _flatten_messages_text(messages: Any) -> str:
 def _version_marker_for_name(text: str, name: str, tag: str) -> str:
     """Claude Code only - agent/skill listings with these markers are
     injected by Claude Code, never by Codex CLI, so this always returns ""
-    against a Codex payload. Finds "- <name>: ...<tag>version</tag>" in an
-    agent/skill listing (see AGENTS.md for the marker convention) - the tag
-    can sit anywhere on that line, not just immediately after "- name: ",
-    since the convention puts it at the end of the description now. Takes
-    the last match so a mid-session refreshed listing wins over a stale
-    one. "" if no marker."""
+    against a Codex payload.
+    Finds "- <name>: ...<tag>version</tag>" in an agent/skill listing (see
+    AGENTS.md for the marker convention) - the tag can sit anywhere on that
+    line, not just immediately after "- name: ", since the convention puts
+    it at the end of the description now.
+    Takes the last match so a mid-session refreshed listing wins over a
+    stale one.
+    "" if no marker."""
     if not name:
         return ""
     pattern = re.compile(rf"^- {re.escape(name)}: .*?<{tag}>([^<]*)</{tag}>", re.MULTILINE)
@@ -417,10 +400,11 @@ def _version_marker_for_name(text: str, name: str, tag: str) -> str:
 
 
 def _user_id(payload: dict) -> str:
-    """Stable caller identity: metadata.user_api_key_user_id. Deliberately
-    not user_api_key_alias, which is a renamable display name that would
-    silently change what historical rows' user_id "meant". Alias is only a
-    last-resort fallback so ingestion never drops a row for lack of an id."""
+    """Stable caller identity: metadata.user_api_key_user_id.
+    Deliberately not user_api_key_alias, which is a renamable display name
+    that would silently change what historical rows' user_id "meant".
+    Alias is only a last-resort fallback so ingestion never drops a row for
+    lack of an id."""
     metadata = payload.get("metadata") or {}
     return (
         metadata.get("user_api_key_user_id")
@@ -442,9 +426,10 @@ def _user_name(payload: dict) -> str:
 
 def _group_id(payload: dict) -> str:
     """Stable UUID of the LiteLLM Team a key belongs to (empty until Teams
-    are configured). Deliberately not user_api_key_team_alias, a renamable
-    display name that would silently break filters keyed on it - see
-    _group_alias for the display label."""
+    are configured).
+    Deliberately not user_api_key_team_alias, a renamable display name that
+    would silently break filters keyed on it - see _group_alias for the
+    display label."""
     metadata = payload.get("metadata") or {}
     return metadata.get("user_api_key_team_id") or ""
 
@@ -457,8 +442,8 @@ def _group_alias(payload: dict) -> str:
 
 
 def _user_key_hash(payload: dict) -> str:
-    """Stable per-key id (metadata.user_api_key_hash). Distinct from
-    _user_id since one internal user can hold multiple keys."""
+    """Stable per-key id (metadata.user_api_key_hash).
+    Distinct from _user_id since one internal user can hold multiple keys."""
     metadata = payload.get("metadata") or {}
     return metadata.get("user_api_key_hash") or ""
 
@@ -473,13 +458,15 @@ def _user_agent(payload: dict) -> str:
 def _agent_invocations_from_messages(messages: Any) -> list[tuple[str, str, str, str]]:
     """Claude Code only - subagent spawning (the "Agent" tool) is a Claude
     Code concept, Codex CLI has no equivalent, so this always returns []
-    for a Codex payload. Scan messages for Agent tool_use blocks paired with
-    the following tool_result, pulling the spawned subagent's agent_id from
-    its text (e.g. "agentId: a04bd3c594bf74fb9"). agent_version comes from
-    the "<version>" marker in the "Available agent types" listing,
-    falling back to splitting a legacy "_v<version>" suffix off
-    subagent_type (see _split_name_version). Returns (agent_id,
-    subagent_type, agent_version, description) tuples, usually empty."""
+    for a Codex payload.
+    Scan messages for Agent tool_use blocks paired with the following
+    tool_result, pulling the spawned subagent's agent_id from its text
+    (e.g. "agentId: a04bd3c594bf74fb9").
+    agent_version comes from the "<version>" marker in the "Available agent
+    types" listing, falling back to splitting a legacy "_v<version>" suffix
+    off subagent_type (see _split_name_version).
+    Returns (agent_id, subagent_type, agent_version, description) tuples,
+    usually empty."""
     if not isinstance(messages, list):
         return []
     listing_text = _flatten_messages_text(messages)
@@ -530,14 +517,17 @@ def _agent_id_from_tool_result(messages: list, tool_use_index: int, tool_use_id:
 
 def _response_tool_calls(payload: dict) -> list[tuple[str, dict]]:
     """Shared: Claude Code (Anthropic/chat-completions shape) and Codex CLI
-    (Responses API shape). Whether this call's own completion invoked a
-    tool. LiteLLM normalizes the response to an OpenAI-style tool_calls
-    list, so this reads payload["response"], not "messages" (which stay
-    Anthropic-shaped). Falls back to Responses-API shape (the "chatgpt"
-    provider, i.e. Codex) where there's no "choices" - tool calls are
-    "function_call" items in response["output"], or "custom_tool_call"
-    items for Codex's freeform tools (e.g. "exec", which runs JS source,
-    not JSON arguments - see the custom_tool_call branch below)."""
+    (Responses API shape).
+    Whether this call's own completion invoked a tool.
+    LiteLLM normalizes the response to an OpenAI-style tool_calls list, so
+    this reads payload["response"], not "messages" (which stay
+    Anthropic-shaped).
+    Falls back to Responses-API shape (the "chatgpt" provider, i.e. Codex)
+    where there's no "choices" - tool calls are "function_call" items in
+    response["output"], or "custom_tool_call" items for Codex's freeform
+    tools.
+    (e.g. "exec", which runs JS source, not JSON arguments - see the
+    custom_tool_call branch below)."""
     response = payload.get("response") or {}
     choices = response.get("choices") or []
     calls = []
@@ -633,9 +623,10 @@ def _clean_prompt_text(prompt_text: str) -> str:
 def _response_text(payload: dict) -> str:
     """The model's reply text - shared by _message_row and the
     transcript_handoff branch, which reads the <severity>/<block> verdict
-    out of it. Falls back to Responses-API shape (the "chatgpt" provider)
-    where there's no "choices" - the reply is the last assistant "message"
-    item in response["output"], if any (can legitimately be empty even on a
+    out of it.
+    Falls back to Responses-API shape (the "chatgpt" provider) where
+    there's no "choices" - the reply is the last assistant "message" item
+    in response["output"], if any (can legitimately be empty even on a
     successful call - not every logged Responses-API call captures its own
     reply text there)."""
     response = payload.get("response") or {}
@@ -653,10 +644,10 @@ def _judge_verdict(response_text: str) -> tuple[Optional[bool], str]:
     """Claude Code only - the goal-check judge call is issued by this repo's
     Claude Code /goal Stop hook; Codex CLI has no equivalent lifecycle hook,
     so a Codex payload never reaches this (see _JUDGE_CALL_PREFIX in
-    _classify_event/_prompt_kind_and_display). Parses the goal-check judge's
-    response, once at ingest, so the Trace panel doesn't re-parse raw JSON
-    per row. Expected shape: a bare {"ok": <bool>, "reason": "<string>"}
-    object."""
+    _classify_event/_prompt_kind_and_display).
+    Parses the goal-check judge's response, once at ingest, so the Trace
+    panel doesn't re-parse raw JSON per row.
+    Expected shape: a bare {"ok": <bool>, "reason": "<string>"} object."""
     try:
         data = json.loads(response_text)
     except (TypeError, ValueError):
@@ -681,8 +672,9 @@ def _prompt_kind_and_display(prompt_text: str, command_name: str, response_text:
     no Codex CLI equivalent - a Codex prompt never starts with any of these
     prefixes, so it always falls through to the "real" branch at the bottom
     (or "command", harmlessly, for a prompt that happens to contain a
-    literal "<command-args>" tag). Not a Codex-specific bug: there's simply
-    nothing here for Codex to misclassify into.
+    literal "<command-args>" tag).
+    Not a Codex-specific bug: there's simply nothing here for Codex to
+    misclassify into.
 
     Returns (prompt_kind, display_text, display_arg); display_arg is the
     variable "gray argument" part of the line (severity score, summary...),
@@ -696,7 +688,8 @@ def _prompt_kind_and_display(prompt_text: str, command_name: str, response_text:
     # (a <transcript>-wrapped severity check, or a compaction handoff
     # summary) can contain an old <command-args> tag buried inside it, which
     # would otherwise misclassify the whole echoed continuation as a fresh
-    # "command" prompt. Skip the command check for those.
+    # "command" prompt.
+    # Skip the command check for those.
     is_harness_echo = (
         _TRANSCRIPT_HANDOFF_PREFIX in prompt_text
         or "This session is being continued from a previous conversation" in prompt_text
@@ -793,18 +786,20 @@ def _error_type(payload: dict) -> str:
 
 
 def _classify_event(payload: dict) -> tuple[str, dict]:
-    """The calculated_type/calculated_payload dispatcher. Priority: did
-    this call's response invoke a tool (category A), else what did the
-    triggering prompt look like (category B, port of panel-76's startsWith
-    chain). 'unknown' is a searchable bucket, not an error.
+    """The calculated_type/calculated_payload dispatcher.
+    Priority: did this call's response invoke a tool (category A), else
+    what did the triggering prompt look like (category B, port of
+    panel-76's startsWith chain).
+    'unknown' is a searchable bucket, not an error.
 
     Shared vs CLI-specific outcomes: "tool_call"/"llm_answer"/"unknown" (and
     "ask_user_question", which Codex CLI also exposes) apply to both CLIs.
     "agent_spawn" and "skill_call" only ever fire for Claude Code (see
     _agent_invocations_from_messages/_skill_name_and_version) - a Codex
     payload's first tool call, if any, always lands in the generic
-    "tool_call" branch instead. Likewise every category-B kind besides
-    "real"/"command" is Claude Code-only (see _prompt_kind_and_display)."""
+    "tool_call" branch instead.
+    Likewise every category-B kind besides "real"/"command" is Claude
+    Code-only (see _prompt_kind_and_display)."""
     tool_calls = _response_tool_calls(payload)
     if tool_calls:
         first_name, first_args = tool_calls[0]
@@ -847,11 +842,13 @@ def _classify_event(payload: dict) -> tuple[str, dict]:
 def _source_row(payload: dict, session_id: str, now: datetime) -> list:
     """The ingest_raw row: full untouched original payload, written once
     per call so reparse.py can recompute calculated_type/provider without
-    needing .capture/*.json. Uses fastjson (orjson-backed), not the stdlib
-    json this module otherwise uses everywhere else - this is the one place
-    re-serializing the *entire* ~360KB-1.5MB payload, not a small
-    substructure, so it's the one worth the faster encoder (see AGENTS.md
-    "Why a queue in front of ClickHouse")."""
+    needing .capture/*.json.
+    Uses fastjson (orjson-backed), not the stdlib json this module
+    otherwise uses everywhere else - this is the one place re-serializing
+    the *entire* ~360KB-1.5MB payload, not a small substructure, so it's the
+    one worth the faster encoder (see AGENTS.md "Why a queue in front of
+    ClickHouse")."""
+    from common import fastjson
     return [
         payload.get("litellm_call_id", ""),
         session_id,
@@ -872,24 +869,6 @@ def _agent_invocation_id(payload: dict) -> str:
     return headers.get("x-claude-code-agent-id", "")
 
 
-def _agent_name_and_version_for_invocation(client, agent_invocation_id: str) -> tuple[str, str]:
-    """Best-effort lookup - blank if the parent's Agent tool_use/tool_result
-    hasn't been ingested yet (e.g. subagent's first call raced ahead of it)."""
-    if not agent_invocation_id:
-        return "", ""
-    try:
-        result = client.query(
-            "SELECT subagent_type, agent_version FROM agent_invocations WHERE agent_id = {agent_id:String} "
-            "ORDER BY spawned_at DESC LIMIT 1",
-            parameters={"agent_id": agent_invocation_id},
-        )
-        rows = result.result_rows
-        return (rows[0][0], rows[0][1]) if rows else ("", "")
-    except Exception:
-        logger.exception("failed to resolve agent_invocation_id=%s", agent_invocation_id)
-        return "", ""
-
-
 _INVOCATION_COLUMNS = ["agent_id", "session_id", "subagent_type", "agent_version", "description", "spawned_at"]
 _EVENT_COLUMNS = [
     "timestamp", "user_id", "group_id", "user_key_hash", "session_id", "trace_id",
@@ -901,7 +880,6 @@ _EVENT_COLUMNS = [
 ]
 _GROUP_COLUMNS = ["group_id", "group_name", "updated_at"]
 _USER_COLUMNS = ["user_id", "group_id", "user_name", "updated_at"]
-_CLIENT_COLUMNS = ["id", "value", "updated_at"]
 _USAGE_COLUMNS = [
     "timestamp", "user_id", "group_id", "user_key_hash", "session_id", "trace_id", "turn_id", "model",
     "agent_name", "agent_version", "skill_name", "skill_version",
@@ -919,13 +897,6 @@ _MESSAGE_COLUMNS = [
     "litellm_call_id", "ingested_at",
 ]
 _SOURCE_COLUMNS = ["litellm_call_id", "session_id", "ingested_at", "raw_payload_full"]
-_GIT_BRANCH_COLUMNS = ["session_id", "git_branch", "git_repo", "issue_id", "captured_at"]
-_PLAN_PROPOSAL_COLUMNS = ["session_id", "plan_text", "captured_at"]
-_FAILURE_COLUMNS = ["occurred_at", "stage", "error", "litellm_call_id", "session_id", "raw_row"]
-_LITELLM_ALERT_COLUMNS = [
-    "received_at", "event", "event_group", "key_alias", "team_id", "user_id",
-    "spend", "max_budget", "event_message", "raw_payload",
-]
 
 _INVOCATION_SPAWNED_AT_IDX = _INVOCATION_COLUMNS.index("spawned_at")
 _EVENT_TIMESTAMP_IDX = _EVENT_COLUMNS.index("timestamp")
@@ -961,40 +932,6 @@ def _agent_invocation_rows(session_id: str, messages: Any, now: Optional[datetim
     ]
 
 
-def _insert_agent_invocations(client, rows: list[list]) -> None:
-    if not rows:
-        return
-    client.insert("agent_invocations", rows, column_names=_INVOCATION_COLUMNS)
-
-
-def _insert_event(client, row: list) -> None:
-    client.insert("agent_events", [row], column_names=_EVENT_COLUMNS)
-
-
-def _insert_usage(client, row: list) -> None:
-    client.insert("agent_usage", [row], column_names=_USAGE_COLUMNS)
-
-
-def _insert_message(client, row: list) -> None:
-    client.insert("agent_messages", [row], column_names=_MESSAGE_COLUMNS)
-
-
-def _insert_source(client, row: list) -> None:
-    client.insert("ingest_raw", [row], column_names=_SOURCE_COLUMNS)
-
-
-def _insert_git_branch(client, row: list) -> None:
-    client.insert("session_git_branch", [row], column_names=_GIT_BRANCH_COLUMNS)
-
-
-def _insert_plan_proposal(client, row: list) -> None:
-    client.insert("plan_proposals", [row], column_names=_PLAN_PROPOSAL_COLUMNS)
-
-
-def _insert_litellm_alert(client, row: list) -> None:
-    client.insert("litellm_alerts", [row], column_names=_LITELLM_ALERT_COLUMNS)
-
-
 def _group_row(payload: dict, now: Optional[datetime] = None) -> Optional[list]:
     """ai_gateway_groups row for this payload's group, or None when the
     call has no group_id (LiteLLM Teams not configured - see _group_id)."""
@@ -1016,41 +953,6 @@ def _user_row(payload: dict, now: Optional[datetime] = None) -> Optional[list]:
         user_id, _group_id(payload), _user_name(payload),
         now or datetime.now(timezone.utc),
     ]
-
-
-def _insert_ai_gateway_groups(client, rows: list[list]) -> None:
-    if not rows:
-        return
-    client.insert("ai_gateway_groups", rows, column_names=_GROUP_COLUMNS)
-
-
-def _insert_ai_gateway_users(client, rows: list[list]) -> None:
-    if not rows:
-        return
-    client.insert("ai_gateway_users", rows, column_names=_USER_COLUMNS)
-
-
-def _resolve_client_id(client, user_agent: str) -> int:
-    """Best-effort id lookup for a calling-client user-agent string (e.g.
-    "claude-cli/2.1.207 (external, cli)"). The hash is always computed by
-    ClickHouse itself (cityHash64), never reimplemented in Python, so this
-    can never diverge from the one-off backfill SQL run separately against
-    ingest_raw. 0 (unknown) on any failure or empty input - never blocks
-    ingestion."""
-    if not user_agent:
-        return 0
-    try:
-        result = client.query("SELECT cityHash64({v:String})", parameters={"v": user_agent})
-        return result.result_rows[0][0]
-    except Exception:
-        logger.exception("failed to resolve client id for user_agent=%s", user_agent)
-        return 0
-
-
-def _insert_clients(client, rows: list[list]) -> None:
-    if not rows:
-        return
-    client.insert("clients", rows, column_names=_CLIENT_COLUMNS)
 
 
 def _event_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None) -> list:
@@ -1134,9 +1036,9 @@ def _event_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
         failed_tool_args,
         failed_tool_error,
         payload.get("litellm_call_id", ""),
-        0,  # event_client_id: patched in by ingest_events_batch() once the
-            # calling client's user_agent has been resolved to an id - see
-            # _resolve_client_id (build_event() has no DB client to do it here).
+        0,  # event_client_id: patched in by ingest_db.ingest_events_batch()
+            # once the calling client's user_agent has been resolved to an id
+            # (build_event() has no DB client to do it here).
         calculated_type,
         json.dumps(calculated_payload, default=str),
         now or datetime.now(timezone.utc),
@@ -1253,116 +1155,17 @@ def _message_row(payload: dict, ctx: EventContext, now: Optional[datetime] = Non
     ]
 
 
-def ingest_standard_logging_payload(payload: dict) -> None:
-    """Insert one LiteLLM StandardLoggingPayload into ClickHouse. Never
-    raises - LiteLLM would retry a payload forever if this broke the ack."""
-    session_id = trace_id = ""
-    try:
-        client = get_client()
-        now = datetime.now(timezone.utc)
-
-        messages = payload.get("messages")
-        session_id, trace_id = _session_and_trace_id(payload)
-        # Insert this call's own spawned-subagent rows before doing
-        # _derive_context's DB lookup below (for *this* call's own
-        # agent_invocation_id) - minimizes the race window before the
-        # spawned subagent's own first call arrives and looks its row up.
-        _insert_agent_invocations(client, _agent_invocation_rows(session_id, messages, now=now))
-
-        ctx = _derive_context(payload, messages, client=client)
-
-        _insert_source(client, _source_row(payload, session_id, now))
-
-        _insert_event(client, _event_row(payload, ctx, now))
-
-        if payload.get("status") == "success":
-            usage_row = _usage_row(payload, ctx, now)
-            if usage_row is not None:
-                _insert_usage(client, usage_row)
-
-            message_row = _message_row(payload, ctx, now)
-            if message_row is not None:
-                _insert_message(client, message_row)
-    except Exception:
-        logger.exception(
-            "failed to ingest LiteLLM payload into ClickHouse "
-            "(litellm_call_id=%s trace_id=%s session_id=%s status=%s call_type=%s)",
-            payload.get("litellm_call_id", ""), trace_id, session_id,
-            payload.get("status", ""), payload.get("call_type", ""),
-        )
-
-
 _ISSUE_ID_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9]{1,9}-\d+)(?![A-Za-z0-9])")
 
 
 def _issue_id_from_branch(git_branch: str) -> str:
     """Ticket ID embedded in a branch name, e.g. "VIEW-12345", matched
-    case-insensitively and uppercased. Trailing boundary is a negative
-    lookahead, not \\b: \\b treats digit/underscore as the same word class
-    and would miss "VIEW-100500_my-branch"."""
+    case-insensitively and uppercased.
+    Trailing boundary is a negative lookahead, not \\b: \\b treats
+    digit/underscore as the same word class and would miss
+    "VIEW-100500_my-branch"."""
     match = _ISSUE_ID_RE.search(git_branch or "")
     return match.group(1).upper() if match else ""
-
-
-def ingest_git_branch(session_id: str, git_branch: str, git_repo: str = "") -> None:
-    """Insert a session's git branch/repo (hooks/report_git_branch.py).
-    Never raises - a tracking failure must not surface to the CLI session."""
-    try:
-        client = get_client()
-        issue_id = _issue_id_from_branch(git_branch)
-        _insert_git_branch(client, [session_id, git_branch, git_repo, issue_id, datetime.now(timezone.utc)])
-    except Exception:
-        logger.exception("failed to ingest git branch (session_id=%s)", session_id)
-
-
-def ingest_plan_proposal(session_id: str, plan_text: str) -> None:
-    """Insert an ExitPlanMode call's plan text (hooks/report_plan_proposal.py).
-    Never raises - a tracking failure must not surface to the CLI session."""
-    try:
-        client = get_client()
-        _insert_plan_proposal(client, [session_id, plan_text, datetime.now(timezone.utc)])
-    except Exception:
-        logger.exception("failed to ingest plan proposal (session_id=%s)", session_id)
-
-
-def ingest_litellm_alert(payload: dict) -> None:
-    """Insert one LiteLLM native-alerting webhook event (budget/outage/
-    exception/hang signals - see general_settings.alerting in
-    services/litellm/config.yaml). Direct-to-ClickHouse, not queued through
-    Redis: these events are rare compared to per-call metrics traffic, same
-    low-volume pattern as ingest_git_branch/ingest_plan_proposal. Never
-    raises - a tracking failure must not surface to LiteLLM's own retry
-    logic for its alerting webhook.
-
-    Only the budget-event shape is fully documented by LiteLLM's own docs -
-    other alert types (llm_exceptions/outage_alerts/db_exceptions/...)
-    likely carry different fields, so raw_payload keeps the full body
-    regardless of which fields above happen to be present."""
-    try:
-        client = get_client()
-        _insert_litellm_alert(client, [
-            datetime.now(timezone.utc),
-            payload.get("event") or "",
-            payload.get("event_group") or "",
-            payload.get("key_alias") or "",
-            payload.get("team_id") or "",
-            payload.get("user_id") or "",
-            payload.get("spend"),
-            payload.get("max_budget"),
-            payload.get("event_message") or "",
-            json.dumps(payload, default=str),
-        ])
-    except Exception:
-        logger.exception("failed to ingest LiteLLM alert (event=%s)", payload.get("event", ""))
-
-
-def ingest_webhook_body(body: Any) -> None:
-    """Usually a list of StandardLoggingPayload dicts (log_format:
-    json_array), but tolerate a single dict too."""
-    payloads = body if isinstance(body, list) else [body]
-    for payload in payloads:
-        if isinstance(payload, dict):
-            ingest_standard_logging_payload(payload)
 
 
 def _serialize_row(row: Optional[list], timestamp_idx: int) -> Optional[list]:
@@ -1405,19 +1208,20 @@ def _deserialize_row_multi(row: Optional[list], *timestamp_indices: int) -> Opti
 
 def build_event(payload: dict) -> dict:
     """The DB-free half of ingesting one StandardLoggingPayload: pure
-    functions only, no ClickHouse round-trip. Called in webhook-worker
-    (worker.py's _decode_into), not on webhook's own request path - webhook
-    only XADDs the raw payload onto Redis unmodified, so its hot path never
-    pays for this CPU-bound parsing (regex classification, message
-    scanning, JSON work).
+    functions only, no ClickHouse round-trip.
+    Called in webhook-worker (worker.py's _decode_into), not on webhook's
+    own request path - webhook only XADDs the raw payload onto Redis
+    unmodified, so its hot path never pays for this CPU-bound parsing
+    (regex classification, message scanning, JSON work).
 
     Includes source_row (full untouched payload) alongside the compact
     per-table rows; Redis MAXLEN/mem_limit are sized around this larger
-    per-event footprint (see config.yml).
+    per-event footprint (see queue.yml).
 
     agent_name/agent_version are left blank - resolving them needs a SELECT
     against agent_invocations, which only makes sense once this batch's own
-    invocation_rows are inserted; ingest_events_batch() patches them in.
+    invocation_rows are inserted; ingest_db.ingest_events_batch() patches
+    them in.
 
     Never raises internally - lets worker.py's _decode_into decide whether
     one bad payload drops just that item or the whole batch.
@@ -1440,8 +1244,8 @@ def build_event(payload: dict) -> dict:
     return {
         "agent_invocation_id": ctx.agent_invocation_id,
         # Raw calling-client identity - resolved to event_client_id by
-        # ingest_events_batch() (needs a DB round trip via _resolve_client_id,
-        # which this DB-free function can't do).
+        # ingest_db.ingest_events_batch() (needs a DB round trip, which this
+        # DB-free function can't do).
         "user_agent": _user_agent(payload),
         "invocation_rows": [
             _serialize_row(row, _INVOCATION_SPAWNED_AT_IDX) for row in invocation_rows
@@ -1453,166 +1257,3 @@ def build_event(payload: dict) -> dict:
         "group_row": _serialize_row(_group_row(payload, now), _GROUP_UPDATED_AT_IDX),
         "user_row": _serialize_row(_user_row(payload, now), _USER_UPDATED_AT_IDX),
     }
-
-
-def ingest_events_batch(events: list[dict]) -> None:
-    """Runs in webhook-worker. Writes a batch of build_event() outputs with
-    exactly one client.insert() per table (vs up-to-4-per-payload in the
-    old synchronous path) - the batching that takes load off ClickHouse
-    under concurrent traffic.
-
-    Never raises - the caller still needs to XACK/retry the batch's message
-    ids regardless of a malformed event.
-    """
-    if not events:
-        return
-    try:
-        writer = _BatchWriter(get_client())
-        writer.write_dimensions(events)
-        event_rows, usage_rows, message_rows = writer.patch_fact_rows(events)
-        for table, rows, columns, call_id_idx, session_id_idx in (
-            ("agent_events", event_rows, _EVENT_COLUMNS, _EVENT_CALL_ID_IDX, _EVENT_SESSION_ID_IDX),
-            ("agent_usage", usage_rows, _USAGE_COLUMNS, _USAGE_CALL_ID_IDX, _USAGE_SESSION_ID_IDX),
-            ("agent_messages", message_rows, _MESSAGE_COLUMNS, _MESSAGE_CALL_ID_IDX, _MESSAGE_SESSION_ID_IDX),
-        ):
-            writer.insert_with_dlq_fallback(table, rows, columns, call_id_idx, session_id_idx)
-    except Exception:
-        logger.exception("failed to ingest event batch (n=%d)", len(events))
-
-
-class _BatchWriter:
-    """Owns the per-batch state ingest_events_batch() needs across its three
-    concerns - dimension rows, per-event agent/client resolution caches, and
-    per-table insert-with-DLQ-fallback - so ingest_events_batch() itself
-    stays a plain call sequence."""
-
-    def __init__(self, client):
-        self.client = client
-        self._agent_fields_cache: dict[str, tuple[str, str]] = {}
-        self._client_id_cache: dict[str, int] = {}
-
-    def write_dimensions(self, events: list[dict]) -> None:
-        """Inserts agent_invocations, ingest_raw, and the (deduped)
-        ai_gateway_groups/ai_gateway_users rows for this batch."""
-        client = self.client
-
-        invocation_rows = [
-            _deserialize_row(row, _INVOCATION_SPAWNED_AT_IDX)
-            for event in events
-            for row in (event.get("invocation_rows") or [])
-        ]
-        _insert_agent_invocations(client, invocation_rows)
-
-        source_rows = [
-            row for event in events
-            if (row := _deserialize_row(event.get("source_row"), _SOURCE_INGESTED_AT_IDX)) is not None
-        ]
-        if source_rows:
-            client.insert("ingest_raw", source_rows, column_names=_SOURCE_COLUMNS)
-
-        # Dedup by id within the batch (last wins); ReplacingMergeTree would
-        # collapse duplicates on merge anyway, this just skips redundant inserts.
-        group_rows_by_id: dict[str, list] = {}
-        for event in events:
-            row = _deserialize_row(event.get("group_row"), _GROUP_UPDATED_AT_IDX)
-            if row is not None:
-                group_rows_by_id[row[0]] = row
-        _insert_ai_gateway_groups(client, list(group_rows_by_id.values()))
-
-        user_rows_by_id: dict[str, list] = {}
-        for event in events:
-            row = _deserialize_row(event.get("user_row"), _USER_UPDATED_AT_IDX)
-            if row is not None:
-                user_rows_by_id[row[0]] = row
-        _insert_ai_gateway_users(client, list(user_rows_by_id.values()))
-
-    def _agent_fields(self, agent_invocation_id: str) -> tuple[str, str]:
-        if not agent_invocation_id:
-            return "", ""
-        if agent_invocation_id not in self._agent_fields_cache:
-            self._agent_fields_cache[agent_invocation_id] = _agent_name_and_version_for_invocation(
-                self.client, agent_invocation_id
-            )
-        return self._agent_fields_cache[agent_invocation_id]
-
-    def _client_id(self, user_agent: str) -> int:
-        if not user_agent:
-            return 0
-        if user_agent not in self._client_id_cache:
-            self._client_id_cache[user_agent] = _resolve_client_id(self.client, user_agent)
-        return self._client_id_cache[user_agent]
-
-    def patch_fact_rows(self, events: list[dict]) -> tuple[list[list], list[list], list[list]]:
-        """Resolves each event's agent_name/version and event_client_id
-        (both needed a DB round trip build_event() couldn't do), patches
-        them into its event/usage/message rows, and inserts the resolved
-        `clients` rows. Returns (event_rows, usage_rows, message_rows)."""
-        client_rows_by_id: dict[int, list] = {}
-        now = datetime.now(timezone.utc)
-        event_rows, usage_rows, message_rows = [], [], []
-
-        for event in events:
-            agent_name, agent_version = self._agent_fields(event.get("agent_invocation_id") or "")
-
-            user_agent = event.get("user_agent") or ""
-            client_id = self._client_id(user_agent)
-            if client_id:
-                client_rows_by_id[client_id] = [client_id, user_agent, now]
-
-            event_row = _deserialize_row_multi(event.get("event_row"), _EVENT_TIMESTAMP_IDX, _EVENT_INGESTED_AT_IDX)
-            if event_row is not None:
-                event_row[_EVENT_AGENT_NAME_IDX] = agent_name
-                event_row[_EVENT_AGENT_VERSION_IDX] = agent_version
-                event_row[_EVENT_CLIENT_ID_IDX] = client_id
-                event_rows.append(event_row)
-
-            usage_row = _deserialize_row_multi(event.get("usage_row"), _USAGE_TIMESTAMP_IDX, _USAGE_INGESTED_AT_IDX)
-            if usage_row is not None:
-                usage_row[_USAGE_AGENT_NAME_IDX] = agent_name
-                usage_row[_USAGE_AGENT_VERSION_IDX] = agent_version
-                usage_rows.append(usage_row)
-
-            message_row = _deserialize_row_multi(event.get("message_row"), _MESSAGE_TIMESTAMP_IDX, _MESSAGE_INGESTED_AT_IDX)
-            if message_row is not None:
-                message_row[_MESSAGE_AGENT_NAME_IDX] = agent_name
-                message_row[_MESSAGE_AGENT_VERSION_IDX] = agent_version
-                message_rows.append(message_row)
-
-        _insert_clients(self.client, list(client_rows_by_id.values()))
-        return event_rows, usage_rows, message_rows
-
-    def insert_with_dlq_fallback(
-        self, table: str, rows: list[list], columns: list[str], call_id_idx: int, session_id_idx: int,
-    ) -> None:
-        """One table's insert. On a rejected batch (e.g. a value out of a
-        column's numeric range), falls back to inserting row-by-row so only
-        the actual poison row(s) are lost - those go to ingest_dlq (see
-        schema.sql) for triage instead of silently vanishing with the rest
-        of a good batch. Each table is independent: one table rejecting its
-        batch must not drop another table's otherwise-good rows for this
-        same set of events."""
-        if not rows:
-            return
-        client = self.client
-        try:
-            client.insert(table, rows, column_names=columns)
-            return
-        except Exception:
-            logger.exception("failed to insert into %s (n=%d) - retrying row-by-row", table, len(rows))
-
-        failure_rows = []
-        for row in rows:
-            try:
-                client.insert(table, [row], column_names=columns)
-            except Exception as exc:
-                failure_rows.append([
-                    datetime.now(timezone.utc), table, str(exc),
-                    row[call_id_idx], row[session_id_idx],
-                    json.dumps(row, default=str),
-                ])
-        if failure_rows:
-            logger.error("dropped %d row(s) into ingest_dlq (stage=%s)", len(failure_rows), table)
-            try:
-                client.insert("ingest_dlq", failure_rows, column_names=_FAILURE_COLUMNS)
-            except Exception:
-                logger.exception("failed to record ingest_dlq (stage=%s, n=%d)", table, len(failure_rows))

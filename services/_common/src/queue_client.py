@@ -9,8 +9,9 @@ import logging
 import redis
 import redis.asyncio as aioredis
 
-from . import fastjson as json
-from .config import MAXLEN, REDIS_HOST, REDIS_PORT, STREAM_KEY
+from common import fastjson as json
+from common.config.queue import MAXLEN, STREAM_KEY
+from common.config.redis import REDIS_HOST, REDIS_PORT
 
 logger = logging.getLogger("webhook.queue_client")
 
@@ -38,8 +39,9 @@ def get_redis() -> redis.Redis:
 async def enqueue(payloads: list) -> None:
     """payloads: StandardLoggingPayload dicts from one webhook POST body.
     Pushed onto Redis exactly as received - no build_event() here, see
-    module docstring. Never raises - LiteLLM would retry the whole body
-    forever if a malformed payload or unavailable Redis broke the ack.
+    module docstring.
+    Never raises - LiteLLM would retry the whole body forever if a
+    malformed payload or unavailable Redis broke the ack.
 
     Used directly when the caller already has parsed payloads (enqueue_raw()'s
     own bundled-array fallback below) - everyone else should call
@@ -66,18 +68,20 @@ async def enqueue(payloads: list) -> None:
 
 async def enqueue_raw(body: bytes) -> None:
     """Fast path for webhook's request handler: `body` is the exact raw
-    POST bytes, unparsed. The common case - one StandardLoggingPayload
-    object, not a `log_format: json_array` bundle - goes straight onto
-    Redis unmodified, no json.loads/json.dumps round-trip at all. Only a
-    bundled array (starts with `[`) needs an actual parse, to split it into
-    one Redis entry per payload (falls back to enqueue() for that case).
+    POST bytes, unparsed.
+    The common case - one StandardLoggingPayload object, not a
+    `log_format: json_array` bundle - goes straight onto Redis unmodified,
+    no json.loads/json.dumps round-trip at all.
+    Only a bundled array (starts with `[`) needs an actual parse, to split
+    it into one Redis entry per payload (falls back to enqueue() for that
+    case).
 
     This split exists because json parse+re-serialize of a ~360KB-1.5MB
     payload is itself real CPU cost - load testing showed it alone
     saturating a single core under concurrency, even with build_event()
     no longer running on webhook's request path (see AGENTS.md "Why a
-    queue in front of ClickHouse"). Never raises, same reasoning as
-    enqueue().
+    queue in front of ClickHouse").
+    Never raises, same reasoning as enqueue().
     """
     if not body.lstrip().startswith(b"["):
         client = get_async_redis()

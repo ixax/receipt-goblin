@@ -4,12 +4,7 @@ clickhouse-connect==0.8.3
 redis==5.0.8
 PyYAML==6.0.2
 prometheus-fastapi-instrumentator==7.0.0
-prometheus-client==0.21.0
 # Rust-based, faster than stdlib json for the full ~360KB-1.5MB
-# StandardLoggingPayload round-trips (worker.py's decode, clickhouse_ingest's
-# _source_row) - see AGENTS.md "Why a queue in front of ClickHouse".
+# StandardLoggingPayload round-trips (common.ingest_parsing's _source_row) -
+# see AGENTS.md "Why a queue in front of ClickHouse".
 orjson==3.10.7
-# Only used by the `loadtest` role (src/loadtest.py) to replay captured
-# traffic concurrently against webhook - harmless to bake into the other
-# roles, same as migrations/ being baked in for the `migrate` role.
-aiohttp==3.10.10

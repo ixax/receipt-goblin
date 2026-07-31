@@ -10,7 +10,7 @@ import io
 
 import pytest
 
-from src import fastjson
+from common import fastjson
 
 
 # ---------------------------------------------------------------------------

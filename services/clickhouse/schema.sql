@@ -7,7 +7,7 @@
 -- agent_id -> subagent_type lookup, recovered from the orchestrator's own
 -- LiteLLM call: an Agent tool_use block paired with the tool_result that
 -- follows it (containing "agentId: <hex>") tells us what a given agent_id
--- actually is. Populated by webhook/src/clickhouse_ingest.py before it
+-- actually is. Populated by services/_common/src/ingest_db.py before it
 -- writes any row whose agent_invocation_id needs resolving - see AGENTS.md.
 -- One row per subagent spawn, so this table stays tiny - agent_id is left
 -- as a plain String (not worth a tighter type for a table this small).
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS agent_invocations
     -- From a "<agent_version>...</agent_version>" marker as the first thing
     -- in the agent's own description: frontmatter, which Claude Code
     -- re-injects into every call's messages via the "Available agent types"
-    -- listing - see clickhouse_ingest.py:_agent_invocations_from_messages.
+    -- listing - see services/_common/src/ingest_parsing.py:_agent_invocations_from_messages.
     -- Blank for a self-named/ad-hoc agent (no backing .md file, no marker)
     -- or an agent never edited since creation.
     agent_version LowCardinality(String) DEFAULT '',
@@ -34,7 +34,7 @@ ORDER BY (agent_id);
 -- .claude/settings.json / .codex/hooks.json). This is the one lifecycle
 -- hook this stack still has: neither LiteLLM's StandardLoggingPayload nor
 -- ANTHROPIC_CUSTOM_HEADERS (a static env var) can carry the client's cwd/
--- git state, which is otherwise invisible to webhook/src/clickhouse_ingest.py
+-- git state, which is otherwise invisible to services/_common/src/ingest_parsing.py
 -- - see AGENTS.md for why every other hook was removed in favor of that
 -- payload. Branch/repo are a snapshot from session start, not live - a
 -- mid-session `git checkout` or directory change won't update the row.
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS session_git_branch
     -- read its own server's own table, and schema.sql (applied by
     -- docker-entrypoint-initdb.d with no parameter substitution) has
     -- nowhere to get CLICKHOUSE_USER/PASSWORD from - see
-    -- webhook/src/migrate.py's _create_dictionaries_once and its module
+    -- services/migrate/src/migrate.py's _create_dictionaries_once and its module
     -- docstring. migrate.py runs on every `docker compose up` regardless of
     -- whether the volume was fresh-inited from this file, so the
     -- dictionaries still always end up created either way.
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS session_git_branch
     git_repo    String DEFAULT '',
     -- Ticket key parsed out of git_branch (e.g. "VIEW-12345" out of
     -- "VIEW-12345-my-super-branch"), computed receiving-side by
-    -- clickhouse_ingest.py's _issue_id_from_branch.
+    -- services/_common/src/ingest_parsing.py's _issue_id_from_branch.
     issue_id    String DEFAULT '',
     captured_at DateTime64(3) DEFAULT now64(3)
 )
@@ -105,9 +105,9 @@ ORDER BY (session_id, captured_at);
 -- tiny with LowCardinality(String) columns, same reasoning as
 -- agent_invocations. ReplacingMergeTree(updated_at): latest name wins if a
 -- team gets renamed in the LiteLLM UI, without rewriting historical fact
--- rows. Populated by webhook/src/clickhouse_ingest.py
+-- rows. Populated by services/_common/src/ingest_db.py
 -- (_group_row/_insert_ai_gateway_dims) on every ingest, and backfilled from
--- ingest_raw by webhook/src/reparse.py - see AGENTS.md. Dashboard panels
+-- ingest_raw by services/reparse/src/reparse.py - see AGENTS.md. Dashboard panels
 -- read this table through ai_gateway_groups_dict, not a JOIN - see the
 -- session_id_hash comment on session_git_branch above for why that
 -- Dictionary lives in a migration instead of here.
@@ -124,7 +124,7 @@ ORDER BY (group_id);
 -- stable id LiteLLM sends as metadata.user_api_key_user_id - not the
 -- renamable metadata.user_api_key_alias that agent_events/agent_usage/
 -- agent_messages.user_id used to hold before this table existed (see
--- clickhouse_ingest.py:_user_id). group_id is carried here too so a panel
+-- services/_common/src/ingest_parsing.py:_user_id). group_id is carried here too so a panel
 -- can resolve "which group does this user belong to" without a second
 -- join back through agent_events. Same ReplacingMergeTree(updated_at)
 -- latest-wins semantics as ai_gateway_groups above. Dashboard panels read
@@ -143,7 +143,7 @@ ORDER BY (user_id);
 -- One row per distinct calling-client user-agent string (e.g.
 -- "claude-cli/2.1.207 (external, cli)", "codex-tui/0.145.0 (...)").
 -- id = cityHash64(value), computed exclusively by ClickHouse (never by the
--- Python ingestion code) so the live-ingest path (clickhouse_ingest.py:
+-- Python ingestion code) so the live-ingest path (services/_common/src/ingest_db.py:
 -- _resolve_client_id) and a historical backfill (a one-off SQL run
 -- against ingest_raw) can never diverge on the hash algorithm. Joined
 -- from agent_events.event_client_id - see that column's comment below.
@@ -178,7 +178,7 @@ ORDER BY (id);
 -- session_id/trace_id stay String rather than UUID: they come from three
 -- different sources depending on what's available at ingest time
 -- (x-claude-code-session-id header, trace_id, litellm_call_id, or "" as a
--- last resort - see _session_and_trace_id in clickhouse_ingest.py), so
+-- last resort - see session_and_trace_id in services/_common/src/ingest_parsing.py), so
 -- guaranteeing well-formed UUIDs on every path isn't free, and these are a
 -- small fraction of a row's bytes next to calculated_payload anyway.
 --
@@ -191,7 +191,7 @@ ORDER BY (id);
 -- small bounded set of values).
 --
 -- ReplacingMergeTree(ingested_at): lets a later reparse
--- (webhook/src/reparse.py, run via `make reparse`/`make reparse-all`)
+-- (services/reparse/src/reparse.py, run via `make reparse`/`make reparse-all`)
 -- rewrite calculated_type/calculated_payload for an already-ingested row by
 -- inserting a fresh copy with a newer ingested_at - the newest one wins on
 -- merge/OPTIMIZE FINAL. This is why litellm_call_id (confirmed unique per
@@ -204,7 +204,7 @@ CREATE TABLE IF NOT EXISTS agent_events
     timestamp         DateTime64(3),
     user_id           LowCardinality(String),
     -- The LiteLLM Team a virtual key belongs to, captured independently of
-    -- user_id - see _group_id in webhook/src/clickhouse_ingest.py
+    -- user_id - see _group_id in services/_common/src/ingest_parsing.py
     -- for why this is its own column rather than reusing whatever user_id
     -- collapsed into. Empty until LiteLLM Teams are actually configured (see
     -- README "LiteLLM" - "Once it's needed: Teams..."), which is an
@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS agent_events
     -- Which LiteLLM virtual key made this call (metadata.user_api_key_hash) -
     -- distinct from user_id above: LiteLLM's "internal users" and "virtual
     -- keys" are separate concepts, and one internal user can hold any number
-    -- of keys - see _user_key_hash in webhook/src/clickhouse_ingest.py.
+    -- of keys - see _user_key_hash in services/_common/src/ingest_parsing.py.
     user_key_hash     LowCardinality(String) DEFAULT '',
     session_id        String,
     trace_id          String,
@@ -231,7 +231,7 @@ CREATE TABLE IF NOT EXISTS agent_events
     litellm_call_id   String DEFAULT '',
     -- Id of the calling client that produced this event - see `clients`
     -- table above. 0 when no metadata.user_agent was present on the
-    -- payload. See webhook/src/clickhouse_ingest.py:_resolve_client_id.
+    -- payload. See services/_common/src/ingest_db.py:_resolve_client_id.
     event_client_id   UInt64 DEFAULT 0,
     event_type        LowCardinality(String),
     tool_name         LowCardinality(String),
@@ -242,7 +242,7 @@ CREATE TABLE IF NOT EXISTS agent_events
     -- Slash command that kicked off the current chain of calls (e.g.
     -- "whatsup"), recovered from the "<command-name>" tag Claude Code
     -- injects into the triggering user message - see
-    -- webhook/src/clickhouse_ingest.py:_active_command_name_and_version.
+    -- services/_common/src/ingest_parsing.py:_active_command_name_and_version.
     -- The command's filename itself never changes (no "_v<version>"
     -- suffix, no rename) - command_version below instead comes from a
     -- "<command_version>...</command_version>" marker placed in the
@@ -272,8 +272,8 @@ CREATE TABLE IF NOT EXISTS agent_events
     -- ask_user_question/tool_call/judge_call/system_notification/
     -- suggestion_mode/transcript_handoff/title_gen/interrupted/
     -- webpage_content/llm_answer/unknown), computed once at ingest by
-    -- clickhouse_ingest.py:_classify_event and re-computable later by
-    -- webhook/src/reparse.py against ingest_raw.raw_payload_full -
+    -- services/_common/src/ingest_parsing.py:_classify_event and re-computable later by
+    -- services/reparse/src/reparse.py against ingest_raw.raw_payload_full -
     -- see AGENTS.md/the schema-sql-capture plan for the full category
     -- list. 'unknown' is a real, expected bucket meant to be searched
     -- (`WHERE calculated_type = 'unknown'`) and iterated on, not an error.
@@ -337,7 +337,7 @@ CREATE TABLE IF NOT EXISTS agent_usage
     model                LowCardinality(String),
     -- claude/openai/other, classified once from `model` at ingest time (the
     -- same 3-way regex that used to be duplicated across ~30 dashboard
-    -- panels) - see clickhouse_ingest.py's provider classifier.
+    -- panels) - see services/_common/src/ingest_parsing.py's provider classifier.
     provider             LowCardinality(String) DEFAULT '',
     agent_name           LowCardinality(String),
     agent_version        LowCardinality(String),
@@ -394,7 +394,7 @@ ORDER BY (timestamp, session_id, litellm_call_id);
 -- ReplacingMergeTree(ingested_at)/litellm_call_id: same reparse-rewrite
 -- reasoning as agent_events above. turn_id is dropped from the sort key
 -- entirely here (kept as a column - it's just hardcoded to 0 by
--- clickhouse_ingest.py today, not a real per-session sequence number, so it
+-- services/_common/src/ingest_parsing.py today, not a real per-session sequence number, so it
 -- was never a safe uniqueness key to begin with; every row sharing
 -- (session_id, 0) would have collapsed to one under ReplacingMergeTree).
 CREATE TABLE IF NOT EXISTS agent_messages
@@ -433,9 +433,9 @@ ORDER BY (session_id, litellm_call_id);
 
 -- Full, untouched original StandardLoggingPayload per call (messages
 -- included - the one place in this schema that keeps that field), written
--- exactly once at ingest time by clickhouse_ingest.py's _source_row,
+-- exactly once at ingest time by services/_common/src/ingest_parsing.py's _source_row,
 -- compressed hard (ZSTD(19), near-max - this column is write-once and read
--- only by webhook/src/reparse.py, never by a live dashboard query, so we
+-- only by services/reparse/src/reparse.py, never by a live dashboard query, so we
 -- optimize purely for size over CPU). This is what makes reparsing
 -- possible: calculated_type/calculated_payload/provider classifiers can be
 -- rewritten and rerun later against real historical payloads without
@@ -475,7 +475,7 @@ ENGINE = ReplacingMergeTree(ingested_at)
 PARTITION BY concat(toString(toYear(ingested_at)), '-H', toString(intDiv(toMonth(ingested_at) - 1, 6) + 1))
 ORDER BY (litellm_call_id);
 
--- Dead-letter table for ingest_events_batch (clickhouse_ingest.py): a row
+-- Dead-letter table for ingest_events_batch (services/_common/src/ingest_db.py): a row
 -- that a table's client.insert() rejects (bad column value, e.g. the
 -- ttft_ms UInt32-overflow class of bug) is isolated by re-inserting that
 -- table's rows one at a time, and whichever row(s) fail land here instead
@@ -504,7 +504,7 @@ ORDER BY (occurred_at);
 -- StandardLoggingPayload callback can't reconstruct: budget/spend threshold
 -- crossings, deployment outages, DB exceptions, hung/too-slow requests
 -- flagged by LiteLLM's own internal logic. Fed by
--- services/webhook/src/clickhouse_ingest.py's ingest_litellm_alert(), called
+-- services/_common/src/ingest_db.py's ingest_litellm_alert(), called
 -- from server.py's POST /api/v1/litellm-alert route. Modeled on ingest_dlq
 -- above: raw-payload-preserving (only the budget-event shape is fully
 -- documented by LiteLLM's own docs - other alert types' payloads likely

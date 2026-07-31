@@ -7,7 +7,7 @@ src.build_fixtures`; no HTTP API, one-shot only. Deliberately its own
 isolated service (own image, own ClickHouse client) rather than another role
 sharing services/webhook's codebase - see AGENTS.md.
 
-Two-phase query, mirroring services/webhook/src/reparse.py's keyset-
+Two-phase query, mirroring services/reparse/src/reparse.py's keyset-
 pagination precedent for reading ingest_raw in bounded chunks rather than
 one unbounded query:
 

@@ -30,7 +30,7 @@ Once you resolve a genuinely new one, add it to that skill (`Edit`) in the same 
 ## 1. Know the current schema
 
 Read `services/clickhouse/schema.sql` first - it's the source of truth for the current end state (tables, columns, codecs, skip indexes, Dictionaries, PARTITION BY/ORDER BY).
-If you need to understand *why* something is shaped the way it is, or whether a stack might still be on an older shape, skim `services/clickhouse/migrations/*.sql` too (numbered in order, `services/webhook/src/migrate.py` applies them - see its docstring for the two things that aren't plain `.sql` files: `_grant_ui_access_to_app_user_once` and `_create_dictionaries_once`, both there because `CREATE DICTIONARY ... SOURCE(CLICKHOUSE(...))` and `GRANT` need credentials/identifiers a plain migration file has no templating for).
+If you need to understand *why* something is shaped the way it is, or whether a stack might still be on an older shape, skim `services/clickhouse/migrations/*.sql` too (numbered in order, `services/migrate/src/migrate.py` applies them - see its docstring for the two things that aren't plain `.sql` files: `_grant_ui_access_to_app_user_once` and `_create_dictionaries_once`, both there because `CREATE DICTIONARY ... SOURCE(CLICKHOUSE(...))` and `GRANT` need credentials/identifiers a plain migration file has no templating for).
 
 Do not assume anything about row counts or data volume - check with `mcp__dev__query` (e.g. `SELECT count() FROM agent_usage`) rather than reasoning from a stale memory of "it's small" or "it's huge".
 This project is early-stage today but is sized for ~50 events/sec, 8h/day, 20 days/month, for years (~345M events/year on the busiest fact table).

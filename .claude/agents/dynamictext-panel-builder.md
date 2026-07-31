@@ -180,7 +180,7 @@ The entries below are specific to this panel's own tree-rendering logic and stay
 
 ## Data-model facts specific to this schema
 
-- `agent_events.turn_id` is **always hardcoded to `0`** at ingest (never actually computed - see `_event_row`/`_usage_row`/`_message_row` in `services/webhook/src/clickhouse_ingest.py`).
+- `agent_events.turn_id` is **always hardcoded to `0`** at ingest (never actually computed - see `_event_row`/`_usage_row`/`_message_row` in `services/_common/src/ingest_parsing.py`).
   Never use it for ordering.
   Use `timestamp` instead.
 - `agent_events.agent_name`/`agent_version` are blank on a spawned subagent's own rows whenever ingestion raced ahead of the orchestrator's `Agent` tool_use/tool_result (best-effort lookup, see `_agent_name_and_version_for_invocation`'s docstring).
@@ -190,7 +190,7 @@ The entries below are specific to this panel's own tree-rendering logic and stay
   To pull a specific key (`file_path`, `command`, `url`, `query`, `task_id`) cleanly - with real newlines/quotes instead of the literal `\n`/`\"` you see in the raw JSON text - call `JSONExtractString` a second time on that string: `JSONExtractString(<args_json_string>, 'file_path')`.
   Preference order used so far: `file_path` (Read/Write/Edit) -> `command` (Bash) -> `url` (WebFetch) -> `query` (WebSearch/web_search) -> `task_id` (TaskStop, shown as `task_id: <id>`) -> raw JSON substring as a last resort.
   Normalize tool name display too (`web_search` -> `WebSearch`) since the stored value isn't always the display-friendly one.
-- `agent_messages.prompt_text` (`_last_user_text` in `clickhouse_ingest.py`) is the last human-*role* turn verbatim, but that does **not** mean it's literally what a human typed - Claude Code prepends/injects boilerplate under the same `role: user` message:
+- `agent_messages.prompt_text` (`_last_user_text` in `services/_common/src/ingest_parsing.py`) is the last human-*role* turn verbatim, but that does **not** mean it's literally what a human typed - Claude Code prepends/injects boilerplate under the same `role: user` message:
   - `<system-reminder>...</system-reminder>` prefixed before real text - strip via `replaceRegexpOne(text, '(?s)^<system-reminder>.*?</system-reminder>\s*', '')`.
   - `<command-name>/x</command-name> ... <command-args>...</command-args>` for slash commands - `extract(text, '<command-args>(?s)(.*?)</command-args>')` gives the real typed args.
     Reconstruct as `/command args`.
