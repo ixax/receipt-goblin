@@ -40,9 +40,13 @@ Runtime tunables/settings/flags live in an explicit config file, never hardcoded
 
 Orientation only - doc filename `<dirname>.md` under `agent_docs/services/` unless noted:
 
-- `_common/` - shared logging/auth/mcp helpers
+- `_common/` - shared logging/auth/mcp helpers - `common.md`
 - `clickhouse/`, `init/` - storage/schema, role bootstrap - `clickhouse.md`
-- `webhook/` - ingest x2/worker/reparse/migrate
+- `webhook/` - ingest entry point (enqueue-only)
+- `worker/` - `webhook-worker`, batches queue into ClickHouse
+- `reparse/` - replays stored payloads after a parsing fix
+- `migrate/` - applies ClickHouse migrations
+- `loadtest/` - `make loadtest`'s replay role
 - `redis/` - queue
 - `grafana/` - dashboards
 - `litellm/` - proxy
@@ -74,7 +78,7 @@ Codex CLI has no native listing - it reads `agent_docs/harness-index.md` instead
 
 - `harness-expert` - any Subagent/Skill/Command frontmatter/body edit, or `AGENTS.md` edit/review/audit.
 - `dev-ops` - service rebuild/restart after a config/env change, `make backup-*`/`restore-*`, `Makefile`/compose edits, Langfuse/observability up/down.
-- `webhook-test-runner` - after any `services/webhook/` change, or any test-run request.
+- `webhook-test-runner` - after any `services/worker/`, `services/reparse/`, `services/loadtest/`, or `services/_common/` change, or any test-run request.
 - `loadtest-runner` - any load-test request or stack-under-load question.
 - `dashboard-panels-builder` - any dashboard panel edit except panel-76/77 (Trace).
 - `dashboard-parser` - any read/parse of `agents_overview.json`.
