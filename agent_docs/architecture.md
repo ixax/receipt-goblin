@@ -31,3 +31,14 @@ Bump a tag when its Dockerfile or image code changes.
 `agent_docs/harness-index.md` lists every skill/agent for Codex discovery; read it when no explicit name was given.
 Codex has no `Task` tool: read the target agent file and follow it inline, or isolate noisy work via `codex exec`.
 Route a noisy agent to a cheaper model via a LiteLLM alias/virtual key, never frontmatter `model:`.
+
+## Agent/skill/command attribution
+
+`agent_name`/`skill_name`/`command_name` on `agent_events`/`agent_usage` rows are Claude Code-only concepts (see `_agent_invocations_from_messages`/`_active_skill_name_and_version`/`_active_command_name_and_version` in `services/_common/src/ingest_parsing.py`).
+Codex CLI traffic has no equivalent and always lands with all three blank - not a gap to fix.
+
+`agent_name` is joined from `agent_invocations` via a per-request `x-claude-code-agent-id` header, which has a known race: a spawned subagent's first call can outrun the orchestrator's own ingest.
+`make reparse-all` re-runs ingestion against `ingest_raw.raw_payload_full` afterward and fixes it up.
+
+`skill_name`/`command_name` both propagate backward through a turn's tool-result continuation chain, so every downstream row (not just the one that triggered the skill/command) carries the attribution.
+There is currently no dashboard panel in `agents_overview.json` surfacing "untagged"/unattributed work as its own visible category - panel-48 does something similar, but only for its own narrow purpose.

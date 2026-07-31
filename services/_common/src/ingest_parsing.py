@@ -335,7 +335,7 @@ def _derive_context(payload: dict, messages: Any, client=None) -> EventContext:
         agent_name, agent_version = client.agent_name_and_version_for_invocation(agent_invocation_id)
     else:
         agent_name, agent_version = "", ""
-    skill_name, skill_version = _skill_name_and_version(payload)
+    skill_name, skill_version = _active_skill_name_and_version(payload, messages)
     command_name, command_version = _active_command_name_and_version(messages)
     return EventContext(
         session_id=session_id,
@@ -564,20 +564,65 @@ def _response_tool_calls(payload: dict) -> list[tuple[str, dict]]:
     return calls
 
 
-def _skill_name_and_version(payload: dict) -> tuple[str, str]:
+def _active_skill_name_and_version(payload: dict, messages: Any) -> tuple[str, str]:
     """Claude Code only - the "Skill" tool is a Claude Code concept, Codex
     CLI has no equivalent, so this always returns ("", "") for a Codex
-    payload. skill_name is the bare directory name (no version suffix - see
-    AGENTS.md). skill_version comes from the "<version>" marker in
-    the "available skills" listing, already present in this payload's
-    messages."""
+    payload.
+    skill_name is the bare directory name (no version suffix -
+    see AGENTS.md).
+    skill_version comes from the "<version>" marker in the
+    "available skills" listing, already present in this payload's messages.
+
+    Priority 1: this call's own response invoked "Skill" - return it
+    immediately (via _response_tool_calls).
+    Priority 2: mirrors
+    _active_command_name_and_version's continuation-skip walk, but scans
+    assistant-role messages for a "Skill" tool_use block instead of
+    user-role messages for a command tag.
+    This propagates a skill
+    invocation's attribution forward onto every downstream row of the same
+    turn (tool calls, LLM answers), not just the single triggering row -
+    exactly like command_name already does.
+    Most recent skill wins when
+    walking backward, handling sequential multi-skill turns for free.
+    Stops and returns ("", "") at the first genuine (non-continuation) user
+    turn - the skill context ended there."""
     for name, arguments in _response_tool_calls(payload):
         if name == "Skill" and arguments.get("skill"):
             skill_name = arguments["skill"]
             skill_version = _version_marker_for_name(
-                _flatten_messages_text(payload.get("messages")), skill_name, "version"
+                _flatten_messages_text(messages), skill_name, "version"
             )
             return skill_name, skill_version
+    if not isinstance(messages, list):
+        return "", ""
+    listing_text = _flatten_messages_text(messages)
+    for message in reversed(messages):
+        if not isinstance(message, dict):
+            continue
+        role = message.get("role")
+        if role == "assistant":
+            content = message.get("content")
+            if isinstance(content, list):
+                for block in reversed(content):
+                    if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") == "Skill":
+                        skill_name = (block.get("input") or {}).get("skill", "")
+                        if skill_name:
+                            return skill_name, _version_marker_for_name(listing_text, skill_name, "version")
+            continue  # no Skill invocation in this assistant turn - keep walking back
+        if role != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, list):
+            # A Skill invocation's own tool_result comes bundled with the
+            # skill body text as a second block in the same message (unlike
+            # a plain tool continuation, which is tool_result-only) - so the
+            # continuation check here is "at least one tool_result block",
+            # not "every block is a tool_result" like
+            # _active_command_name_and_version's check.
+            if any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content):
+                continue  # automatic continuation - keep walking back
+        return "", ""  # genuine fresh user turn - skill context ended here
     return "", ""
 
 
@@ -795,7 +840,7 @@ def _classify_event(payload: dict) -> tuple[str, dict]:
     Shared vs CLI-specific outcomes: "tool_call"/"llm_answer"/"unknown" (and
     "ask_user_question", which Codex CLI also exposes) apply to both CLIs.
     "agent_spawn" and "skill_call" only ever fire for Claude Code (see
-    _agent_invocations_from_messages/_skill_name_and_version) - a Codex
+    _agent_invocations_from_messages/_active_skill_name_and_version) - a Codex
     payload's first tool call, if any, always lands in the generic
     "tool_call" branch instead.
     Likewise every category-B kind besides "real"/"command" is Claude

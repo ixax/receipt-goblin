@@ -503,7 +503,7 @@ def test_agent_id_from_tool_result_unsuccess_mismatched_tool_use_id():
 
 
 # ---------------------------------------------------------------------------
-# _response_tool_calls / _first_tool_call_name / _skill_name_and_version
+# _response_tool_calls / _first_tool_call_name / _active_skill_name_and_version
 # ---------------------------------------------------------------------------
 
 def test_response_tool_calls_success_parses_function_arguments():
@@ -560,33 +560,130 @@ def test_first_tool_call_name_unsuccess_plain_text_reply_returns_empty():
     assert ip._first_tool_call_name(payload) == ""
 
 
-def test_skill_name_and_version_success_splits_skill_argument():
+def test_active_skill_name_and_version_success_splits_skill_argument():
     payload = load_capture("success_with_agent_and_skill")
     # predates the <skill_version> marker convention - version comes back blank.
-    assert ip._skill_name_and_version(payload) == ("test-summarizer", "")
+    assert ip._active_skill_name_and_version(payload, payload.get("messages")) == ("test-summarizer", "")
 
 
-def test_skill_name_and_version_success_recovers_version_marker():
+def test_active_skill_name_and_version_success_recovers_version_marker():
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "available skills for the Skill tool:\n"
+                "- test-linter: Minimal test skill... <version>2.0.0</version>\n"
+            ),
+        },
+    ]
     payload = {
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "available skills for the Skill tool:\n"
-                    "- test-linter: Minimal test skill... <version>2.0.0</version>\n"
-                ),
-            },
-        ],
+        "messages": messages,
         "response": {"choices": [{"message": {"tool_calls": [
             {"function": {"name": "Skill", "arguments": json.dumps({"skill": "test-linter", "args": "check foo.py"})}}
         ]}}]},
     }
-    assert ip._skill_name_and_version(payload) == ("test-linter", "2.0.0")
+    assert ip._active_skill_name_and_version(payload, messages) == ("test-linter", "2.0.0")
 
 
-def test_skill_name_and_version_unsuccess_no_skill_call():
+def test_active_skill_name_and_version_unsuccess_no_skill_call():
     payload = load_capture("success_plain")
-    assert ip._skill_name_and_version(payload) == ("", "")
+    assert ip._active_skill_name_and_version(payload, payload.get("messages")) == ("", "")
+
+
+def test_active_skill_name_and_version_success_propagates_through_tool_result_continuation():
+    # This call's own response is plain text - no Skill tool_use - but an
+    # earlier assistant turn in the same continuation chain invoked Skill,
+    # and the intervening user turn is a tool-result-only continuation, not
+    # a fresh prompt - so the skill attribution should still propagate.
+    messages = [
+        {"role": "user", "content": "run the linter skill"},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": "toolu_1", "name": "Skill", "input": {"skill": "test-linter", "args": "check foo.py"}},
+            ],
+        },
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}]},
+    ]
+    payload = {"messages": messages, "response": {"choices": [{"message": {"content": "Done."}}]}}
+    assert ip._active_skill_name_and_version(payload, messages) == ("test-linter", "")
+
+
+def test_active_skill_name_and_version_success_propagates_through_skill_body_injection():
+    # Real Claude Code shape (confirmed against a live capture): a Skill
+    # invocation's tool_result comes bundled with the skill body text as a
+    # second block in the *same* user message, not a tool_result-only
+    # message - the continuation check must still recognize this as a
+    # continuation, not a fresh user turn, or propagation stops immediately
+    # after the triggering call.
+    messages = [
+        {"role": "user", "content": "run the linter skill"},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": "toolu_1", "name": "Skill", "input": {"skill": "test-linter", "args": "check foo.py"}},
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "tool_result", "tool_use_id": "toolu_1", "content": "Launching skill: test-linter"},
+                {"type": "text", "text": "# test-linter\n\nMinimal test skill body..."},
+            ],
+        },
+    ]
+    payload = {"messages": messages, "response": {"choices": [{"message": {"content": "Done."}}]}}
+    assert ip._active_skill_name_and_version(payload, messages) == ("test-linter", "")
+
+
+def test_active_skill_name_and_version_success_most_recent_skill_wins():
+    # Two Skill invocations in the same continuation chain - walking
+    # backward should return the more recent one.
+    messages = [
+        {"role": "user", "content": "run two skills"},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": "toolu_1", "name": "Skill", "input": {"skill": "test-linter", "args": "check foo.py"}},
+            ],
+        },
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}]},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": "toolu_2", "name": "Skill", "input": {"skill": "test-summarizer", "args": "summarize bar.md"}},
+            ],
+        },
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_2", "content": "ok"}]},
+    ]
+    payload = {"messages": messages, "response": {"choices": [{"message": {"content": "Done."}}]}}
+    assert ip._active_skill_name_and_version(payload, messages) == ("test-summarizer", "")
+
+
+def test_active_skill_name_and_version_unsuccess_stops_at_fresh_user_turn():
+    # A skill fired in an earlier turn, but a genuine fresh user prompt
+    # (not a tool-result continuation) followed it - the skill context
+    # should not leak into this unrelated later turn.
+    messages = [
+        {"role": "user", "content": "run the linter skill"},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": "toolu_1", "name": "Skill", "input": {"skill": "test-linter", "args": "check foo.py"}},
+            ],
+        },
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}]},
+        {"role": "assistant", "content": "Done."},
+        {"role": "user", "content": "now do something unrelated"},
+    ]
+    payload = {"messages": messages, "response": {"choices": [{"message": {"content": "Sure."}}]}}
+    assert ip._active_skill_name_and_version(payload, messages) == ("", "")
+
+
+def test_active_skill_name_and_version_unsuccess_empty_messages_no_index_error():
+    payload = {"messages": [], "response": {"choices": [{"message": {"content": "Hi."}}]}}
+    assert ip._active_skill_name_and_version(payload, []) == ("", "")
+    assert ip._active_skill_name_and_version(payload, None) == ("", "")
 
 
 # ---------------------------------------------------------------------------
