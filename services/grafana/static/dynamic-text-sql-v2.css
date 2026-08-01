@@ -1,0 +1,48 @@
+:root {
+  /* ---- reusable colors, SQL syntax highlighting ---- */
+  --hl-sql-color-keyword: #569cd6;
+  --hl-sql-color-fn: #dcdcaa;
+  --hl-sql-color-paren: #dcdcaa;
+  /* No pre-existing "success"/"completed" green token exists anywhere in
+     this repo's Grafana design system (checked dynamic-text-v3.css,
+     agents_overview.json, query_performance.json - only Grafana's built-in
+     named threshold color "green" appears, no hardcoded hex). #4ade80 is a
+     standard, widely-recognized light/success green chosen fresh for this
+     token. */
+  --hl-sql-color-comment: #4ade80;
+}
+
+.-hl-sql-block {
+  white-space: pre-wrap;
+  margin: 0;
+  font-family: monospace;
+}
+
+.-hl-sql-keyword {
+  color: var(--hl-sql-color-keyword);
+  font-weight: 600;
+}
+
+.-hl-sql-fn {
+  color: var(--hl-sql-color-fn);
+  font-weight: 600;
+}
+
+.-hl-sql-paren {
+  color: var(--hl-sql-color-paren);
+  font-weight: 600;
+}
+
+/* A full-line SQL comment ('--' at the start of a line, ignoring leading
+   indentation). The descendant overrides below force nested
+   keyword/fn/paren spans (which the regex pipeline may have already
+   wrapped around words that happen to look like SQL syntax inside the
+   comment text) to the same comment color, regardless of which regex pass
+   ran last - so an entire comment line reads as one consistent color. */
+.-hl-sql-comment,
+.-hl-sql-comment .-hl-sql-keyword,
+.-hl-sql-comment .-hl-sql-fn,
+.-hl-sql-comment .-hl-sql-paren {
+  color: var(--hl-sql-color-comment);
+  font-weight: normal;
+}

@@ -2766,7 +2766,7 @@
         "spec": {
           "id": 99002,
           "title": "Full query text",
-          "description": "",
+          "description": "Goal: read the exact SQL ClickHouse executed for the selected query_id.\nDescription: fetches system.query_log's raw query text, HTML-escapes it, then wraps keywords/function names/parens and full-line '--' comments in span classes for syntax highlighting.",
           "links": [],
           "transparent": false,
           "data": {
@@ -2788,7 +2788,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 1,
-                        "rawSql": "WITH\n  -- SQL keyword list to highlight. Multi-word phrases (GROUP BY / ORDER BY) are\n  -- matched with \\s+ so they highlight correctly regardless of internal whitespace.\n  '(?i)\\\\b(GROUP\\s+BY|ORDER\\s+BY|SELECT|FROM|WHERE|WITH|JOIN|LEFT|RIGHT|INNER|OUTER|ON|LIMIT|AND|OR|AS|UNION|ALL|HAVING|DESC|ASC|CASE|WHEN|THEN|ELSE|END|NOT|IN|IS|NULL|DISTINCT|SETTINGS|INSERT|INTO|VALUES|CREATE|TABLE)\\\\b' AS kw_pattern,\n  -- Step 1: HTML-escape the raw query text FIRST (order matters: & before < before >,\n  -- so escaping can't touch characters introduced by the highlighting passes below).\n  replaceRegexpAll(log.query, '&', '&amp;') AS esc1,\n  replaceRegexpAll(esc1, '<', '&lt;') AS esc2,\n  replaceRegexpAll(esc2, '>', '&gt;') AS esc3,\n  -- Step 2: wrap SQL keywords in a span (case-insensitive match, original casing\n  -- preserved via the \\1 backreference).\n  replaceRegexpAll(esc3, kw_pattern, '<span style=\"color:#569cd6;font-weight:600\">\\1</span>') AS with_kw,\n  -- Step 3: wrap function-call names (an identifier immediately followed by '(').\n  -- Only the identifier is wrapped here - the '(' itself is left bare so step 4\n  -- below can uniformly catch every parenthesis (function calls and plain\n  -- grouping/subquery parens alike) in one pass without double-wrapping.\n  replaceRegexpAll(with_kw, '\\\\b([A-Za-z_][A-Za-z0-9_]*)(\\()', '<span style=\"color:#dcdcaa;font-weight:600\">\\1</span>\\2') AS with_fn,\n  -- Step 4: wrap every remaining '(' and ')' character (function-call parens and\n  -- plain grouping parens both get the same treatment - a regex can't reliably\n  -- tell which '(' a given ')' actually closes, so no attempt is made to\n  -- distinguish them).\n  replaceRegexpAll(with_fn, '(\\(|\\))', '<span style=\"color:#dcdcaa;font-weight:600\">\\1</span>') AS highlighted\nSELECT highlighted AS query\nFROM system.query_log AS log\nWHERE log.query_id = '$query_id' AND log.type = 'QueryFinish'"
+                        "rawSql": "WITH\n  -- SQL keyword list to highlight. Multi-word phrases (GROUP BY / ORDER BY) are\n  -- matched with \\s+ so they highlight correctly regardless of internal whitespace.\n  '(?i)\\\\b(GROUP\\s+BY|ORDER\\s+BY|SELECT|FROM|WHERE|WITH|JOIN|LEFT|RIGHT|INNER|OUTER|ON|LIMIT|AND|OR|AS|UNION|ALL|HAVING|DESC|ASC|CASE|WHEN|THEN|ELSE|END|NOT|IN|IS|NULL|DISTINCT|SETTINGS|INSERT|INTO|VALUES|CREATE|TABLE)\\\\b' AS kw_pattern,\n  -- Step 1: HTML-escape the raw query text FIRST (order matters: & before < before >,\n  -- so escaping can't touch characters introduced by the highlighting passes below).\n  replaceRegexpAll(log.query, '&', '&amp;') AS esc1,\n  replaceRegexpAll(esc1, '<', '&lt;') AS esc2,\n  replaceRegexpAll(esc2, '>', '&gt;') AS esc3,\n  -- Step 2: wrap SQL keywords in a span (case-insensitive match, original casing\n  -- preserved via the \\1 backreference).\n  replaceRegexpAll(esc3, kw_pattern, '<span class=\"-hl-sql-keyword\">\\1</span>') AS with_kw,\n  -- Step 3: wrap function-call names (an identifier immediately followed by '(').\n  -- Only the identifier is wrapped here - the '(' itself is left bare so step 4\n  -- below can uniformly catch every parenthesis (function calls and plain\n  -- grouping/subquery parens alike) in one pass without double-wrapping.\n  replaceRegexpAll(with_kw, '\\\\b([A-Za-z_][A-Za-z0-9_]*)(\\()', '<span class=\"-hl-sql-fn\">\\1</span>\\2') AS with_fn,\n  -- Step 4: wrap every remaining '(' and ')' character (function-call parens and\n  -- plain grouping parens both get the same treatment - a regex can't reliably\n  -- tell which '(' a given ')' actually closes, so no attempt is made to\n  -- distinguish them).\n  replaceRegexpAll(with_fn, '(\\(|\\))', '<span class=\"-hl-sql-paren\">\\1</span>') AS highlighted,\n  -- Step 5: wrap full-line SQL comments (a line starting with '--', ignoring\n  -- leading indentation) in a span so they render in a light-green comment\n  -- color. Runs after keyword/fn/paren wrapping, but order doesn't matter for\n  -- the visual result - the CSS's .-hl-sql-comment descendant selectors force\n  -- any nested keyword/fn/paren span color back to comment-green, so a whole\n  -- comment line reads as one consistent color even if it contains SQL-like\n  -- words. '(?m)' makes '^'/'$' match per-line instead of whole-string\n  -- boundaries (RE2 multi-line mode).\n  replaceRegexpAll(highlighted, '(?m)^([ \\t]*)(--.*)$', '\\1<span class=\"-hl-sql-comment\">\\2</span>') AS with_comments\nSELECT with_comments AS query\nFROM system.query_log AS log\nWHERE log.query_id = '$query_id' AND log.type = 'QueryFinish'"
                       }
                     }
                   }
@@ -2805,12 +2805,19 @@
             "spec": {
               "options": {
                 "renderMode": "allRows",
-                "content": "{{#each data}}\n<pre style=\"white-space:pre-wrap; margin:0; font-family:monospace;\">{{{this.query}}}</pre>\n{{/each}}",
+                "content": "{{#each data}}\n<pre class=\"-hl-sql-block\">{{{this.query}}}</pre>\n{{/each}}",
                 "defaultContent": "",
                 "editor": {
                   "format": "html",
                   "language": "html"
                 },
+                "externalStyles": [
+                  {
+                    "id": "dynamic-text-sql-css",
+                    "name": "dynamic-text-sql",
+                    "url": "/public/receipt-goblin/dynamic-text-sql-v2.css"
+                  }
+                ],
                 "wrap": true
               },
               "fieldConfig": {
