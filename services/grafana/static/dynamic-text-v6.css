@@ -44,47 +44,39 @@
   font-style: normal;
 }
 
+/* font-style:normal is defensive, same as .t-row above - <details>/its
+   expanded content shouldn't inherit italics from anywhere, but pin it
+   explicitly here too since expanded fork content is exactly what users
+   reported rendering unexpectedly italic. */
 .t-fork-details {
   margin-top: 0.6em;
   flex: 1;
   min-width: 0;
+  font-style: normal;
 }
 
-/* display:block (not flex) - display:flex directly on <summary> has a real
-   browser rendering bug: its content exists in the DOM and reports
-   visibility:visible, but doesn't actually paint until the <details> is
-   toggled open once. .t-fork-summary (below) already provides the flex
-   layout for the stat columns inside, so the <summary> itself only needs
-   to stay on one line, which block does fine here since its only child is
-   a single flex span. list-style:none removes the native marker (which
-   disappears anyway under non-list-item display in most engines); the
-   ::before rule below draws a replacement triangle that flips on [open]. */
+/* Relies on the browser's own <summary> marker (default display:list-item)
+   instead of a custom ::before triangle - the earlier custom-arrow version
+   kept fighting the marker/content onto separate lines depending on
+   .t-fork-summary's own display mode (flex vs inline-flex) and put the
+   arrow on its own line for most rows. The native marker box is always
+   laid out inline with the summary's content by the browser itself, so it
+   can't independently wrap away from it. */
 .t-summary-toggle {
-  display: block;
-  list-style: none;
   cursor: pointer;
-  padding-left: 12px;
-}
-.t-summary-toggle::-webkit-details-marker {
-  display: none;
-}
-.t-summary-toggle::before {
-  content: "\25B8";
-  display: inline-block;
-  width: 1em;
-  margin-left: -1em;
-}
-details[open] > .t-summary-toggle::before {
-  content: "\25BE";
 }
 
 /* Wraps the 5 fork_line stat spans (title/model/duration/tokens/cost) so
    they stay on one visual line inside <summary> instead of relying on
    default inline flow, which could still wrap them onto separate stacked
    lines and push the disclosure triangle down even with nowrap already
-   set on each individual column. */
+   set on each individual column. inline-flex (not flex): a flex container
+   is block-level by default, which puts it on its own line below the
+   ::before arrow (an inline-block sibling within the same <summary>) -
+   inline-flex keeps the flex layout for the stat columns while staying
+   inline-level itself, so the arrow and the summary text share one line. */
 .t-fork-summary {
-  display: flex;
+  display: inline-flex;
   flex-wrap: nowrap;
   align-items: baseline;
 }
@@ -155,9 +147,10 @@ details[open] > .t-summary-toggle::before {
 }
 
 .t-tree-wrapper {
-  margin-left: var(--t-indent);
+  margin-left: 0.2rem;
   padding-left: var(--t-indent);
   border-left: 1px solid var(--t-color-border);
+  font-style: normal;
 }
 
 .t-muted {

@@ -13,7 +13,7 @@ description: >
   services/grafana/scripts/.
   SKIP for a trivial query: no regex, no string-literal escapes, no Map columns, no CTE aliasing,
   behaving as expected.
-  <version>1.2.0</version>
+  <version>1.3.0</version>
 ---
 
 # clickhouse-sql
@@ -43,6 +43,27 @@ Keep each one scannable.
   A common case: "match X only if NOT immediately followed by Y" (e.g. don't treat `/usr` as a highlightable token if it's immediately followed by another `/`, i.e. it's actually part of a longer path like `/usr/local/bin`).
   Workaround pattern that avoids lookahead entirely: run the original (over-eager) match/replace first, then run a *second* `replaceRegexpAll` pass over its own output that positively matches the specific "Y followed X" shape you want to undo/exclude, and reverts/strips just that - e.g. `replaceRegexpAll(replaceRegexpAll(text, 'X', '<mark>X</mark>'), '<mark>(X)</mark>(/)', '\1\2')` un-marks any match immediately followed by another `/`.
   This only works when the excluded case can be positively re-matched after the fact in its now-transformed form; if that's not possible for your case, escalate to `sql-expert` rather than trying to force lookahead syntax to work.
+
+## `mcp__dev__query`/`mcp__dev__profile_query` validator false-positives
+
+- **The `query`/`profile_query` validator scans the raw SQL *text* for a few restricted tokens - at least a bare `;` and the keyword `SYSTEM`.**
+  It does not check the parsed statement.
+  So it rejects a valid single SELECT/WITH if either substring merely appears *inside a string literal or comment*, with no awareness of quoting.
+  Confirmed with a minimal repro: `SELECT 'a&amp;b' AS x` (a `;` inside a literal HTML entity, no second statement anywhere) fails with `Only a single statement is allowed (no ';' inside the query).`
+  A query containing the literal text `<system-reminder>` (e.g. inside a regex pattern string or a `--` comment) fails with `'SYSTEM' is not allowed in read-only queries.`
+  Same naive-scan cause, different keyword.
+  **Symptom**: a query that is visibly one single read-only SELECT/WITH, with no second statement and no `SYSTEM ...` command anywhere in its actual grammar, still gets rejected by `query`/`profile_query`.
+  **Where this actually bites**: `agents_overview.json` panel 99 ("Fork tree") legitimately builds HTML by concatenating entities like `&amp;`, `&lt;`, `&gt;`, `&#42;` into string literals, and each of those entities contains a `;`.
+  Its prompt-cleaning CTEs also reference `<system-reminder>` tags, both in `-- comments` and inside `replaceRegexpAll` pattern literals.
+  So panel 99's real rawSql cannot be run through `profile_query` at all, which blocks the standard before/after benchmarking workflow for that panel.
+  **Do not "fix" this by stripping/renaming the offending substrings in the query text to dodge the validator.**
+  The harness's own permission classifier will (correctly) flag that as a keyword-bypass attempt.
+  Even if it didn't, silently mutating the SQL under benchmark defeats the point of measuring the *real* query.
+  Report the block instead of routing around it.
+  **Fix**: this needs a genuine bug fix to the validator itself - proper tokenizing/quote-awareness for the `;`/`SYSTEM` checks.
+  It is not something an agent can work around from the query-authoring side.
+  Until fixed, panel 99 (and any other panel whose SQL embeds `;` or `system`-containing text in a literal/comment) cannot be profiled via `mcp__dev__profile_query`/`query_perf.py`.
+  Flag this limitation rather than fabricating or approximating numbers.
 
 ## Sanctioned tools/scripts for this stack
 
