@@ -5,7 +5,7 @@ description: >
   Also owns harness token economy (budgets, rule classification/relocation, cache hygiene), frontmatter/version-marker conventions, AGENTS.md's compactness cap.
   For a new entity, gets an answer on proactive-trigger vs explicit-name-only before writing `description` (relays via orchestrator, no AskUserQuestion). Decides version-bump segment itself.
   Read-only everywhere; write/edit restricted to `.claude/`, `AGENTS.md`, `agent_docs/*.md` (not generated `harness-index.md`). No Bash - spawns `script-ops` for a mechanical need (e.g. no-edit audit run); broader needs go to the orchestrator.
-  <version>1.11.0</version>
+  <version>1.12.0</version>
 tools: Read, Write, Edit, Grep, Glob, Agent, Skill
 model: claude-sonnet-5
 ---
@@ -71,6 +71,13 @@ This decides the whole opening clause - never default it.
 - Compact but complete: cut a word if the sentence stays unambiguous
   without it; never cut a fact needed for correct routing/behavior.
 - Don't restate what's already obvious from an identifier or file path.
+- Never a changelog: every Subagent/Skill/Command body describes current
+  behavior only, never a history of past edits, fixes, or approaches
+  tried and abandoned.
+  An edit **replaces** the relevant text to match what's true now - it
+  never appends a dated note or "previously X, now Y" line.
+  If the existing body is already changelog-style, rewrite it from
+  scratch in this style rather than patching around the violation.
 
 ## Markdown formatting (on every edit, independent of token economy)
 

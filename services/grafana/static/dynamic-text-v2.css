@@ -15,7 +15,7 @@
   --t-color-border: rgba(255, 255, 255, .25);
 
   /* ---- column widths, px, first draft ---- */
-  --t-col-timestamp: 60px;
+  --t-col-timestamp: 68px;
   --t-col-wide-title: 470px;
   --t-col-title: 230px;
   --t-col-model: 230px;
@@ -32,6 +32,68 @@
   margin-right: 0.3em;
 }
 
+.t-pre {
+  white-space: pre-wrap;
+  margin: 0 0 1.2em 0;
+}
+
+.t-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  font-style: normal;
+}
+
+.t-fork-details {
+  margin-top: 0.6em;
+  flex: 1;
+  min-width: 0;
+}
+
+/* display:block (not flex) - display:flex directly on <summary> has a real
+   browser rendering bug: its content exists in the DOM and reports
+   visibility:visible, but doesn't actually paint until the <details> is
+   toggled open once. .t-fork-summary (below) already provides the flex
+   layout for the stat columns inside, so the <summary> itself only needs
+   to stay on one line, which block does fine here since its only child is
+   a single flex span. list-style:none removes the native marker (which
+   disappears anyway under non-list-item display in most engines); the
+   ::before rule below draws a replacement triangle that flips on [open]. */
+.t-summary-toggle {
+  display: block;
+  list-style: none;
+  cursor: pointer;
+  padding-left: 12px;
+}
+.t-summary-toggle::-webkit-details-marker {
+  display: none;
+}
+.t-summary-toggle::before {
+  content: "\25B8";
+  display: inline-block;
+  width: 1em;
+  margin-left: -1em;
+}
+details[open] > .t-summary-toggle::before {
+  content: "\25BE";
+}
+
+/* Wraps the 5 fork_line stat spans (title/model/duration/tokens/cost) so
+   they stay on one visual line inside <summary> instead of relying on
+   default inline flow, which could still wrap them onto separate stacked
+   lines and push the disclosure triangle down even with nowrap already
+   set on each individual column. */
+.t-fork-summary {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+}
+
+.t-slash-command {
+  color: var(--t-color-code);
+  font-weight: bold;
+}
+
 .t-col-wide-title {
   display: inline-block;
   width: calc(var(--t-col-wide-title) - (var(--t-depth, 0) * var(--t-depth-step)));
@@ -40,11 +102,17 @@
   display: inline-block;
   width: calc(var(--t-col-wide-title) / 2 - (var(--t-depth, 0) * var(--t-depth-step) / 2));
   font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .t-col-model {
   display: inline-block;
   width: calc(var(--t-col-wide-title) / 2 - (var(--t-depth, 0) * var(--t-depth-step) / 2));
   opacity: var(--t-op-model);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .t-col-cost {
@@ -68,8 +136,10 @@
 
 .t-col-timestamp {
   display: inline-block;
+  flex-shrink: 0;
   width: var(--t-col-timestamp);
   opacity: var(--t-op-muted);
+  white-space: nowrap;
 }
 
 .t-code {

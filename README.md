@@ -335,12 +335,12 @@ Most are covered in more depth elsewhere in this README - follow the section poi
 | `init`                     |                                   | Interactive first-run ClickHouse role/user provisioning - see "Environment variables" above.         |
 | `start`                    | `SERVICE=<name>` (optional)       | Brings up containers with existing images, no rebuild - see "Start the stack".                       |
 | `up`                       | `SERVICE=<name>` (optional)       | Rebuilds and recreates containers - see "Build or start a single service".                           |
-| `restart`                  |                                   | Restarts running containers in place (no rebuild) - picks up bind-mounted source edits.              |
+| `restart`                  | `SERVICE=<name>` (optional)       | Restarts running containers in place (no rebuild) - picks up bind-mounted source edits.              |
 | `up-no-deps`               | `SERVICE=<name>` (required)       | Recreates just one service, skipping its `depends_on` chain - for a config/env change, not source.   |
 | `build`                    | `SERVICE=<name>` (optional)       | Builds image(s) without starting anything - see "Build or start a single service".                   |
 | `status`                   |                                   | Waits for every service to report healthy, prints pass/fail - see "Wait until it's healthy".         |
 | `migrate`                  |                                   | Runs just the ClickHouse migration container (`migrations/*.sql` + Dictionaries), nothing else.      |
-| `stop` / `down`            |                                   | Tears down the core stack (plus Langfuse/observability, as a courtesy) - see "Stop the stack".       |
+| `stop` / `down`            | `SERVICE=<name>` (optional)       | Tears down the core stack, scoped to SERVICE if provided; always tears down Langfuse/observability as a courtesy - see "Stop the stack". |
 | `logs`                     | `SERVICE=<name>` (optional)       | Tails logs for the core stack (or a single service with `SERVICE=<name>`).                           |
 | `setup-client`             |                                   | Prints shell-export/config-file snippets to route a CLI through the local LiteLLM proxy.             |
 | `test`                     |                                   | Runs `services/webhook/tests` (needs `requirements-dev.txt` installed in `.venv` first).             |

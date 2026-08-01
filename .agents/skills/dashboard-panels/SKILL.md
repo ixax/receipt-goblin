@@ -11,7 +11,7 @@ description: >
   TRIGGER - read BEFORE creating/editing a panel's query/options, or reviewing a panel edit, in any of
   those files.
   SKIP for non-panel dashboard edits (annotations, variables, dashboard-level settings).
-  <version>1.5.2</version>
+  <version>1.6.0</version>
 ---
 
 # dashboard-panels
@@ -56,13 +56,22 @@ Description: <how the query/visualization answers it - the key grouping, computa
 Keep both lines short but substantive - a sentence each, not a paragraph.
 "Goal" is about the viewer's intent (what decision or question this panel serves), "Description" is about the mechanism (what the query actually does to produce that answer) - don't blur the two into one line, and don't just restate the panel title or column names in different words.
 
+**Hard limit: 100 words total across both lines.** If a rewrite doesn't fit, cut detail rather than exceed it - a viewer reads this in passing, not as documentation.
+
+**Surface-level only, no special/internal knowledge.** A description explains what the panel shows and roughly how, in terms any dashboard viewer already understands (grouping, filter, join, time window).
+It never contains implementation trivia a viewer can't act on: ClickHouse quirks, regex/CTE mechanics, data-model caveats, ASOF-join heuristics, plugin-sanitizer behavior, or any other detail that belongs in a skill file or code comment instead.
+If you're explaining *why* something was built a certain way rather than *what it shows now*, it doesn't belong here.
+
+**Never a changelog.** The description is the panel's current state, not a history of edits.
+Don't write "previously X, now Y", don't log what was fixed/changed/added and when, and don't accumulate one sentence per past edit.
+Each edit that touches the description **replaces** it to describe the panel as it exists today - it does not append.
+If the previous description already violates this (changelog-style, over the word limit, full of implementation detail), rewrite it from scratch in the correct format rather than editing around the violation.
+
 **Mandatory on creation**: every new panel gets this description filled in at creation time, not left blank or added later as an afterthought.
 
-**Mandatory on any edit to a panel's query or options**: any create or edit (`rawSql`, field set, grouping/join/computation, `vizConfig` options - not just column adds/removes/renames) must leave that panel with a non-empty, accurate `description` in this format when the edit is done.
-This applies regardless of the panel's description state going in - a panel that was already blank before the edit is not exempt from this.
-Finding it blank is not a reason to leave it blank - it's the trigger to write one.
-Never treat an already-blank description as "the file's existing convention" to preserve - a blank description is never a convention, it's a gap this rule closes on the next touch.
-A stale description is worse than none - this was a real bug (found and fixed 2026-07-26): "Top repeating tool errors"' description said "the first 80 characters of failed_tool_error" after the underlying truncation had already been removed, because the query changed without the description being revisited.
+**Mandatory on any edit to a panel's query or options**: any create or edit (`rawSql`, field set, grouping/join/computation, `vizConfig` options - not just column adds/removes/renames) must leave that panel with a non-empty, accurate, in-format, in-limit `description` when the edit is done.
+This applies regardless of the panel's description state going in - a panel that was already blank (or already over-long/changelog-style) is not exempt from this.
+A stale or bloated description is worse than none - rewrite it, don't patch it.
 
 ### Table panel habits
 
