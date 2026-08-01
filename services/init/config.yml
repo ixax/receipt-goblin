@@ -56,6 +56,8 @@ roles:
       - "GRANT SELECT ON {database}.litellm_alerts"
       - "GRANT SELECT ON {database}.ingest_dlq"
       - "GRANT SELECT ON system.tables"
+      # Query Performance (agents_overview) dashboard reads system.query_log directly.
+      - "GRANT SELECT ON system.query_log"
 
   - name: mcp
     user_env: CLICKHOUSE_MCP_USER
