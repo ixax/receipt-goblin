@@ -14,5 +14,9 @@ COPY dashboards /etc/grafana/dashboards
 # Health-folder dashboards need a separate top-level path since two
 # provisioning providers can't share one path.
 COPY dashboards-health /etc/grafana/dashboards-health
+# Static assets (e.g. Dynamic Text panel CSS) served at /public/receipt-goblin/...
+# - Grafana's own /usr/share/grafana/public isn't shadowed by the grafana-data
+# volume the way /var/lib/grafana is, so files copied here are served as-is.
+COPY static /usr/share/grafana/public/receipt-goblin
 
 ENTRYPOINT ["/bin/sh", "/docker-entrypoint-custom.sh"]

@@ -107,7 +107,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -213,7 +213,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -319,7 +319,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -425,7 +425,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -527,7 +527,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -629,7 +629,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -735,7 +735,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -837,7 +837,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -939,7 +939,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -1041,7 +1041,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -1143,7 +1143,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -1245,7 +1245,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -1347,7 +1347,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -1449,7 +1449,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -1551,7 +1551,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -1657,7 +1657,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -2487,7 +2487,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -2589,7 +2589,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -2872,7 +2872,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -2974,7 +2974,7 @@
                 },
                 "orientation": "auto",
                 "textMode": "auto",
-                "colorMode": "background",
+                "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "showPercentChange": false
@@ -5210,6 +5210,240 @@
             }
           }
         }
+      },
+      "panel-51": {
+        "kind": "Panel",
+        "spec": {
+          "id": 51,
+          "title": "Claude",
+          "description": "Goal: let engineers glance at whether any Claude traffic has fallen back from litellm to the real api.anthropic.com, without hunting through Load balancer log tabs.\nDescription: counts access-log lines on the anthropic-wire proxy port (4001) tagged backend=anthropic-proxy-fallback over the dashboard's time range - nonzero means litellm didn't respond and a request was served by the real provider instead.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "loki",
+                      "datasource": {
+                        "name": "DS_LOKI"
+                      },
+                      "spec": {
+                        "expr": "sum(count_over_time({container=\"receipt-goblin-load-balancer\", stream=\"stdout\", backend=\"anthropic-proxy-fallback\"}[$__range]))",
+                        "queryType": "instant",
+                        "editorMode": "code"
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {},
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      },
+                      {
+                        "color": "red",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "unit": "none"
+                },
+                "overrides": []
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "showPercentChange": false
+              }
+            }
+          }
+        }
+      },
+      "panel-52": {
+        "kind": "Panel",
+        "spec": {
+          "id": 52,
+          "title": "Codex",
+          "description": "Goal: let engineers glance at whether any Codex/OpenAI traffic has fallen back from litellm to the real api.openai.com, without hunting through Load balancer log tabs.\nDescription: counts access-log lines on the openai-wire proxy port (4002) tagged backend=openai-proxy-fallback over the dashboard's time range - nonzero means litellm didn't respond and a request was served by the real provider instead.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "loki",
+                      "datasource": {
+                        "name": "DS_LOKI"
+                      },
+                      "spec": {
+                        "expr": "sum(count_over_time({container=\"receipt-goblin-load-balancer\", stream=\"stdout\", backend=\"openai-proxy-fallback\"}[$__range]))",
+                        "queryType": "instant",
+                        "editorMode": "code"
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {},
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      },
+                      {
+                        "color": "red",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "unit": "none"
+                },
+                "overrides": []
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "showPercentChange": false
+              }
+            }
+          }
+        }
+      },
+      "panel-53": {
+        "kind": "Panel",
+        "spec": {
+          "id": 53,
+          "title": "Provider fallback",
+          "description": "Goal: let engineers drill into who got redirected to the real Anthropic/OpenAI provider, to which provider, and when, once the top-level Claude/Codex fallback cards show nonzero.\nDescription: streams Loki log lines from the load-balancer container's stdout stream, filtered to the anthropic-proxy-fallback and openai-proxy-fallback backends only.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "loki",
+                      "datasource": {
+                        "name": "DS_LOKI"
+                      },
+                      "spec": {
+                        "expr": "{container=\"receipt-goblin-load-balancer\", stream=\"stdout\", backend=~\"anthropic-proxy-fallback|openai-proxy-fallback\"}",
+                        "queryType": "range",
+                        "editorMode": "code",
+                        "maxLines": 1000
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "logs",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {}
+                },
+                "overrides": []
+              },
+              "options": {
+                "showTime": true,
+                "showLabels": false,
+                "showCommonLabels": false,
+                "wrapLogLines": false,
+                "prettifyLogMessage": false,
+                "enableLogDetails": true,
+                "dedupStrategy": "none",
+                "sortOrder": "Descending",
+                "enableInfiniteScrolling": false
+              }
+            }
+          }
+        }
       }
     },
     "layout": {
@@ -5464,6 +5698,46 @@
                                     "name": "panel-37"
                                   },
                                   "x": 15,
+                                  "y": 0,
+                                  "width": 3,
+                                  "height": 4
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "Provider fallback",
+                        "collapse": true,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-51"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 3,
+                                  "height": 4
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-52"
+                                  },
+                                  "x": 3,
                                   "y": 0,
                                   "width": 3,
                                   "height": 4
@@ -6093,6 +6367,32 @@
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-50"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 24,
+                                  "height": 24
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "Provider fallback",
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-53"
                                   },
                                   "x": 0,
                                   "y": 0,

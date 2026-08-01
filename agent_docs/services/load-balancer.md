@@ -48,6 +48,28 @@ Query/filter in Grafana by the `container`, `stream` (`stdout`/`stderr`), and `b
 The landing page (`listen 80`) and `stub_status` (`listen 8080`) stay excluded (`access_log off;`) - no debug value, and `stub_status` is a high-frequency scrape target.
 `services/grafana/dashboards-health/infra_overview.json`'s "Load balancer" tab has "Access log"/"Error log" sub-tabs (full-height Logs panels) plus a `$backend` multi-select template variable for this - the go-to spot for diagnosing a routing/latency/error issue instead of `docker compose logs load-balancer` alone.
 
+## litellm-with-fallback proxy ports
+
+Two extra ports (`ANTHROPIC_PROXY_PORT`/`4001`, `OPENAI_PROXY_PORT`/`4002`) proxy straight to litellm, same as `LITELLM_PORT`, but fail over to the real provider (`api.anthropic.com`/`api.openai.com`) if litellm doesn't respond, instead of failing the request.
+`make setup-client` points `ANTHROPIC_BASE_URL`/`OPENAI_API_BASE`/Codex's `base_url` at these ports rather than plain `LITELLM_PORT`.
+
+Mixing an HTTP backend (litellm) and an HTTPS backend (the fallback target) in one `upstream{}` doesn't work - `proxy_pass`'s scheme applies to every server in that upstream block, and litellm is plain HTTP while the fallback targets are HTTPS.
+So instead of an `upstream{}` with a `backup` server, each port's `location /` proxies to litellm with `proxy_intercept_errors on;` and an `error_page 502 503 504 = @<name>_fallback;`, and the named `location` proxies to the real provider over HTTPS (`proxy_ssl_server_name on; proxy_ssl_name <host>;`).
+
+`proxy_intercept_errors` only fires before any response bytes have reached the client, so this only ever triggers on "litellm didn't respond" (connect-refused/timeout), never on "litellm responded slowly to an already-streaming request" - matches "re-route if litellm doesn't respond" exactly, not "litellm is slow".
+`proxy_connect_timeout` is cut to `3s` on these two ports (nginx's own `60s` default) so a genuinely dead litellm fails over quickly instead of making the client wait the better part of a minute first; `proxy_read_timeout` stays at the same `300s` as the main `litellm` block, since that only matters once a connection is already open and shouldn't punish a slow-but-alive stream by yanking it into a fallback mid-response.
+
+The fallback `location` sets `Host` to the real provider's own hostname (`api.anthropic.com`/`api.openai.com`), not `$http_host` like every other block in this file - forwarding the client's own `Host` (`localhost:4001`) would send the wrong SNI/Host to a provider that actually cares which virtual host it's answering as.
+
+`$backend_name` is set per-`location`, not once at the `server{}` level like every other block here - `anthropic-proxy`/`openai-proxy` for the litellm path, `anthropic-proxy-fallback`/`openai-proxy-fallback` for the provider path.
+That split exists specifically so the access log - and therefore the Loki `backend` label the "Load balancer" health-dashboard tab filters on - can tell "served by litellm" and "fell back to the real provider" apart, both per-request and in aggregate (the dashboard's "Claude"/"Codex" fallback-count cards, see `services/grafana/dashboards-health/infra_overview.json`).
+
+**Auth caveat, both ports**: whatever auth header the client sent for litellm (e.g. `x-litellm-api-key`, a virtual key) passes straight through unchanged to the fallback target, which won't recognize it.
+Only a real `x-api-key`/`anthropic-version` (Anthropic) or `Authorization: Bearer <real key>` (OpenAI) header authenticates once fallen back - nothing here bridges or translates credentials between litellm's virtual-key scheme and the real provider's own auth.
+
+Not extended: the existing blackbox-exporter `probe_success` panel that reports whether `load-balancer` itself is up.
+That only reflects "is nginx reachable", not "is litellm behind it reachable" - the fallback-count cards cover that more directly, since they only light up when a fallback actually happened.
+
 ## No `depends_on`
 
 `load-balancer` has no `depends_on` on anything, deliberately.

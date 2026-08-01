@@ -73,6 +73,13 @@ x-litellm-db-url: &litellm-db-url postgresql://litellm:${LITELLM_DB_PASSWORD:?se
 # webhook to call /key/info when verifying report_git_branch.py's key.
 x-litellm-base-url: &litellm-base-url http://litellm:4000
 
+# Anthropic/OpenAI-wire fallback proxy ports on load-balancer (nginx.conf's
+# `listen 4001`/`listen 4002` blocks) - proxy straight to litellm normally,
+# re-route to api.anthropic.com/api.openai.com if litellm doesn't respond.
+# See agent_docs/services/load-balancer.md.
+x-anthropic-proxy-port: &anthropic-proxy-port ${ANTHROPIC_PROXY_PORT:-4001}
+x-openai-proxy-port: &openai-proxy-port ${OPENAI_PROXY_PORT:-4002}
+
 # Shared by both webhook replicas (webhook-1/webhook-2) below. Connects as
 # the `ingest` role (INSERT-only + a narrow SELECT list - see
 # services/init/config.yml).
@@ -380,6 +387,8 @@ services:
       CLICKHOUSE_HTTP_PORT: *clickhouse-http-port
       PROMETHEUS_PORT: *prometheus-port
       LANGFUSE_PORT: *langfuse-port
+      ANTHROPIC_PROXY_PORT: *anthropic-proxy-port
+      OPENAI_PROXY_PORT: *openai-proxy-port
     ports:
       # Landing page (nginx.conf's `listen 80` block, index.html) - fixed at
       # 80, not a `${..._PORT:-default}` var like every port below, since
@@ -407,6 +416,12 @@ services:
       # 3001` block for why the target isn't 3000 (already grafana's).
       - target: 3001
         published: *langfuse-port
+      # litellm-with-Anthropic/OpenAI-fallback (nginx.conf's `listen 4001`/
+      # `listen 4002` blocks) - see the anchors above.
+      - target: 4001
+        published: *anthropic-proxy-port
+      - target: 4002
+        published: *openai-proxy-port
     mem_limit: 64m
     # Was 0.5 - hit 100% of that under the 100-user load test (real,
     # unsmoothed peak, not a docker-stats sampling artifact - see

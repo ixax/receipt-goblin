@@ -46,6 +46,8 @@
   .card {
     width: 100%;
     max-width: 680px;
+    max-height: calc(100vh - 6rem);
+    overflow-y: auto;
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 16px;
@@ -164,6 +166,14 @@
               <li><a href="http://localhost:${GRAFANA_PORT}/d/query-performance" target="_blank" rel="noopener">Query Performance</a></li>
             </ul>
           </li>
+        </ul>
+      </li>
+      <li>
+        <span class="plain">litellm + fallback</span>
+        <span class="note">&mdash; MCP/API endpoints only, nothing to open here</span>
+        <ul>
+          <li><span class="plain">:${ANTHROPIC_PROXY_PORT}</span> <span class="note">&mdash; Anthropic wire, falls over to api.anthropic.com if litellm doesn't respond</span></li>
+          <li><span class="plain">:${OPENAI_PROXY_PORT}</span> <span class="note">&mdash; OpenAI wire, falls over to api.openai.com if litellm doesn't respond</span></li>
         </ul>
       </li>
       <li>

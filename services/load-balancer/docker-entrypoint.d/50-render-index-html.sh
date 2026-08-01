@@ -11,6 +11,9 @@
 # up` time (.env/shell), so they're substituted here, once, on every
 # container start, from the env vars docker-compose.yml's `load-balancer`
 # service passes in (see its `environment:` block).
+# ANTHROPIC_PROXY_PORT/OPENAI_PROXY_PORT are the two litellm-with-fallback
+# ports (see nginx.conf's `listen 4001`/`listen 4002` blocks) - same
+# render-once-at-start treatment as every other port here.
 #
 # MCP_DEV_PORT is dev-only (mcp-dev only exists in docker-compose.dev.yml)
 # - unset in production, so the mcp-dev row (wrapped in
@@ -19,7 +22,7 @@
 # prod-facing too, so its row always renders, no stripping needed.
 set -eu
 
-envsubst '${WEBHOOK_PORT} ${LITELLM_PORT} ${GRAFANA_PORT} ${MCP_DEV_PORT} ${MCP_STATS_PORT} ${CLICKHOUSE_HTTP_PORT} ${PROMETHEUS_PORT} ${LANGFUSE_PORT}' \
+envsubst '${WEBHOOK_PORT} ${LITELLM_PORT} ${GRAFANA_PORT} ${MCP_DEV_PORT} ${MCP_STATS_PORT} ${CLICKHOUSE_HTTP_PORT} ${PROMETHEUS_PORT} ${LANGFUSE_PORT} ${ANTHROPIC_PROXY_PORT} ${OPENAI_PROXY_PORT}' \
   < /etc/nginx/html-template/index.html.template \
   > /usr/share/nginx/html/index.html
 

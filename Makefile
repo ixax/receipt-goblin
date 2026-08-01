@@ -32,6 +32,16 @@ PORT := $(if $(strip $(LITELLM_PORT)),$(LITELLM_PORT),4000)
 # LITELLM_PORT alone can't express that, so this takes precedence when set.
 URI := $(if $(strip $(LITELLM_URI)),$(LITELLM_URI),http://localhost:$(PORT))
 
+# litellm-with-fallback ports (load-balancer's `listen 4001`/`listen 4002` -
+# see agent_docs/services/load-balancer.md) - same PORT/URI override pattern
+# as above. setup-client below points ANTHROPIC_BASE_URL/OPENAI_API_BASE at
+# these instead of plain $(URI), so a dead litellm fails over to
+# api.anthropic.com/api.openai.com instead of failing the client outright.
+ANTHROPIC_PROXY_PORT := $(if $(strip $(ANTHROPIC_PROXY_PORT)),$(ANTHROPIC_PROXY_PORT),4001)
+ANTHROPIC_PROXY_URI := $(if $(strip $(ANTHROPIC_PROXY_URI)),$(ANTHROPIC_PROXY_URI),http://localhost:$(ANTHROPIC_PROXY_PORT))
+OPENAI_PROXY_PORT := $(if $(strip $(OPENAI_PROXY_PORT)),$(OPENAI_PROXY_PORT),4002)
+OPENAI_PROXY_URI := $(if $(strip $(OPENAI_PROXY_URI)),$(OPENAI_PROXY_URI),http://localhost:$(OPENAI_PROXY_PORT))
+
 WEBHOOK_PORT := $(if $(strip $(WEBHOOK_PORT)),$(WEBHOOK_PORT),8010)
 # Same override pattern as URI above, for hosts where webhook isn't on localhost.
 INGEST_URI := $(if $(strip $(AGENT_CLI_TRACKING_API_URL)),$(AGENT_CLI_TRACKING_API_URL),http://localhost:$(WEBHOOK_PORT))
@@ -234,9 +244,12 @@ setup-client: check-env
 	@echo '# --- ~/.zshrc / ~/.bashrc (paste as-is, or use the config blocks below instead) ---'
 	@echo 'export LITELLM_VIRTUAL_KEY="$(VKEY)"'
 	@echo 'export LITELLM_AUTH_HEADER="Bearer $(VKEY)"'
-	@echo 'export ANTHROPIC_BASE_URL="$(URI)"'
+	@echo '# Anthropic/OpenAI-wire fallback ports, not plain litellm - see'
+	@echo '# agent_docs/services/load-balancer.md. Auth headers below are NOT'
+	@echo '# translated once fallen back to the real provider.'
+	@echo 'export ANTHROPIC_BASE_URL="$(ANTHROPIC_PROXY_URI)"'
 	@echo 'export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: $$LITELLM_AUTH_HEADER"'
-	@echo 'export OPENAI_API_BASE="$(URI)"'
+	@echo 'export OPENAI_API_BASE="$(OPENAI_PROXY_URI)"'
 	@echo 'export AGENT_CLI_TRACKING_API_URL="$(INGEST_URI)"'
 	@echo ''
 	@echo '# --- ~/.codex/config.toml (merge in, keep any hooks/mcp_servers already there) ---'
@@ -246,7 +259,7 @@ setup-client: check-env
 	@echo ''
 	@echo '[model_providers.litellm]'
 	@echo 'name = "LiteLLM"'
-	@echo 'base_url = "$(URI)"'
+	@echo 'base_url = "$(OPENAI_PROXY_URI)"'
 	@echo 'wire_api = "responses"'
 	@echo 'requires_openai_auth = true'
 	@echo 'env_http_headers = { "x-litellm-api-key" = "LITELLM_AUTH_HEADER" }'
@@ -254,7 +267,7 @@ setup-client: check-env
 	@echo '# --- ~/.claude/settings.json ("env" block - merge in, keep any hooks already there) ---'
 	@echo '{'
 	@echo '  "env": {'
-	@echo '    "ANTHROPIC_BASE_URL": "$(URI)",'
+	@echo '    "ANTHROPIC_BASE_URL": "$(ANTHROPIC_PROXY_URI)",'
 	@echo '    "ANTHROPIC_CUSTOM_HEADERS": "x-litellm-api-key: Bearer $(VKEY)",'
 	@echo '    "AGENT_CLI_TRACKING_API_URL": "$(INGEST_URI)",'
 	@echo '    "LITELLM_VIRTUAL_KEY": "$(VKEY)"'

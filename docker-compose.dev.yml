@@ -121,3 +121,4 @@ services:
       - ./services/grafana/provisioning/alerting:/etc/grafana/provisioning/alerting:ro
       - ./services/grafana/dashboards:/etc/grafana/dashboards
       - ./services/grafana/dashboards-health:/etc/grafana/dashboards-health
+      - ./services/grafana/static:/usr/share/grafana/public/receipt-goblin
