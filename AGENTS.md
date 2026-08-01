@@ -86,7 +86,7 @@ Codex CLI has no native listing - it reads `agent_docs/harness-index.md` instead
 - `dynamictext-panel-builder` - panel-76 (Trace) or its companion panel-77.
 - `stale-ref-sweeper` - after any rename/removal of a named entity, or before naming one in a new comment/doc.
 - `code-locator` - find files/symbols instead of inline Grep/Glob.
-- `script-ops` - mechanical file/JSON/YAML work, open-ended investigation, read-only docker inspection; never `git`.
+- `script-ops` - mechanical file/JSON/YAML work, open-ended investigation, read-only docker/git inspection; never state-changing `docker`/`git`.
 
 **Explicit-dispatch agents:**
 
