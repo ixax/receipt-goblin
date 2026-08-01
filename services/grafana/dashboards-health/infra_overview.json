@@ -5616,7 +5616,47 @@
                         }
                       }
                     },
-                    {
+{
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "Provider fallback",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-51"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 3,
+                                  "height": 4
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-52"
+                                  },
+                                  "x": 3,
+                                  "y": 0,
+                                  "width": 3,
+                                  "height": 4
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                                        {
                       "kind": "RowsLayoutRow",
                       "spec": {
                         "title": "Langfuse",
@@ -5698,46 +5738,6 @@
                                     "name": "panel-37"
                                   },
                                   "x": 15,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4
-                                }
-                              }
-                            ]
-                          }
-                        }
-                      }
-                    },
-                    {
-                      "kind": "RowsLayoutRow",
-                      "spec": {
-                        "title": "Provider fallback",
-                        "collapse": true,
-                        "layout": {
-                          "kind": "GridLayout",
-                          "spec": {
-                            "items": [
-                              {
-                                "kind": "GridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "panel-51"
-                                  },
-                                  "x": 0,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4
-                                }
-                              },
-                              {
-                                "kind": "GridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "panel-52"
-                                  },
-                                  "x": 3,
                                   "y": 0,
                                   "width": 3,
                                   "height": 4

@@ -33,12 +33,15 @@ roles:
     password_env: CLICKHOUSE_GRAFANA_PASSWORD
     default_user: grafana
     grants:
-      # Explicit per-table list, not "GRANT SELECT ON {database}.*" -
-      # deliberately excludes ingest_raw/ingest_dlq (raw_payload_full/
-      # raw_row hold unprocessed request/response payloads verbatim; no
-      # dashboard panel queries either table - see agents_overview.json's
-      # own "no more JOIN to ingest_raw" comment - and grafana has no
-      # business reading raw traffic even if one someday tried to).
+      # Explicit per-table list, not "GRANT SELECT ON {database}.*".
+      # Deliberately excludes ingest_raw (raw_payload_full holds
+      # unprocessed request/response payloads verbatim; no dashboard panel
+      # queries it - see agents_overview.json's own "no more JOIN to
+      # ingest_raw" comment - and grafana has no business reading raw
+      # traffic even if one someday tried to).
+      # ingest_dlq IS granted below, unlike ingest_raw: it has an actual
+      # triage panel (LiteLLM Alerting's "Ingest DLQ recent rows") that
+      # needs to read it, including raw_row.
       - "GRANT SELECT ON {database}.agent_invocations"
       - "GRANT SELECT ON {database}.session_git_branch"
       - "GRANT SELECT ON {database}.plan_proposals"
@@ -50,6 +53,8 @@ roles:
       - "GRANT SELECT ON {database}.agent_events"
       - "GRANT SELECT ON {database}.agent_usage"
       - "GRANT SELECT ON {database}.agent_messages"
+      - "GRANT SELECT ON {database}.litellm_alerts"
+      - "GRANT SELECT ON {database}.ingest_dlq"
       - "GRANT SELECT ON system.tables"
 
   - name: mcp
