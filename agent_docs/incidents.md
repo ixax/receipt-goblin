@@ -65,6 +65,13 @@ Panel-76 ("Trace")'s own `tool_result_preview` CTE has the identical one-block-o
 Not yet done: reparsing historical rows (`make reparse-all`) to fix already-ingested `display_text` values - the fix only applies going forward until that's run.
 Lesson (repeats the one two entries up): the first read of the data looked like a mismatch and wasn't - always trace back to the actual raw payload before concluding two fields disagree.
 
+## Dynamic Text panel ownership hardcoded by id instead of `type`
+
+`dynamictext-panel-builder`'s scope was written as a hardcoded id/title list ("panel-76 ('Trace'), panel-77") instead of deriving ownership from the panel's own `type` field (`marcusolsson-dynamictext-panel`).
+Two drift symptoms, confirmed live against `services/grafana/dashboards/agents_overview.json`: panel 99 ("Fork tree", added later) really is `type: marcusolsson-dynamictext-panel` but wasn't in the hardcoded list, so `dashboard-panels-builder` edited it (several times) while `dynamictext-panel-builder` refused it as out of scope; panel 77 is `type: table`, not Dynamic Text, yet was named as owned - correct in outcome (see below) but wrong as a general rule, since a future non-companion `table` panel could have been misrouted the same way by the same faulty reasoning.
+Fixed by rewriting both agents' scope rules to check `type` (via `dashboard-parser`/a direct read) rather than memorizing ids, with the one real functional exception (panel-77's tight `$trace_ts` coupling to panel-76) called out explicitly as a documented exception, not folded back into the general rule.
+Lesson: an agent's routing scope must key off a stable, machine-checkable field (`type`) when one exists, never off an id/title that changes as panels are added/renamed - see `.claude/agents/dynamictext-panel-builder.md` and `.claude/agents/dashboard-panels-builder.md`.
+
 ## Git checkout/restore clobbering uncommitted work
 
 Three past incidents (a dashboard reformat "fixed" via `git checkout -- <file>`, a misdiagnosed-corruption checkout, and a bulk edit that used `git show :path` to self-"restore") each silently discarded concurrent uncommitted work, recovered only by luck each time.

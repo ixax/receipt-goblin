@@ -1,22 +1,25 @@
 ---
-name: dynamictext-panel-builder
+name: dynamictext-panel-queries
 description: >
-  MUST BE USED PROACTIVELY for creating/editing/debugging any Dynamic Text (`marcusolsson-dynamictext-panel`) panel in agents_overview.json: panel-76 ("Trace"), panel-77, and future ones.
-  Has write access + `mcp__dev__query`; don't hand-edit/test directly.
-  NOT a general dashboard editor: owns Dynamic Text panels (and panel-77) only; anything else in agents_overview.json goes to main conversation.
-  After every panel-76/77 edit, delegates tag+mirror sync to `dashboard-panels-builder`, last.
-  Reads clickhouse-sql before non-trivial SQL, escalating gotchas to `sql-expert`.
-  NEVER run two invocations concurrently - the splice assumes sole writer to agents_overview.json.
-  Caller queues a new dispatch until the running one finishes; never fire both at once.
-  <version>1.4.2</version>
-tools: Bash, Read, Edit, Write, mcp__dev__query, Agent, Skill
-model: claude-sonnet-5
+  Query/data/mechanical knowledge for Dynamic Text panels (`marcusolsson-dynamictext-panel`) in services/grafana/dashboards/agents_overview.json - panel-76 ("Trace"), its companion panel-77, and panel-99 ("Fork tree") are current examples.
+  Covers panel identification, the panel-77 wiring, plugin config, the SQL tree-building shape, concurrent-subagent sort_ts ordering, column/pad-width budget math, ClickHouse gotchas specific to this panel, data-model facts, the brace-matching safe-JSON-edit procedure, and the testing-before-deploy workflow.
+  TRIGGER - read only when the current dashboards-expert task is actually to write or fix a Dynamic Text panel's query, `rawSql`, or SQL-side logic.
+  SKIP for styling-only work (use `dynamictext-panel-design-system` instead) or any non-Dynamic-Text panel.
+  <version>1.0.0</version>
 ---
 
-You build and maintain Dynamic Text (`marcusolsson-dynamictext-panel`) panels in `services/grafana/dashboards/agents_overview.json` - most notably `panel-76` ("Trace: $session_id", in the "Sessions & Debugging" -> "Trace" sub-tab, which is now the *last* top-level tab), which renders a per-session call tree (prompts, tool calls, agent spawns, replies) from `agent_events`/`agent_usage`/`agent_messages`/`agent_invocations`/`session_git_branch`.
-Read the existing `panel-76` element first (see "Editing the panel JSON" below) to see the current query/template in full before changing anything - this document explains *why* it's built the way it is, not a full copy of the SQL to paste blindly.
+# dynamictext-panel-queries
 
-`panel-77` ("Tool calls at $trace_ts", a plain `table` panel, not Dynamic Text) sits directly below `panel-76` in the same "Trace" sub-tab - see "Companion detail table and clickable timestamps" below for how the two are wired together.
+Query/data reference for `dashboards-expert`, read on demand - see this skill's own description for the exact trigger.
+
+Dynamic Text panels render a per-session call tree (prompts, tool calls, agent spawns, replies) from `agent_events`/`agent_usage`/`agent_messages`/`agent_invocations`/`session_git_branch`.
+`panel-76` ("Trace: $session_id", in the "Sessions & Debugging" -> "Trace" sub-tab) is the primary example.
+Read the existing `panel-76` element first (see "Safe JSON-editing procedure" below) to see the current query/template in full before changing anything - this document explains *why* it's built the way it is, not a full copy of the SQL to paste blindly.
+
+## Panel identification and the panel-77 exception
+
+`panel-77` ("Tool calls at $trace_ts", a plain `table` panel, not Dynamic Text by type) sits directly below `panel-76` in the same "Trace" sub-tab - see "Companion detail table and clickable timestamps" below for how the two are wired together.
+It's a named, explicitly documented exception to `dashboards-expert`'s type-based scope, not evidence the rule is id-based - it's grouped with Dynamic Text work because its query and `$trace_ts` handling are inseparable from `panel-76`'s own click-through logic, not because of its id.
 
 ## Companion detail table and clickable timestamps
 
@@ -46,7 +49,7 @@ It sets a **hidden** dashboard variable, `$trace_ts`, which `panel-77` reads to 
 - **Tab-state params preserve the Trace tab across clicks**: The href includes two static query params that tell Grafana which tab to stay on: `&dtab=Sessions-%26-Debugging&Sessions-%26-Debugging-dtab=Trace`.
   The first param (`dtab`) sets the top-level tab (key = "dtab", value = tab title with spaces replaced by hyphens).
   The second (`Sessions-%26-Debugging-dtab`, itself percent-encoded since `&` is the query-string separator) sets the nested sub-tab.
-  The literal strings must match the dashboard's actual tab titles exactly - if "Sessions & Debugging" or "Trace" ever get renamed, these values must change (title with spaces→hyphens, & symbol→%26).
+  The literal strings must match the dashboard's actual tab titles exactly - if "Sessions & Debugging" or "Trace" ever get renamed, these values must change (title with spaces -> hyphens, `&` symbol -> `%26`).
   Currently: `&dtab=Sessions-%26-Debugging&Sessions-%26-Debugging-dtab=Trace` (static literal, no per-row data).
   This was added because clicks previously reset the dashboard to its default (first) tab, losing the fact the user was on the Trace panel.
 - **`panel-77`'s query** pulls every parallel tool call from a clicked row, with special handling for Agent spawns.
@@ -91,27 +94,12 @@ The query returns one row per selected session (or zero rows if none selected - 
 Do not return one row per event; Handlebars in `allRows` mode can't easily group/indent per-session otherwise, and a giant loop of tiny per-event partials is what produced the "everything runs together, no columns" complaint in early iterations.
 
 Pattern:
-1. Build several "row" sub-selects (header line, session-stats block,
-   prompt/comment lines, tool-call/reply/error lines), each tagged with
-   `(session_id, sort_ts, tie, ts, line)` where `tie` is a small int fixing
-   intra-timestamp order (0=header, 1=stats block, 2=prompt marker,
-   3=event line), `ts` is the row's own real timestamp (used for display
-   and as the final tiebreak), and `sort_ts` is the position it actually
-   sorts at (see "concurrent subagent ordering" below - `sort_ts` isn't
-   always equal to `ts`).
+
+1. Build several "row" sub-selects (header line, session-stats block, prompt/comment lines, tool-call/reply/error lines), each tagged with `(session_id, sort_ts, tie, ts, line)` where `tie` is a small int fixing intra-timestamp order (0=header, 1=stats block, 2=prompt marker, 3=event line), `ts` is the row's own real timestamp (used for display and as the final tiebreak), and `sort_ts` is the position it actually sorts at (see "Concurrent subagent ordering" below - `sort_ts` isn't always equal to `ts`).
 2. `UNION ALL` them together.
-3. Aggregate per session:
-   ```sql
-   SELECT session_id,
-     arrayStringConcat(
-       arrayMap(x -> x.4, arraySort(x -> (x.1, x.2, x.3), groupArray((sort_ts, tie, ts, line)))),
-       '\n'
-     ) AS tree
-   FROM (...) GROUP BY session_id
-   ```
-   `arraySort` on the `(sort_ts, tie, ts)` tuple - not relying on
-   `groupArray`'s incidental order - is what keeps the header/stats block
-   pinned above the timeline regardless of query execution order.
+3. Aggregate per session by `groupArray`-ing the `(sort_ts, tie, ts, line)` tuples, `arraySort`-ing on `(sort_ts, tie, ts)`, then `arrayStringConcat`-ing the sorted `line` values on `'\n'` into the single `tree` output column.
+   `arraySort` on that tuple - not relying on `groupArray`'s incidental order - is what keeps the header/stats block pinned above the timeline regardless of query execution order.
+   Read the live aggregation SELECT in panel-76's own `rawSql` for the exact syntax rather than copying an example here - that's the source of truth, this file only explains why it's shaped this way.
 
 ### Concurrent subagent ordering: `sort_ts` vs `ts`
 
@@ -120,30 +108,10 @@ Sorting every row by its own real timestamp (`ts`) therefore interleaves two unr
 This was reported as the tree looking "jumbled" and is fixed by giving every subagent's rows (both its prompt markers and its event lines) a **single shared `sort_ts`** - the orchestrator's own nearest-preceding `Agent` tool_use row - so the whole block sorts as one contiguous unit right after its spawn point, ordered internally by real `ts`, instead of scattering across the orchestrator's concurrent rows.
 Orchestrator rows (`agent_invocation_id = ''`) are unaffected: their `sort_ts` always equals their own `ts`.
 
-This needs two extra CTEs before `session_header`:
-```sql
-agent_spawn_events AS (
-  SELECT ev.session_id, ev.timestamp
-  FROM agent_events ev INNER JOIN selected s ON s.session_id = ev.session_id
-  WHERE ev.tool_name = 'Agent' AND ev.agent_invocation_id = ''
-),
-child_anchor_raw AS (
-  SELECT ai.session_id, ai.agent_id, se.timestamp AS anchor_ts
-  FROM agent_invocations ai INNER JOIN selected s ON s.session_id = ai.session_id
-  ASOF LEFT JOIN agent_spawn_events se
-    ON se.session_id = ai.session_id AND ai.spawned_at >= se.timestamp
-),
-child_anchor AS (
-  -- dedup: see agent_invocations' duplicate-row note below
-  SELECT session_id, agent_id, any(anchor_ts) AS anchor_ts
-  FROM child_anchor_raw GROUP BY session_id, agent_id
-)
-```
+This needs two extra CTEs before `session_header`: `agent_spawn_events` (every orchestrator-level `Agent` tool_use row, `agent_invocation_id = ''`) and `child_anchor` (each subagent's `agent_id` ASOF-joined backward to the nearest-preceding row in `agent_spawn_events`, deduped down to one row per `(session_id, agent_id)`).
+Read panel-76's own `rawSql` for the exact CTE syntax - both already exist there, don't recreate them from a stale copy here.
 Same nearest-before heuristic as `spawn_info` (no real parent link exists), just run in the opposite ASOF direction: `spawn_info` goes from an orchestrator row forward to the next spawn; `child_anchor` goes from a spawn backward to the orchestrator row that must have triggered it.
-Then, wherever a prompt/event row is built, join `child_anchor` on `(session_id, agent_invocation_id)` and compute:
-```sql
-if(agent_invocation_id != '', coalesce(ca.anchor_ts, ts), ts) AS sort_ts
-```
+Then, wherever a prompt/event row is built, join `child_anchor` on `(session_id, agent_invocation_id)` and compute `sort_ts` as the joined anchor timestamp when `agent_invocation_id != ''`, else the row's own `ts`.
 **Do not skip the dedup in `child_anchor`.**
 `agent_invocations` can hold more than one row per `agent_id` (nothing runs `FINAL` against its `ReplacingMergeTree` here) - joining the raw ASOF result directly into the final SELECT would silently multiply every one of that subagent's event rows by however many duplicate `agent_invocations` rows exist.
 
@@ -168,11 +136,10 @@ The entries below are specific to this panel's own tree-rendering logic and stay
   This replaced an earlier scheme where each branch had its own cap sized to what that field "needed" (120 for `file_path`, 70 for `command`/`query`, 100 for `sql`, 90 for `url`) - that per-branch variance is what caused misalignment between row types (e.g. a short `mcp__stats__me {session_id: "..."}` row padding to a different target than a long `command` row next to it).
   If asked to retune this, change all branches together, not just the one named - that's the whole point of unifying them.
   (Two things are deliberately NOT part of this unified cap: the Agent-spawn/failure branch's own `description` field, which stays at its own 50-char cap since it isn't one of the `tool_render` argument branches; and `AskUserQuestion`'s per-question text, capped separately at 120 chars in its own unbounded nested-line rendering path, not the padded-column system at all.)
-- **Escaping order matters**: escape `&`/`<`/`>` on a piece of dynamic text *first*, then apply your own `<b>`/`<span>`/`<code>` wrapping on top - never the other way round, or your own tags get escaped into visible `&lt;b&gt;` text.
-  This also means literal user text like `<command-name>/goal</command-name>` (which appears verbatim in real prompts) must never be trusted as real markup - it has to go through the same escaping as everything else.
 - **JSON serialization must not double-escape the rawSql field**: When editing the dashboard JSON, always load via `json.load()` and write back via `json.dump()` on the modified in-memory object, never do string-level replacements on the raw file text or pass the SQL through a JSON encoder/decoder outside the main dump.
   A tooling bug that re-serializes the string value can introduce stray backslashes before quotes in the SQL (e.g., `style=\"opacity:.6\"` instead of `style="opacity:.6"`), which accumulates across edits and eventually breaks quote-parity in ClickHouse's string-literal lexer.
   If the corruption is ever spotted, fix by loading the JSON properly, doing `.replace('\\"', '"')` on the **parsed string value** (not the raw file bytes), and writing back via `json.dump()`.
+  This is a distinct concern from the brace-matching splice procedure below, which deliberately avoids a full `json.load`/`json.dump` round-trip for the everyday edit path - only invoke a full load/dump cycle to fix already-corrupted escaping, never as the normal edit method.
 - **`agent_invocations` isn't in the `mcp__dev__query` table whitelist** (only `agent_events`/`agent_usage`/`agent_messages`/`session_git_branch` are, per `_ALLOWED_TABLES` in `services/mcp-dev/src/server.py`), but the check only requires *one* referenced table to be in that whitelist - so a test query that joins `agent_invocations` alongside `agent_events` passes fine.
   This restriction doesn't apply to the deployed panel at all (Grafana talks to ClickHouse directly), only to your own ad-hoc testing here.
 - **`mcp__dev__query`'s validator false-positives**: it rejects any literal `;` anywhere in the query text (even inside a string value like `'&amp;'`, which ends in `;`) and rejects the bare word `SYSTEM` case-insensitively as a whole word anywhere in the text (even inside `'<system-reminder>'` or `'[SYSTEM NOTIFICATION'`, since a hyphen counts as a word boundary).
@@ -206,49 +173,29 @@ The entries below are specific to this panel's own tree-rendering logic and stay
   `failed_tool_name`/`failed_tool_error` non-empty on an otherwise-successful row means this call is reacting to a *different* tool call that failed one step earlier (show as an indented note above the row, not as this row's own status).
 - The very first row(s) of many sessions are an invisible pre-conversation artifact (a silently-retried rate-limited call, a warm-up ping) with empty `prompt_text` and no trace in the actual CLI transcript - compute `min(ts) WHERE is_real` (the first genuine, non-harness prompt) per session and drop everything before it, or you'll show a confusing orphan `FAIL` row the user never saw.
 
-## Display conventions established for this panel (keep consistent)
+## Display/rendering conventions (logic, not styling)
 
-- Timestamps shown only on "important" nodes: user prompts/comments, agent spawns, replies, and failed calls - plain mid-chain tool calls get blank space of the same width instead, to cut visual noise (there's no rigid time column to keep aligned anymore, see the padding note above, but the blank-space-instead-of-repeating-the-time convention stayed).
-- Markers:
-  - `❯` real user prompt/comment (remap: was `●`)
-  - `●` model reply text and echoed tool output like WebFetch's "Web page content" (remap: was `❯`)
-  - `○` harness-injected pseudo-prompt (see classification above)
-  - `├─`/`└─` tool-call tree branches (`└─` specifically marks a reply/leaf)
-  - `▸` agent spawn (legacy arrow - will be removed once spawn rows gain their own description text)
-  - `🚨` for any error/failure (not ⚠)
+The pure styling facts (markers, colors/opacities, `**bold**`/`` `code` `` conversion, slash-command highlighting) live in `Skill(dynamictext-panel-design-system)` instead - this section is the data/logic side of "what gets shown," not "how it looks."
+
+- Timestamps show only on "important" nodes: user prompts/comments, agent spawns, replies, and failed calls - plain mid-chain tool calls get blank space of the same width instead, to cut visual noise (there's no rigid time column to keep aligned anymore, see the padding note above, but the blank-space-instead-of-repeating-the-time convention stayed).
 - Prompt/reply text is capped at 1500 chars (not fully unbounded - an earlier fully-unbounded version was reined in), relying on `white-space:pre-wrap` to wrap long text across lines in the viewer.
   Tool-call argument previews are much shorter (see the per-field caps above) and get a short fixed gap (not a padded column) before the stats.
-- Stats/labels (`Duration:`, `Cost:`, `Tokens:`, `Model(s):`, `Prompts:`, `Tool calls:`, `Agents:`, `Skills:`, `Git:`) are bold (`<b>...</b>`), one per line (not packed two-per-line - packing them risked truncating long agent/skill lists when they shared a padded column).
-- Tool-call argument text and the token-count stat share the same grey (`opacity:.6`) - the general rule the user set is "command arguments should be grey", applied uniformly regardless of which tool.
-  The token stat itself is now just the bare number (`62.5k`, no trailing `tok` - that suffix was removed on request).
-- `**bold**`/`` `code` `` markdown-style syntax appearing in prompt/reply text is converted to real `<b>`/`<code>` tags via regex (the panel is HTML mode, not markdown mode, so literal `**`/`` ` `` would otherwise show as asterisks/backticks, not render): apply `replaceRegexpAll(text, '\*\*([^*\n]+?)\*\*', '<b>\1</b>')` then `replaceRegexpAll(..., '`([^`\n]+?)`', '<code>\1</code>')` - after escaping `&`/`<`/`>`, before any further wrapping.
-- A leading slash-command anywhere in real user prompt text gets colored blue+bold (terminal-style): `replaceRegexpAll(text, '(^|\s)(/[a-zA-Z][\w-]*)', '\1<span style="color:#8ab8ff;font-weight:bold">\2</span>')` (both panel-76 and panel-99 use this exact color, `#8ab8ff` - not `#3b9eff`, an earlier drafted-but-never-implemented value from before this bug was fixed).
-  **RESOLVED (was an open caveat): lookahead does not work here at all.** RE2 (ClickHouse's regex engine) has no lookahead/lookbehind support whatsoever - `(?=...)` fails outright with `DB::Exception: ... invalid perl operator: (?=` (confirmed live against ClickHouse 24.8), not merely "needs tuning between `(?=\s|$)` and `(?=\s|<|$)"` as previously guessed. Do not attempt any `(?=...)`/`(?!...)`/`(?<=...)`/`(?<!...)` pattern in ClickHouse regex functions - none of the four forms are supported, this isn't specific to this one pattern. This is now also documented as a general gotcha in the `clickhouse-sql` skill.
-  The false-positive this rule exists to prevent: a path fragment like `/usr/local/bin` or `/Users/ixax/foo` highlighting only its first segment (`/usr`, `/Users`), since `[\w-]*` greedily eats word chars and stops at the next `/`, with nothing (pre-fix) requiring the match to be followed by whitespace/tag/end.
-  **Actual fix, lookahead-free**: run the *same* unmodified highlighting regex first (so real standalone commands - own-line, mid-sentence, whole-string - all still highlight correctly, since chaining/boundary behavior for multiple commands per line is unaffected), then run a second `replaceRegexpAll` pass over its output that strips the span back off wherever it's immediately followed by another `/` (the tell-tale sign the "command" was actually a path's first segment): `replaceRegexpAll(<highlighted>, '<span style="color:#8ab8ff;font-weight:bold">(/[a-zA-Z][\w-]*)</span>(/)', '\1\2')`.
-  This needed no lookahead, no lookbehind, and no change to the original highlighting regex or its replacement template - it's purely an additive wrapping call around the existing one.
-  Verified empirically via `mcp__dev__query` (and against real `agent_messages.prompt_text` rows) against: a real path (`/Users/ixax/foo`, `/usr/local/bin`) - not highlighted; `/plan` alone on its own line (followed by `<br>` after newline-conversion) - highlighted; `/goal do the thing` mid-sentence - highlighted; `/status` as the entire string - highlighted; multiple commands on one line (`/plan then /goal now`) - both highlighted independently, chaining unaffected since the fix-up pass never consumes/alters any separator whitespace.
+- Stats/labels (`Duration:`, `Cost:`, `Tokens:`, `Model(s):`, `Prompts:`, `Tool calls:`, `Agents:`, `Skills:`, `Git:`) are one per line, not packed two-per-line - packing them risked truncating long agent/skill lists when they shared a padded column.
+  The token stat itself is the bare number (`62.5k`, no trailing `tok` - that suffix was removed on request).
+- Prompt and reply text supports literal newlines via `\n` -> `<br>` conversion (after markdown `**bold**`/`` `code` `` is converted).
 - `WebFetch` output can come back embedded in a `role: user` message as a plain `Web page content: ---` dump (not always cleanly marked as a pure `tool_result`), which can be enormous - unlike the general 1500-char cap on prompt/reply text, anything starting with `Web page content` (check both the prompt-classification pipeline's `cleaned0` and a reply row's raw `response_text`) is hard-cut to 100 chars plus a literal `...`, regardless of where in the pipeline it shows up.
-  When it surfaces via the prompt-classification pipeline (`is_webpage`), it's marked with the `●` reply marker (after remap) in grey (opacity:.6) (`prompt_final` has to pass `is_webpage` through to the final SELECT for this - it isn't only used inside the `multiIf` that builds `display`).
-- Agent spawn rows now show the spawned agent's name in bold (`<b>Agent spawn: <name></b>`) followed by the spawn's own task/prompt description text in grey (opacity:.6, capped at 120 chars + `...`), extracted from the Agent row's own `prompt_text` field (system-reminder prefix stripped).
-  No leading arrow (`▸`) is shown with the new format.
-  The arrow remains in the code as a legacy artifact awaiting later cleanup.
-- Suggestion-mode prompts now render as a single line showing the actual prompt text with the `○` marker, not a separate label line followed by the prompt text nested below it - the label `[suggestion-mode prompt]` is gone.
-- Failure error lines (both `status='failure'` LLM failures and `failed_tool_name` non-empty tool failures) are indented one level deeper than their parent row and rendered in grey (opacity:.6) to visually show they're notes/side-effects rather than primary content.
-- Prompt and reply text now supports literal newlines via `\n` -> `<br>` conversion (after markdown `**bold**`/`` `code` `` is converted), so multi-line user prompts and multi-line model replies now render as multiple visual lines instead of being flattened onto one.
-- **WebFetch nesting**: WebFetch output (`Web page content:...` response rows) now render one level deeper than the WebFetch tool-call row that produced them, using extra indent (3 additional spaces) to visually show it's a child output of that specific tool call, not a general model reply.
-  Detection is via `startsWith(response_text, 'Web page content')` check, which is reliable since WebFetch echoes its content under this specific prefix.
-- Always filter empty strings out of any array before
-  `arrayStringConcat(arr, ', ')` - e.g.
-  `arrayStringConcat(arrayFilter(x -> x != '', groupUniqArray(name)), ', ')`
-  - a stray `''` element (from an unfiltered source table row) renders as
-  a trailing `", "` with nothing after it, which reads as a typo/bug even
-  though the join logic is otherwise correct.
+  When it surfaces via the prompt-classification pipeline (`is_webpage`), it's marked with the `●` reply marker (`prompt_final` has to pass `is_webpage` through to the final SELECT for this - it isn't only used inside the `multiIf` that builds `display`).
+- **WebFetch nesting**: WebFetch output (`Web page content:...` response rows) renders one level deeper than the WebFetch tool-call row that produced them, using extra indent (3 additional spaces) to visually show it's a child output of that specific tool call, not a general model reply.
+  Detection is via `startsWith(response_text, 'Web page content')`, reliable since WebFetch echoes its content under this specific prefix.
+- Agent spawn rows show the spawned agent's name followed by the spawn's own task/prompt description text (capped at 120 chars + `...`), extracted from the Agent row's own `prompt_text` field (system-reminder prefix stripped).
+- Suggestion-mode prompts render as a single line showing the actual prompt text with the `○` marker, not a separate label line followed by the prompt text nested below it.
+- Failure error lines (both `status='failure'` LLM failures and `failed_tool_name` non-empty tool failures) are indented one level deeper than their parent row, to visually show they're notes/side-effects rather than primary content.
+- Always filter empty strings out of any array before `arrayStringConcat(arr, ', ')` - e.g. `arrayStringConcat(arrayFilter(x -> x != '', groupUniqArray(name)), ', ')` - a stray `''` element (from an unfiltered source table row) renders as a trailing `", "` with nothing after it, which reads as a typo/bug even though the join logic is otherwise correct.
 
-## New general convention for array-valued tool arguments
+### Array-valued tool arguments
 
-When a tool call's argument JSON contains an array field (e.g., AskUserQuestion's `questions`), keep the tool-call row itself as ONE line (tool name + stats: duration/tokens/cost at the end, same as any other tool call), but render each array element as its own separate nested line underneath, styled in dimmed grey (opacity:.6) used for arguments, with no per-line stats.
-Implementation: array elements are joined with newlines (`arrayStringConcat(..., '\n')`) and displayed as a single grey multi-line block under the tool call.
+When a tool call's argument JSON contains an array field (e.g., AskUserQuestion's `questions`), keep the tool-call row itself as ONE line (tool name + stats: duration/tokens/cost at the end, same as any other tool call), but render each array element as its own separate nested line underneath, with no per-line stats.
+Implementation: array elements are joined with newlines (`arrayStringConcat(..., '\n')`) and displayed as a single multi-line block under the tool call.
 Currently implemented for: `AskUserQuestion` (questions array); same pattern applies to any future tools with array-valued arguments.
 
 ## Column alignment with overflow safety: fixed-width safe truncation
@@ -273,30 +220,15 @@ If you need to retune this width, edit the `trace_width_budget` variable's `curr
 **A second branch handling the same tie=3 tool-call row set (the Agent-spawn/tool-failure branch, `if(sr.status = 'failure', ..., 'Agent spawned: ...')`) used to skip this arithmetic entirely and just append a flat `'          '` (10 literal spaces) regardless of content length** - since Agent-spawn descriptions were also shown fully unbounded (no truncation cap, unlike every tool-arg field), that flat pad could never actually align these rows with the formula-padded tool-call rows around them; the more the description ran on, the further right the stats column drifted, and comparing a bounded row to an unbounded one made the whole tree look "jumbled" regardless of the indent-budget fix.
 This is now fixed the same way as the tool-call branch, using the same `${trace_width_budget}` reference - but note the Agent-spawn `description` field itself is still capped at 50 chars, not unified to the 90-char tool-arg cap, since it isn't one of the `tool_render` argument-preference branches (see the per-field-cap note above).
 The general rule when adding or auditing ANY row-rendering branch that appends stats after content:
-1. give the content field an actual truncation cap (currently 90 chars is the standard for tool-arg-like fields, but there's no fixed constant required across branches - see the per-field-cap note above) so its length is a true bound, not unbounded;
-2. compute pad target as `${trace_width_budget} - (indent width, 0 or 3 via `if(agent_invocation_id != '', 3, 0)`)`;
-3. measure against RAW (unescaped, already-truncated) content length via `lengthUTF8`, not the HTML-escaped/tagged length (same "escaped length inflates without inflating rendered width" rule documented below for `tool_render`'s `raw_args` vs `escaped_args` - this was already fixed once for the tool-call branch and must not be reintroduced in any new branch);
-4. only pad when content already fits under the target (skip padding entirely on overflow, never truncate after the fact) - same pattern as the tool-call branch's `repeat(' ', greatest(0, target - length))`.
 
-The reply/reasoning row (`sr.tool_name = ''`, marked `└─ ●`) is deliberately exempt from all of this - it has no padding/width-budget logic at all, by design, and must stay that way; its text is capped separately at 1500 chars (see "Display conventions" in the panel's own inline SQL documentation), not the 90-char tool-arg cap.
+1. Give the content field an actual truncation cap (currently 90 chars is the standard for tool-arg-like fields, but there's no fixed constant required across branches - see the per-field-cap note above) so its length is a true bound, not unbounded.
+2. Compute pad target as `${trace_width_budget} - (indent width, 0 or 3 via if(agent_invocation_id != '', 3, 0))`.
+3. Measure against RAW (unescaped, already-truncated) content length via `lengthUTF8`, not the HTML-escaped/tagged length (same "escaped length inflates without inflating rendered width" rule already fixed once for the tool-call branch - don't reintroduce it in any new branch).
+4. Only pad when content already fits under the target (skip padding entirely on overflow, never truncate after the fact) - same pattern as the tool-call branch's `repeat(' ', greatest(0, target - length))`.
 
-## If something looks wrong mid-task
+The reply/reasoning row (`sr.tool_name = ''`, marked `└─ ●`) is deliberately exempt from all of this - it has no padding/width-budget logic at all, by design, and must stay that way; its text is capped separately at 1500 chars, not the 90-char tool-arg cap.
 
-Never run `git checkout`/`restore`/`reset`/`clean` on this file to "fix" an unexpected diff or recover from a suspected mistake - confirmed the hard way: doing this mid-task discarded (near-permanently - it only survived by an unrelated IDE autosave flushing a buffer back over it, pure luck, not a safety net) a full session's worth of uncommitted dashboard work sitting in the file before this task even started.
-If the file's state looks wrong, or a diff looks bigger/different than expected, STOP and report the anomaly back to the caller instead of self-recovering - diagnose by grepping the current file for the specific markers you expect, not by diffing against `git HEAD`, which is very likely stale relative to real uncommitted work already present.
-
-## Never run concurrently with yourself, never self-delegate
-
-Only one instance of this agent may be doing real work against `agents_overview.json` at a time.
-The brace-matching splice procedure below assumes it is the sole writer at any given moment - a second concurrent instance risks a lost-write race where one instance's splice silently discards the other's edit.
-This is the caller's responsibility, not something this agent can detect at runtime (no shared lock exists in this harness): whoever dispatches this agent - the main conversation or any other agent - must serialize dispatches.
-Never fire a second `dynamictext-panel-builder` invocation while one is still in flight, even against a different panel; queue it and dispatch only once the running one finishes.
-
-This agent's own `Agent` tool exists for exactly one purpose: delegating the `query_performance.json` mirror sync to `dashboard-panels-builder` (see "After every panel-76/77 edit" below).
-Never use it to spawn another copy of `dynamictext-panel-builder` to do the panel-editing work itself.
-If the task feels large enough to want a delegate, do the SQL/JSON work directly instead - reporting "completed" after a self-spawned nested copy exits, without confirming its edit actually landed in the file, is worse than doing the work directly, since the caller has no way to detect the loss.
-
-## Editing the panel JSON
+## Safe JSON-editing procedure: brace-matching splice
 
 **Never** `Read` the whole dashboard file into context or hand-edit it with the `Edit` tool directly against the raw JSON text - it's a large v2beta1-schema file and a naive text edit risks corrupting sibling panels.
 Instead, do targeted **brace-matching text surgery** with a small Python script (`Write` it to your scratch area, run via `Bash`):
@@ -306,9 +238,10 @@ Instead, do targeted **brace-matching text surgery** with a small Python script 
 3. Build the new panel dict in Python, `json.dumps(panel, indent=2, ensure_ascii=False)`, re-indent it to match the surrounding file's 6-space panel-key indentation, and splice it in as a straight string replacement of the old block.
 4. `json.load()` the result to confirm it's still valid JSON before considering the change done.
 
-If you're touching both panel-76 and panel-77 (or making more than one edit in the same task), do this whole read-splice-write cycle once per edit, immediately - never hold the file's content in memory across multiple edits and write it back once at the end.
-A concurrent edit by another agent landing on the live file in that window would get silently discarded when you write your stale copy back; this happened for real elsewhere in this dashboard (see `dashboard-panels-builder.md`'s "Editing the panel JSON" section for the incident).
+If you're touching both panel-76 and panel-77 (or making more than one edit in the same task), do this whole read-splice-write cycle once per edit, immediately - never hold the file's content in memory across multiple edits and write it back once at the end, per `dashboards-expert`'s own "Editing the panel JSON" atomic-unit rule.
+A concurrent edit landing on the live file in that window would get silently discarded when a stale in-memory copy is written back - this happened for real elsewhere in this dashboard.
 If a mistake needs correcting mid-task, fix it forward with another scoped edit against the live file - never reset the working tree from any git ref (`git checkout`/`restore`/`reset`/`clean`, or the equivalent `git show :path` piped into the file) to "start clean" - stop and report the anomaly to the caller instead.
+Only one edit against a given Dynamic Text panel should be in flight at a time - this splice procedure assumes it's the sole writer at the moment it runs, the same atomic-unit discipline `dashboards-expert` already applies to every other panel type, just enforced here via brace-matching instead of a simple substring replace since the panel's `rawSql` is too large for that.
 
 After writing, Grafana's file-based dashboard provisioner reloads every 30 seconds (`services/grafana/provisioning/dashboards/*.yml`, `updateIntervalSeconds: 30`).
 Confirm the change actually landed by polling `curl -s http://localhost:3000/api/dashboards/uid/agents-overview` and grepping for a distinctive fragment of your new SQL/template, looping with a short sleep until it appears, rather than guessing a fixed wait or trusting the file write alone.
@@ -318,11 +251,8 @@ Confirm the change actually landed by polling `curl -s http://localhost:3000/api
 Test new/changed SQL against real data via `mcp__dev__query` before touching the panel JSON - pick a real `session_id` from the database (`SELECT session_id, count() FROM agent_events GROUP BY session_id ORDER BY max(timestamp) DESC LIMIT 5`) rather than inventing one.
 Remember the validator quirks above when constructing the test query string, and keep in mind the *deployed* SQL should use the real, unobfuscated literals - the obfuscation is purely a testing-tool workaround, never carry it into the panel itself.
 
-## After every panel-76/77 edit: delegate the query_performance.json mirror sync
+## Open question: query_performance.json tagging
 
-`dashboard-panels-builder` keeps `services/grafana/dashboards-health/query_performance.json` in sync with `agents_overview.json` for every other panel already (tagging via `tag_panel_queries.py`, regenerating via `build_query_perf_dashboard.py`), but is itself barred from touching panel-76/77's rawSql - so it can't run that sync for these two panels on its own initiative.
-Once you finish an edit to panel-76 or panel-77 (any change - a query rewrite, an id/position change, anything, since the mirror keys off panel id, not content), delegate the sync step itself to `dashboard-panels-builder` via the `Agent` tool, every time, without waiting to be asked - this is the one narrow case where it's allowed to touch these two panels, and only because you handed it that specific step.
-Give it the panel id(s) and which top-level tab(s) to regenerate; don't run `tag_panel_queries.py`/`build_query_perf_dashboard.py` yourself.
-
-Whether panel-76/77 should actually be profiled the same generic way as every other tagged panel (3 timeseries + 1 table) once tagged is still open - panel-76 assembles a full session tree per row, an unusual shape for that template.
-Don't resolve this yourself; flag it to `dashboard-panels-builder`/the caller the first time it comes up in practice.
+Whether Dynamic Text panels should actually be profiled the same generic way as every other tagged panel (3 timeseries + 1 table) once tagged is still open - panel-76 assembles a full session tree per row, an unusual shape for that template.
+This is why `dashboards-expert` excludes Dynamic Text panels from tagging in its own `query_performance.json` sync workflow, on purpose, not as an oversight.
+Don't resolve this yourself; flag it to the caller/user the first time it comes up in practice.

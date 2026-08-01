@@ -10,9 +10,8 @@ description: >
   dashboard's panels.
   TRIGGER - read BEFORE creating/editing a panel's query/options, or reviewing a panel edit, in any of
   those files.
-  SKIP for agents_overview.json's panel-76/77 "Trace" pair (handled by dynamictext-panel-builder
-  instead), and for non-panel dashboard edits (annotations, variables, dashboard-level settings).
-  <version>1.5.1</version>
+  SKIP for non-panel dashboard edits (annotations, variables, dashboard-level settings).
+  <version>1.5.2</version>
 ---
 
 # dashboard-panels
@@ -20,7 +19,7 @@ description: >
 Conventions for building or editing a panel/graph/widget in any Grafana dashboard JSON in this repo (`services/grafana/dashboards/*.json`, `services/grafana/dashboards-health/*.json`).
 Two tiers below: **Universal conventions** apply to every dashboard file.
 **agents_overview.json-specific conventions** apply only to `services/grafana/dashboards/agents_overview.json`, and must not be copied onto another dashboard's panels - a `docker_containers.json` panel has no session_id/user_id/issue_id to build a width table or a dataLink around, and no `tokens`/`cost` schema to derive units from.
-`services/grafana/dashboards-health/query_performance.json` is `dashboard-panels-builder`'s own generated companion mirror of `agents_overview.json` (per-panel ClickHouse query cost from `system.query_log`); `tag_panel_queries.py`/`build_query_perf_dashboard.py` (`services/grafana/scripts/`) keep it in sync (see the `dashboard-panels-builder` agent for when to run them) - the universal conventions below still apply to it whenever it's hand-touched, since it's a real table panel, not a reason to skip them.
+`services/grafana/dashboards-health/query_performance.json` is `dashboards-expert`'s own generated companion mirror of `agents_overview.json` (per-panel ClickHouse query cost from `system.query_log`); `tag_panel_queries.py`/`build_query_perf_dashboard.py` (`services/grafana/scripts/`) keep it in sync (see the `dashboards-expert` agent for when to run them) - the universal conventions below still apply to it whenever it's hand-touched, since it's a real table panel, not a reason to skip them.
 Its "Recent executions" tables' `query_id` column links to this same dashboard's own Query Detail tab (`dtab=Query-Detail`), modeled on `agents_overview.json`'s `session_id` -> Trace-tab convention below.
 Unlike that `session_id` link, this one deliberately sets `targetBlank: False` - confirmed live 2026-07-26, expected/accepted for this drill-down, not a bug to fix.
 A same-dashboard `dtab=`-based navigation always opens in the same browser tab regardless of `targetBlank`, so setting it `True` here (as `session_id`'s link does) would be dead configuration that misrepresents behavior the link doesn't have; don't "correct" it by chasing the new-tab pattern `session_id`'s link is modeled on.

@@ -412,10 +412,11 @@ def build_query_detail_panels():
 
     # QUERY_DETAIL_BASE_ID + 2 ("Full query text") is deliberately skipped
     # here - it's a hand-built marcusolsson-dynamictext-panel (Dynamic Text),
-    # owned by the dynamictext-panel-builder agent, not this generator. Its
-    # ref is still reserved in the returned refs list below so the grid
-    # layout keeps its slot; main() must not prune that element away just
-    # because this function didn't (re)build it.
+    # owned by the dashboards-expert agent directly, not this generator.
+    # Its ref is still reserved in the returned refs list below so the grid
+    # layout keeps its slot.
+    # main() must not prune that element away just because this function
+    # didn't (re)build it.
     panels_by_id = {
         QUERY_DETAIL_BASE_ID + 1: table_panel(QUERY_DETAIL_BASE_ID + 1, "Query info", info_sql, sort_field=None),
         QUERY_DETAIL_BASE_ID + 3: table_panel(

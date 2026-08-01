@@ -25,7 +25,7 @@ Wire in .claude/settings.json:
 Detects a prior read two ways, since not every agent has the Skill tool -
 most Subagents don't (`tools:` in their frontmatter omits it) and instead
 read a skill's SKILL.md directly with Read, per their own body text (e.g.
-harness-expert, dashboard-panels-builder). So "already read" means either:
+harness-expert, dashboards-expert). So "already read" means either:
   1. a Skill tool_use with input.skill == "md-format", or
   2. a Read tool_use whose file_path is md-format's SKILL.md,
 anywhere earlier in the session transcript. Once read, the skill's content

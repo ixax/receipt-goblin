@@ -1,0 +1,95 @@
+:root {
+  /* ---- indentation ---- */
+  --t-indent: 1.2em;
+
+  /* ---- opacities, theme-adaptive ---- */
+  --t-op-duration: .5;
+  --t-op-tokens: .6;
+  --t-op-cost: .7;
+  --t-op-model: .6;
+  --t-op-muted: .6;
+
+  /* ---- reusable colors ---- */
+  --t-color-code: #8ab8ff;
+  --t-color-arrow: #e0af02;
+  --t-color-border: rgba(255, 255, 255, .25);
+
+  /* ---- column widths, px, first draft ---- */
+  --t-col-timestamp: 60px;
+  --t-col-wide-title: 470px;
+  --t-col-title: 230px;
+  --t-col-model: 230px;
+  --t-col-duration: 70px;
+  --t-col-tokens: 70px;
+  --t-col-cost: 70px;
+
+  --t-depth-step: calc(var(--t-indent) * 2 + 1px);
+}
+
+.t-user-prompt::before {
+  content: "\2771 ";
+  color: var(--t-color-arrow);
+  margin-right: 0.3em;
+}
+
+.t-col-wide-title {
+  display: inline-block;
+  width: calc(var(--t-col-wide-title) - (var(--t-depth, 0) * var(--t-depth-step)));
+}
+.t-col-title {
+  display: inline-block;
+  width: calc(var(--t-col-wide-title) / 2 - (var(--t-depth, 0) * var(--t-depth-step) / 2));
+  font-weight: bold;
+}
+.t-col-model {
+  display: inline-block;
+  width: calc(var(--t-col-wide-title) / 2 - (var(--t-depth, 0) * var(--t-depth-step) / 2));
+  opacity: var(--t-op-model);
+}
+
+.t-col-cost {
+  display: inline-block;
+  width: var(--t-col-cost);
+  text-align: right;
+  opacity: var(--t-op-cost);
+}
+.t-col-tokens {
+  display: inline-block;
+  width: var(--t-col-tokens);
+  text-align: right;
+  opacity: var(--t-op-tokens);
+}
+.t-col-duration {
+  display: inline-block;
+  width: var(--t-col-duration);
+  text-align: right;
+  opacity: var(--t-op-duration);
+}
+
+.t-col-timestamp {
+  display: inline-block;
+  width: var(--t-col-timestamp);
+  opacity: var(--t-op-muted);
+}
+
+.t-code {
+  color: var(--t-color-code);
+  font-weight: bold;
+}
+.t-code-block {
+  color: var(--t-color-code);
+  font-weight: bold;
+  display: block;
+  white-space: pre;
+  padding-left: var(--t-indent);
+}
+
+.t-tree-wrapper {
+  margin-left: var(--t-indent);
+  padding-left: var(--t-indent);
+  border-left: 1px solid var(--t-color-border);
+}
+
+.t-muted {
+  opacity: var(--t-op-muted);
+}

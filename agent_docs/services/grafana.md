@@ -13,7 +13,7 @@ Prometheus/Loki datasources carry no secrets/per-env values (fixed internal Dock
 
 All six ship as `dashboard.grafana.app/v2beta1` schema JSON; `metadata.name` is the uid (stable URL).
 All follow the same panel/build conventions - read the `dashboard-panels` skill before editing any dashboard's panels, don't treat each file as bespoke.
-The one named exception is `agents_overview.json`'s panel-76/77 pair and its dashboard-specific tier, per that skill's own two-tier split (dynamictext-panel-builder vs. dashboard-panels-builder agent boundary) - not re-litigated here.
+`dashboards-expert` owns every panel in every dashboard directly, including `agents_overview.json`'s Dynamic Text pair (panel-76/77) - see that agent's own frontmatter for the two on-demand skills (`dynamictext-panel-queries`, `dynamictext-panel-design-system`) it reads for Dynamic-Text-specific query/styling work.
 
 - `services/grafana/dashboards/agents_overview.json` - "Agents Overview" dashboard, uid `agents-overview`. Use the `dashboard-parser` agent for current tab/panel structure, don't hardcode a count here - it drifts.
 - `services/grafana/dashboards-health/clickhouse.json` - uid `clickhouse-health`, ClickHouse process/replication health panels, fed by Prometheus (`observability` profile, see `agent_docs/services/observability.md`).

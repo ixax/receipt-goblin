@@ -81,9 +81,8 @@ Codex CLI has no native listing - it reads `agent_docs/harness-index.md` instead
 - `dev-ops` - service rebuild/restart after a config/env change, `make backup-*`/`restore-*`, `Makefile`/compose edits, Langfuse/observability up/down.
 - `webhook-test-runner` - after any `services/worker/`, `services/reparse/`, `services/loadtest/`, or `services/_common/` change, or any test-run request.
 - `loadtest-runner` - any load-test request or stack-under-load question.
-- `dashboard-panels-builder` - any dashboard panel edit except panel-76/77 (Trace).
+- `dashboards-expert` - any dashboard panel edit, all types including Dynamic Text.
 - `dashboard-parser` - any read/parse of `agents_overview.json`.
-- `dynamictext-panel-builder` - panel-76 (Trace) or its companion panel-77.
 - `stale-ref-sweeper` - after any rename/removal of a named entity, or before naming one in a new comment/doc.
 - `code-locator` - find files/symbols instead of inline Grep/Glob.
 - `script-ops` - mechanical file/JSON/YAML work, open-ended investigation, read-only docker/git inspection; never state-changing `docker`/`git`.
@@ -103,6 +102,8 @@ Codex CLI has no native listing - it reads `agent_docs/harness-index.md` instead
 - `clickhouse-sql` - before non-trivial ClickHouse SQL, or when a result looks inexplicable.
 - `clickhouse-migration` - before creating/editing a file under `services/clickhouse/migrations/`.
 - `dashboard-panels` - before creating/editing any dashboard panel.
+- `dynamictext-panel-queries` - before writing/fixing a Dynamic Text panel's query/SQL logic.
+- `dynamictext-panel-design-system` - before touching a Dynamic Text panel's styling.
 - `trace-debugging` - troubleshooting a call chain via `session_id`/`trace_id`/`turn_id`.
 - `harness-guardian` - explicit-only harness budget-audit workflow.
 

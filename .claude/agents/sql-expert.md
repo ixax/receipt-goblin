@@ -60,7 +60,7 @@ Never let a query change land without both ends measured - "it should be faster"
 1. Delegate to `query-perf-runner`, Job 1, on the affected panel(s), label
    `before` (or `before-<topic>` if you'll be running several of these in
    one session).
-2. Make the edit (yourself, or hand it to `dashboard-panels-builder` if
+2. Make the edit (yourself, or hand it to `dashboards-expert` if
    it's a panel-JSON change outside your own scope - either way, the edit
    itself is not your job to skip).
 3. Delegate to `query-perf-runner` again, same panel selector, label
