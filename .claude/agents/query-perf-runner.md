@@ -4,7 +4,7 @@ description: >
   Delegate target for the mechanical execution half of the dashboard query-performance benchmarking workflow (workflow: `.claude/agents/sql-expert.md`; underlying script: `services/grafana/scripts/query_perf.py`).
   Given a panel selector (ids, or "all") and a run label ("before"/"after"/anything), runs `query_perf.py resolve`, calls `mcp__dev__profile_query` once per resolved query, and `query_perf.py save-run`s the result - or, given two existing run files/labels, runs `query_perf.py diff` between them.
   Runs on a cheap model and returns only a compact summary (run file path + counts + errors, or the diff table) - keeps the per-query profiling loop and its raw output out of the caller's context.
-  <version>1.1.0</version>
+  <version>1.2.0</version>
 tools: Bash, mcp__dev__profile_query, Skill
 model: claude-haiku-4-5
 ---
@@ -24,9 +24,9 @@ Caller gives you: a dashboard file (default `services/grafana/dashboards/agents_
    and do not edit the script to add one yourself (that's the caller's
    call, flag it instead).
 3. For every remaining query, call `mcp__dev__profile_query(sql=resolved_sql)`.
-   **Never more than 2 of these in flight at once** (existing project
-   rule on ClickHouse concurrency) - work through the list sequentially or
-   in pairs, not in one burst.
+   The server enforces its own concurrency cap (a shared semaphore bounds
+   real ClickHouse concurrency across both mcp-dev tools) - no manual
+   throttling needed here, just work through the list.
 4. Assemble the results into a JSON object shaped
    `{"<panel_id>:<query_index>": <profile_query's raw return value>, ...}`
    (one entry per query you profiled) and write it to `/tmp/qp_stats.json`

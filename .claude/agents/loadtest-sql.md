@@ -4,7 +4,7 @@ description: >
   Delegate target for load-testing the ClickHouse SQL behind Grafana dashboard widgets (e.g. services/grafana/dashboards/agents_overview.json) - given a request naming a tab, widget title(s), or "all", finds the matching panels, extracts each panel's rawSql, substitutes Grafana macros/template variables with concrete values, runs each query repeatedly through the mcp-dev `query` tool, and reports min/avg/max execution time per widget.
   Runs on a cheap model and returns only the distilled timing table, keeping raw dashboard JSON and per-run query output out of the main conversation.
   Can delegate mechanical file/investigation work outside this narrow scope to the `script-ops` agent rather than doing it inline.
-  <version>1.2.0</version>
+  <version>1.3.0</version>
 tools: Bash, Read, mcp__dev__query, Agent, Skill
 model: claude-haiku-4-5
 ---
@@ -52,10 +52,12 @@ If a panel joins a table outside that set, note it and skip that widget rather t
 
 ## 3. Run the load test
 
-For each widget's finalized SQL, call the `query` tool multiple times (default 5 iterations; use more if the caller asked for a heavier/longer test) and record `execution_time_ms` from each response.
+For each widget's finalized SQL, call the `query` tool once with `sql` set to a list of N copies of that same SQL string (default N=5 iterations; use more if the caller asked for a heavier/longer test) - e.g. `query(sql=[sql]*N, max_rows=...)`.
+This runs all N timing samples as one server-throttled batch instead of N separate round trips.
 Use `max_rows` around 50-200 - you're timing query execution, not hauling back full result sets.
-If a call errors, note the error and exclude that sample rather than inventing a number.
-If every sample for a widget errors, report that widget failed instead of fabricating min/avg/max.
+Read `execution_time_ms` out of each entry in the returned `results` array, in order.
+If an entry has `status: "error"`, note the error and exclude that sample rather than inventing a number.
+If every entry for a widget errors, report that widget failed instead of fabricating min/avg/max.
 
 ## 4. Report
 
