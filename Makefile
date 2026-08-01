@@ -101,7 +101,8 @@ init: check-env
 # `start`: Brings up containers with existing images (no rebuild/recreate).
 # `up`: Rebuilds and recreates containers - the fix for baked-in config/env/file changes.
 # `logs`: Streams logs; scope to a single service with SERVICE=<name>.
-# start/up support SERVICE=<name> to scope to a single service (default: whole stack).
+# start/up/restart/down support SERVICE=<name> to scope to a single service
+# (default: whole stack).
 start: check-env
 	docker compose $(COMPOSE_FILES) up -d $(SERVICE)
 
@@ -111,9 +112,10 @@ up: check-env
 # Restarts running containers in place (not a rebuild) - picks up edits to
 # bind-mounted source (services/webhook/src, etc.) for services without
 # --reload, like worker. Run `make up` instead if
-# requirements.txt/Dockerfile changed.
+# requirements.txt/Dockerfile changed. SERVICE is optional (default: whole
+# stack), same as start/up/logs.
 restart: check-env
-	docker compose $(COMPOSE_FILES) restart
+	docker compose $(COMPOSE_FILES) restart $(SERVICE)
 
 # SERVICE is required here (unlike `make up`) - recreates just that one
 # service with --no-deps, so a config/image change (mem_limit, cpus, an env
@@ -148,8 +150,11 @@ status: check-env
 migrate: check-env
 	docker compose $(COMPOSE_FILES) run --rm clickhouse-migrate
 
+# SERVICE is optional (default: whole stack). langfuse-down/observability-down
+# always run regardless of SERVICE - they only tear down their own opt-in
+# profile containers, not the core stack.
 stop down: check-env langfuse-down observability-down
-	docker compose $(COMPOSE_FILES) down
+	docker compose $(COMPOSE_FILES) down $(SERVICE)
 
 logs: check-env
 	docker compose $(COMPOSE_FILES) logs -f $(SERVICE)
