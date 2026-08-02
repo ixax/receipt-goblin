@@ -3,6 +3,8 @@ ingest_events_batch (runs in webhook-worker, takes build_event() outputs
 read back off Redis and inserts them with one client.insert() per table).
 Uses a fake in-memory client throughout; no real ClickHouse connection."""
 
+import json
+
 from conftest import load_capture
 
 from common import ingest_db as db
@@ -139,3 +141,41 @@ def test_ingest_events_batch_unsuccess_poison_row_isolated_to_ingest_dlq(monkeyp
     # agent_events/agent_messages (unaffected tables) still got their rows.
     event_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_events")
     assert len(event_rows) == 2
+
+
+def test_ingest_events_batch_success_backfills_skill_version_from_sibling_event(monkeypatch):
+    # success_with_agent_and_skill predates the <version> marker convention,
+    # so its own skill_version always resolves blank (see
+    # test_active_skill_name_and_version_success_splits_skill_argument).
+    # A second event in the same session, whose own message snapshot *does*
+    # carry a <version> marker for the same skill, should backfill the
+    # first event's skill_version rather than leaving it blank - this is
+    # the "куча данных без версии" fix: a judge/gate-style call with a
+    # reduced message list shouldn't lose version attribution when a
+    # sibling call in the same batch/session already resolved it.
+    no_version_payload = load_capture("success_with_agent_and_skill")
+    no_version_payload["litellm_call_id"] = "no-version-call"
+
+    with_version_payload = json.loads(json.dumps(no_version_payload))
+    with_version_payload["litellm_call_id"] = "with-version-call"
+    for message in with_version_payload["messages"]:
+        content = message.get("content")
+        if isinstance(content, str) and "- test-summarizer: Minimal test skill" in content:
+            message["content"] = content.replace(
+                "Use to verify the tracking stack end to end.\n- trace-debugging",
+                "Use to verify the tracking stack end to end. <version>1.2.3</version>\n- trace-debugging",
+            )
+
+    events = [db.build_event(no_version_payload), db.build_event(with_version_payload)]
+    assert events[0]["usage_row"][db._USAGE_SKILL_VERSION_IDX] == ""
+    assert events[1]["usage_row"][db._USAGE_SKILL_VERSION_IDX] == "1.2.3"
+
+    fake_client = _FakeClient()
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.ingest_events_batch(events)
+
+    usage_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_usage")
+    call_id_idx = db._USAGE_CALL_ID_IDX
+    versions = {row[call_id_idx]: row[db._USAGE_SKILL_VERSION_IDX] for row in usage_rows}
+    assert versions == {"no-version-call": "1.2.3", "with-version-call": "1.2.3"}

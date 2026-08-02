@@ -3,13 +3,13 @@ events - everything that opens a client and does INSERT/SELECT.
 See ingest_parsing.py's docstring for the DB-free parsing/classification
 half this module imports from, and AGENTS.md for the overall pipeline.
 """
-import json
 import logging
 from datetime import datetime, timezone
 from typing import Optional
 
 import clickhouse_connect
 
+from common import fastjson as json
 from common.config.clickhouse import CLICKHOUSE_DATABASE, CLICKHOUSE_HOST, CLICKHOUSE_PORT
 from common.config.clickhouse_credentials import CLICKHOUSE_PASSWORD, CLICKHOUSE_USER
 from common.ingest_parsing import (
@@ -21,6 +21,8 @@ from common.ingest_parsing import (
     _EVENT_COLUMNS,
     _EVENT_INGESTED_AT_IDX,
     _EVENT_SESSION_ID_IDX,
+    _EVENT_SKILL_NAME_IDX,
+    _EVENT_SKILL_VERSION_IDX,
     _EVENT_TIMESTAMP_IDX,
     _GROUP_COLUMNS,
     _GROUP_UPDATED_AT_IDX,
@@ -32,6 +34,8 @@ from common.ingest_parsing import (
     _MESSAGE_COLUMNS,
     _MESSAGE_INGESTED_AT_IDX,
     _MESSAGE_SESSION_ID_IDX,
+    _MESSAGE_SKILL_NAME_IDX,
+    _MESSAGE_SKILL_VERSION_IDX,
     _MESSAGE_TIMESTAMP_IDX,
     _SOURCE_COLUMNS,
     _SOURCE_INGESTED_AT_IDX,
@@ -41,11 +45,14 @@ from common.ingest_parsing import (
     _USAGE_COLUMNS,
     _USAGE_INGESTED_AT_IDX,
     _USAGE_SESSION_ID_IDX,
+    _USAGE_SKILL_NAME_IDX,
+    _USAGE_SKILL_VERSION_IDX,
     _USAGE_TIMESTAMP_IDX,
     _USER_COLUMNS,
     _USER_UPDATED_AT_IDX,
     _agent_invocation_id,
     _agent_invocation_rows,
+    _backfill_missing_skill_versions,
     _deserialize_row,
     _deserialize_row_multi,
     _derive_context,
@@ -297,7 +304,7 @@ def ingest_litellm_alert(payload: dict) -> None:
             payload.get("spend"),
             payload.get("max_budget"),
             payload.get("event_message") or "",
-            json.dumps(payload, default=str),
+            json.dumps(payload, default=str).decode(),
         ])
     except Exception:
         logger.exception("failed to ingest LiteLLM alert (event=%s)", payload.get("event", ""))
@@ -484,6 +491,11 @@ class _BatchWriter:
                 message_rows.append(message_row)
 
         _insert_clients(self.client, list(client_rows_by_id.values()))
+        _backfill_missing_skill_versions([
+            (event_rows, _EVENT_SESSION_ID_IDX, _EVENT_SKILL_NAME_IDX, _EVENT_SKILL_VERSION_IDX),
+            (usage_rows, _USAGE_SESSION_ID_IDX, _USAGE_SKILL_NAME_IDX, _USAGE_SKILL_VERSION_IDX),
+            (message_rows, _MESSAGE_SESSION_ID_IDX, _MESSAGE_SKILL_NAME_IDX, _MESSAGE_SKILL_VERSION_IDX),
+        ])
         return event_rows, usage_rows, message_rows
 
     def insert_with_dlq_fallback(
@@ -514,7 +526,7 @@ class _BatchWriter:
                 failure_rows.append([
                     datetime.now(timezone.utc), table, str(exc),
                     row[call_id_idx], row[session_id_idx],
-                    json.dumps(row, default=str),
+                    json.dumps(row, default=str).decode(),
                 ])
         if failure_rows:
             logger.error("dropped %d row(s) into ingest_dlq (stage=%s)", len(failure_rows), table)

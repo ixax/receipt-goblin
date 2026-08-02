@@ -6,11 +6,12 @@ for the DB-touching half and AGENTS.md for the overall ingest pipeline.
 agent_name/skill_name are recovered from the payload's own messages
 (Agent/Skill tool_use blocks), not from a CLI-side hook.
 """
-import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
+
+from common import fastjson as json
 
 _AGENT_ID_RE = re.compile(r"agentId:\s*([0-9a-f]+)")
 _COMMAND_NAME_RE = re.compile(r"<command-name>/?(.*?)</command-name>")
@@ -262,7 +263,7 @@ def _failed_tool_call(messages: Any) -> tuple[str, str, str]:
                 ):
                     return (
                         inner_block.get("name", ""),
-                        json.dumps(inner_block.get("input") or {}, default=str),
+                        json.dumps(inner_block.get("input") or {}, default=str).decode(),
                         error_text,
                     )
         return "", "", error_text
@@ -799,7 +800,7 @@ def _tool_display_arg(calculated_type: str, calculated_payload: dict) -> str:
     ingest instead of per dashboard row over JSON text."""
     if calculated_type == "skill_call":
         args = calculated_payload.get("args", "")
-        return args if isinstance(args, str) else json.dumps(args, default=str)
+        return args if isinstance(args, str) else json.dumps(args, default=str).decode()
     if calculated_type != "tool_call":
         return ""
     tools = calculated_payload.get("tools") or []
@@ -812,7 +813,7 @@ def _tool_display_arg(calculated_type: str, calculated_payload: dict) -> str:
         value = args.get(key)
         if value:
             return f"task_id: {value}" if key == "task_id" else str(value)
-    return json.dumps(args, default=str)
+    return json.dumps(args, default=str).decode()
 
 
 def _error_type(payload: dict) -> str:
@@ -888,17 +889,14 @@ def _source_row(payload: dict, session_id: str, now: datetime) -> list:
     """The ingest_raw row: full untouched original payload, written once
     per call so reparse.py can recompute calculated_type/provider without
     needing .capture/*.json.
-    Uses fastjson (orjson-backed), not the stdlib json this module
-    otherwise uses everywhere else - this is the one place re-serializing
-    the *entire* ~360KB-1.5MB payload, not a small substructure, so it's the
-    one worth the faster encoder (see AGENTS.md "Why a queue in front of
-    ClickHouse")."""
-    from common import fastjson
+    This is the one place re-serializing the *entire* ~360KB-1.5MB
+    payload, not a small substructure - see AGENTS.md "Why a queue in
+    front of ClickHouse"."""
     return [
         payload.get("litellm_call_id", ""),
         session_id,
         now,
-        fastjson.dumps(payload, default=str).decode(),
+        json.dumps(payload, default=str).decode(),
     ]
 
 
@@ -949,13 +947,19 @@ _INVOCATION_SPAWNED_AT_IDX = _INVOCATION_COLUMNS.index("spawned_at")
 _EVENT_TIMESTAMP_IDX = _EVENT_COLUMNS.index("timestamp")
 _EVENT_AGENT_NAME_IDX = _EVENT_COLUMNS.index("agent_name")
 _EVENT_AGENT_VERSION_IDX = _EVENT_COLUMNS.index("agent_version")
+_EVENT_SKILL_NAME_IDX = _EVENT_COLUMNS.index("skill_name")
+_EVENT_SKILL_VERSION_IDX = _EVENT_COLUMNS.index("skill_version")
 _EVENT_CLIENT_ID_IDX = _EVENT_COLUMNS.index("event_client_id")
 _USAGE_TIMESTAMP_IDX = _USAGE_COLUMNS.index("timestamp")
 _USAGE_AGENT_NAME_IDX = _USAGE_COLUMNS.index("agent_name")
 _USAGE_AGENT_VERSION_IDX = _USAGE_COLUMNS.index("agent_version")
+_USAGE_SKILL_NAME_IDX = _USAGE_COLUMNS.index("skill_name")
+_USAGE_SKILL_VERSION_IDX = _USAGE_COLUMNS.index("skill_version")
 _MESSAGE_TIMESTAMP_IDX = _MESSAGE_COLUMNS.index("timestamp")
 _MESSAGE_AGENT_NAME_IDX = _MESSAGE_COLUMNS.index("agent_name")
 _MESSAGE_AGENT_VERSION_IDX = _MESSAGE_COLUMNS.index("agent_version")
+_MESSAGE_SKILL_NAME_IDX = _MESSAGE_COLUMNS.index("skill_name")
+_MESSAGE_SKILL_VERSION_IDX = _MESSAGE_COLUMNS.index("skill_version")
 _SOURCE_INGESTED_AT_IDX = _SOURCE_COLUMNS.index("ingested_at")
 _GROUP_UPDATED_AT_IDX = _GROUP_COLUMNS.index("updated_at")
 _USER_UPDATED_AT_IDX = _USER_COLUMNS.index("updated_at")
@@ -979,6 +983,47 @@ def _agent_invocation_rows(
         [agent_id, session_id, subagent_type, agent_version, description, parent_agent_id, now]
         for agent_id, subagent_type, agent_version, description in invocations
     ]
+
+
+def _backfill_missing_skill_versions(
+    row_groups: list[tuple[list[list], int, int, int]],
+) -> None:
+    """Some events in a batch resolve skill_version from their own message
+    snapshot while sibling events for the same (session_id, skill_name)
+    don't.
+    For example, a judge/gate call carries a reduced message list that
+    never included the "available skills" listing
+    _version_marker_for_name scans for, even though a sibling call in the
+    same session did (see AGENTS.md incidents - this is the "куча данных
+    без версии" bug).
+    Fills those gaps in place from whatever non-empty version was
+    resolved elsewhere in the same batch for the same
+    (session_id, skill_name) pair.
+    row_groups is a list of
+    (rows, session_id_idx, skill_name_idx, skill_version_idx) - one entry
+    per fact table (event/usage/message) sharing this batch, since a
+    version resolved for one table's row should also backfill the
+    others'.
+    Each table's own session_id/skill_name/skill_version column
+    positions are passed in rather than assumed shared across tables.
+    Mutates rows in place; does nothing if no batch row resolved a
+    version for a given pair."""
+    best: dict[tuple[str, str], str] = {}
+    for rows, session_id_idx, name_idx, version_idx in row_groups:
+        for row in rows:
+            skill_name = row[name_idx]
+            version = row[version_idx]
+            if skill_name and version:
+                best[(row[session_id_idx], skill_name)] = version
+    if not best:
+        return
+    for rows, session_id_idx, name_idx, version_idx in row_groups:
+        for row in rows:
+            skill_name = row[name_idx]
+            if skill_name and not row[version_idx]:
+                version = best.get((row[session_id_idx], skill_name))
+                if version:
+                    row[version_idx] = version
 
 
 def _group_row(payload: dict, now: Optional[datetime] = None) -> Optional[list]:
@@ -1089,7 +1134,7 @@ def _event_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
             # once the calling client's user_agent has been resolved to an id
             # (build_event() has no DB client to do it here).
         calculated_type,
-        json.dumps(calculated_payload, default=str),
+        json.dumps(calculated_payload, default=str).decode(),
         now or datetime.now(timezone.utc),
     ]
 

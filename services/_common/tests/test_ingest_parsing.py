@@ -863,3 +863,70 @@ def test_build_event_success_blank_parent_agent_id_for_main_session():
     assert event["agent_invocation_id"] == ""
     row = dict(zip(ip._INVOCATION_COLUMNS, event["invocation_rows"][0]))
     assert row["parent_agent_id"] == ""
+
+
+# ---------------------------------------------------------------------------
+# _backfill_missing_skill_versions
+# ---------------------------------------------------------------------------
+
+
+def test_backfill_missing_skill_versions_fills_from_sibling_row_same_table():
+    # session_id, skill_name, skill_version
+    rows = [
+        ["sess-1", "md-format", "1.7.1"],
+        ["sess-1", "md-format", ""],
+    ]
+    ip._backfill_missing_skill_versions([(rows, 0, 1, 2)])
+    assert rows[1][2] == "1.7.1"
+
+
+def test_backfill_missing_skill_versions_fills_across_tables():
+    event_rows = [["sess-1", "md-format", ""]]
+    usage_rows = [["sess-1", "md-format", "1.7.1"]]
+    message_rows = [["sess-1", "md-format", ""]]
+    ip._backfill_missing_skill_versions([
+        (event_rows, 0, 1, 2),
+        (usage_rows, 0, 1, 2),
+        (message_rows, 0, 1, 2),
+    ])
+    assert event_rows[0][2] == "1.7.1"
+    assert message_rows[0][2] == "1.7.1"
+
+
+def test_backfill_missing_skill_versions_does_not_leak_across_sessions():
+    rows = [
+        ["sess-1", "md-format", "1.7.1"],
+        ["sess-2", "md-format", ""],
+    ]
+    ip._backfill_missing_skill_versions([(rows, 0, 1, 2)])
+    assert rows[1][2] == ""
+
+
+def test_backfill_missing_skill_versions_does_not_leak_across_skill_names():
+    rows = [
+        ["sess-1", "md-format", "1.7.1"],
+        ["sess-1", "clickhouse-sql", ""],
+    ]
+    ip._backfill_missing_skill_versions([(rows, 0, 1, 2)])
+    assert rows[1][2] == ""
+
+
+def test_backfill_missing_skill_versions_leaves_genuinely_versionless_rows_blank():
+    # No row in the batch ever resolved a version for this (session, skill) -
+    # nothing to backfill from, so it must stay blank rather than error.
+    rows = [
+        ["sess-1", "Explore", ""],
+        ["sess-1", "Explore", ""],
+    ]
+    ip._backfill_missing_skill_versions([(rows, 0, 1, 2)])
+    assert rows[0][2] == ""
+    assert rows[1][2] == ""
+
+
+def test_backfill_missing_skill_versions_ignores_rows_with_no_skill_name():
+    rows = [
+        ["sess-1", "", ""],
+        ["sess-1", "md-format", "1.7.1"],
+    ]
+    ip._backfill_missing_skill_versions([(rows, 0, 1, 2)])
+    assert rows[0] == ["sess-1", "", ""]

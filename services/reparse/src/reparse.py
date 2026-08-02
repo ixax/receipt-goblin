@@ -12,9 +12,9 @@ Safe to re-run any number of times: the target tables are all
 ReplacingMergeTree, keyed so this run's now() always wins.
 """
 import argparse
-import json
 from datetime import datetime, timezone
 
+from common import fastjson as json
 from common.ingest_db import get_client, reparse_event
 from common.logging_config import create_logger
 
