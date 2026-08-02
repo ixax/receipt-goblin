@@ -15,11 +15,15 @@ All six ship as `dashboard.grafana.app/v2beta1` schema JSON; `metadata.name` is 
 All follow the same panel/build conventions - read the `dashboard-panels` skill before editing any dashboard's panels, don't treat each file as bespoke.
 `dashboards-expert` owns every panel in every dashboard directly, including `agents_overview.json`'s Dynamic Text pair (panel-76/77) - see that agent's own frontmatter for the two on-demand skills (`dynamictext-panel-queries`, `dynamictext-panel-design-system`) it reads for Dynamic-Text-specific query/styling work.
 
-- `services/grafana/dashboards/agents_overview.json` - "Agents Overview" dashboard, uid `agents-overview`. Use the `dashboard-parser` agent for current tab/panel structure, don't hardcode a count here - it drifts.
+- `services/grafana/dashboards/agents_overview.json` - "Agents Overview" dashboard, uid `agents-overview`.
+  Use the `dashboard-parser` agent for current tab/panel structure, don't hardcode a count here - it drifts.
 - `services/grafana/dashboards-health/clickhouse.json` - uid `clickhouse-health`, ClickHouse process/replication health panels, fed by Prometheus (`observability` profile, see `agent_docs/services/observability.md`).
-- `services/grafana/dashboards-health/query_performance.json` - uid `query-performance`, per-panel ClickHouse query cost for `agents_overview.json`, sourced from `system.query_log` via the `log_comment` tag set by `tag_panel_queries.py`. Mirrors `agents_overview.json`'s tab structure.
+- `services/grafana/dashboards-health/query_performance.json` - uid `query-performance`, per-panel ClickHouse query cost for `agents_overview.json`, sourced from `system.query_log` via the `log_comment` tag set by `tag_panel_queries.py`.
+  Mirrors `agents_overview.json`'s tab structure.
 - `services/grafana/dashboards-health/docker_containers.json` - uid `docker-containers`, "Host"/"Containers" tabs: per-container CPU/memory/network/disk/process metrics (cAdvisor) plus whole-host metrics (node_exporter), fed by Prometheus (`observability` profile).
 - `services/grafana/dashboards-health/infra_overview.json` - uid `infra-overview`, up/down status, request rate/latency, and worker queue health for every service added by the observability migration, fed by Prometheus.
   Conceptually the dashboard behind the infra-health alert rules (`services/grafana/provisioning/alerting/rules.yml`).
   Its "Load balancer" tab's "Access log"/"Error log" sub-tabs are Logs panels fed by Loki instead - see `agent_docs/services/load-balancer.md`'s "Access/error logs" section.
-- `services/grafana/dashboards-health/litellm_alerting.json` - uid `litellm-alerting`, LiteLLM native alerts (budget/outage/exception/hang signals) alongside our own derived reliability metrics (error rate, latency, spend, ingest pipeline health). Fed directly by ClickHouse (`agent_events`/`agent_usage`), not Prometheus - available without the `observability` profile. Conceptually the dashboard behind the llm-alerts alert rules (`services/grafana/provisioning/alerting/rules.yml`).
+- `services/grafana/dashboards-health/litellm_alerting.json` - uid `litellm-alerting`, LiteLLM native alerts (budget/outage/exception/hang signals) alongside our own derived reliability metrics (error rate, latency, spend, ingest pipeline health).
+  Fed directly by ClickHouse (`agent_events`/`agent_usage`), not Prometheus - available without the `observability` profile.
+  Conceptually the dashboard behind the llm-alerts alert rules (`services/grafana/provisioning/alerting/rules.yml`).

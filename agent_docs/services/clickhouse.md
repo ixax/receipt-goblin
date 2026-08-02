@@ -30,7 +30,7 @@ Must live under `users.d`, not `config.d` - ClickHouse merges the two into `conf
 
 ## `services/init/` - role/user provisioning (`make init`)
 
-- `init_clickhouse_users.py` - interactive, stdlib-only first-run script (`make init`), the *only* place ClickHouse users/roles/grants get created (not on every `docker compose up` - see `services/migrate/src/migrate.py`'s own docstring for why that changed).
+- `init_clickhouse_users.py` - interactive, stdlib-only first-run script (`make init`), the only place ClickHouse users/roles/grants get created (not on every `docker compose up` - see `services/migrate/src/migrate.py`'s own docstring for why that changed).
   Asks every question first (database name, bootstrap creds, then per role), writes `.env` once at the end, brings up `clickhouse` alone, issues every `CREATE USER`/`GRANT` via `docker compose exec clickhouse clickhouse-client`, then stops `clickhouse` again.
   Idempotent - safe to re-run; existing usernames/passwords already in `.env` are reused, not regenerated.
 - `ch_roles.py` - loads `config.yml`'s role/grant definitions via a deliberately restricted (not general-YAML) parser: one top-level `roles:` list, flat scalar fields plus one nested `grants:` list.
@@ -44,18 +44,31 @@ Must live under `users.d`, not `config.d` - ClickHouse merges the two into `conf
 One line each: purpose, plus partitioning if it has one.
 The half-year `PARTITION BY` convention itself is documented in `AGENTS.md`'s Coding Anti-Patterns ("no TTL-based auto-delete") - not restated here, only which tables use it.
 
-- `agent_invocations` - `agent_id` -> `subagent_type` lookup, recovered from an orchestrator's Agent tool_use/tool_result pair. Tiny, no partitioning.
-- `session_git_branch` - one row per session's git branch/repo, captured once at `SessionStart`. `issue_id` is a ticket key parsed out of the branch name. No partitioning.
-- `plan_proposals` - one row per `ExitPlanMode` call (Claude Code only), captured by a `PreToolUse` hook since the plan text isn't recoverable from LiteLLM's payload. Insert-only, no partitioning.
-- `ai_gateway_groups` - `group_id` -> `group_name` (LiteLLM Team) lookup, latest-name-wins. No partitioning.
-- `ai_gateway_users` - `user_id` -> (`group_id`, `user_name`, `user_agent`) lookup, latest-wins. No partitioning.
-- `clients` - one row per distinct calling-client user-agent string, `id = cityHash64(value)`. No partitioning.
-- `agent_events` - one row per lifecycle event (hook/tool call), the main trace table. **Half-year `PARTITION BY`.**
-- `agent_usage` - one row per model call (tokens/cost/provider). **Half-year `PARTITION BY`.**
-- `agent_messages` - one row per turn, holding prompt/response text. **Half-year `PARTITION BY`.**
-- `ingest_raw` - full untouched original payload per call, write-once, ZSTD(3)-compressed, the source for reparsing. **Half-year `PARTITION BY`.**
-- `ingest_dlq` - dead-letter table for rows a table's `insert()` rejects; triage feed, not a source of truth. **Half-year `PARTITION BY`** (moved off a 30-day TTL by migration 011).
-- `litellm_alerts` - LiteLLM's native alerting webhook events (budget/spend crossings, outages, DB exceptions), raw-payload-preserving since only the budget-event shape is fully documented. **Half-year `PARTITION BY`.**
+- `agent_invocations` - `agent_id` -> `subagent_type` lookup, recovered from an orchestrator's Agent tool_use/tool_result pair.
+  Tiny, no partitioning.
+- `session_git_branch` - one row per session's git branch/repo, captured once at `SessionStart`.
+  `issue_id` is a ticket key parsed out of the branch name.
+  No partitioning.
+- `plan_proposals` - one row per `ExitPlanMode` call (Claude Code only), captured by a `PreToolUse` hook since the plan text isn't recoverable from LiteLLM's payload.
+  Insert-only, no partitioning.
+- `ai_gateway_groups` - `group_id` -> `group_name` (LiteLLM Team) lookup, latest-name-wins.
+  No partitioning.
+- `ai_gateway_users` - `user_id` -> (`group_id`, `user_name`, `user_agent`) lookup, latest-wins.
+  No partitioning.
+- `clients` - one row per distinct calling-client user-agent string, `id = cityHash64(value)`.
+  No partitioning.
+- `agent_events` - one row per lifecycle event (hook/tool call), the main trace table.
+  Half-year `PARTITION BY`.
+- `agent_usage` - one row per model call (tokens/cost/provider).
+  Half-year `PARTITION BY`.
+- `agent_messages` - one row per turn, holding prompt/response text.
+  Half-year `PARTITION BY`.
+- `ingest_raw` - full untouched original payload per call, write-once, ZSTD(3)-compressed, the source for reparsing.
+  Half-year `PARTITION BY`.
+- `ingest_dlq` - dead-letter table for rows a table's `insert()` rejects; triage feed, not a source of truth.
+  Half-year `PARTITION BY` (moved off a 30-day TTL by migration 011).
+- `litellm_alerts` - LiteLLM's native alerting webhook events (budget/spend crossings, outages, DB exceptions), raw-payload-preserving since only the budget-event shape is fully documented.
+  Half-year `PARTITION BY`.
 
 ## Migrations (`services/clickhouse/migrations/`)
 
@@ -63,13 +76,23 @@ Applied by the `clickhouse-migrate` service (`services/migrate/src/migrate.py`, 
 See `.claude/skills/clickhouse-migration/SKILL.md` before creating/editing a migration file - this section is what exists, not how to add to it.
 `009`/`010` don't exist in the sequence - no evidence in the migration files themselves of why; a factual gap, not an invented explanation.
 
-- `001` - one-time recreate+swap of `agent_events`/`agent_usage`/`agent_messages` onto `ReplacingMergeTree(ingested_at)` + `litellm_call_id` in `ORDER BY`; adds `event_sources` (now `ingest_raw`). Manual only.
-- `002` - adds `ai_gateway_groups`/`ai_gateway_users` dimension tables; drops the old `group_alias` column. Manual only, backfill via `make reparse-all`.
-- `003` - adds `user_key_hash` (virtual-key identity) and `user_agent` columns. Manual only, backfill via `make reparse-all`.
-- `004` - adds `session_git_branch.issue_id`, backfilled in-SQL via `extract()` since this table has no `ingest_raw` counterpart to reparse from. Manual only.
-- `005` - adds `ingest_failures` (now `ingest_dlq`), originally with a 30-day TTL. Auto-applied.
-- `006` - lowers `event_sources.raw_payload_full` codec from `ZSTD(19)` to `ZSTD(3)`, fixing the ingest bottleneck that codec caused under load. Auto-applied.
-- `007` - pure rename: `event_sources` -> `ingest_raw`, `ingest_failures` -> `ingest_dlq`. Auto-applied.
-- `008` - adds `session_git_branch.session_id_hash` (`MATERIALIZED cityHash64(session_id)`) backing `session_git_branch_dict`, replacing a per-panel `GROUP BY` scan. Auto-applied.
-- `011` - moves `ingest_dlq` off its 30-day TTL onto the half-year `PARTITION BY` convention via recreate+swap. Auto-applied.
-- `012` - adds `litellm_alerts`. Auto-applied.
+- `001` - one-time recreate+swap of `agent_events`/`agent_usage`/`agent_messages` onto `ReplacingMergeTree(ingested_at)` + `litellm_call_id` in `ORDER BY`; adds `event_sources` (now `ingest_raw`).
+  Manual only.
+- `002` - adds `ai_gateway_groups`/`ai_gateway_users` dimension tables; drops the old `group_alias` column.
+  Manual only, backfill via `make reparse-all`.
+- `003` - adds `user_key_hash` (virtual-key identity) and `user_agent` columns.
+  Manual only, backfill via `make reparse-all`.
+- `004` - adds `session_git_branch.issue_id`, backfilled in-SQL via `extract()` since this table has no `ingest_raw` counterpart to reparse from.
+  Manual only.
+- `005` - adds `ingest_failures` (now `ingest_dlq`), originally with a 30-day TTL.
+  Auto-applied.
+- `006` - lowers `event_sources.raw_payload_full` codec from `ZSTD(19)` to `ZSTD(3)`, fixing the ingest bottleneck that codec caused under load.
+  Auto-applied.
+- `007` - pure rename: `event_sources` -> `ingest_raw`, `ingest_failures` -> `ingest_dlq`.
+  Auto-applied.
+- `008` - adds `session_git_branch.session_id_hash` (`MATERIALIZED cityHash64(session_id)`) backing `session_git_branch_dict`, replacing a per-panel `GROUP BY` scan.
+  Auto-applied.
+- `011` - moves `ingest_dlq` off its 30-day TTL onto the half-year `PARTITION BY` convention via recreate+swap.
+  Auto-applied.
+- `012` - adds `litellm_alerts`.
+  Auto-applied.

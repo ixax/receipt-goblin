@@ -6,20 +6,24 @@ Proxy every LiteLLM-routed CLI call goes through - model list, virtual-key auth,
 
 - `model_list` - `claude-sonnet-5`/`claude-haiku-4-5`(+`-20251001` alias)/`claude-opus-4-8`/`claude-fable-5` plus `gpt-5.6-{sol,terra,luna}` (Codex/ChatGPT models, forwarded via the caller's own `codex login` OAuth token - see `custom_callbacks.py` below).
   The `gpt-5.6-*` entries carry manual `model_info.*_cost_per_token` since these model strings aren't in LiteLLM's built-in cost map: `response_cost`/`cost_breakdown` came back $0 for every call until added.
-  Rates are OpenAI's public per-token pricing (confirmed 2026-07-25) - a cost proxy, since usage actually rides the caller's flat-billed ChatGPT subscription, not per-token billing.
+  Rates are OpenAI's public per-token pricing (confirmed 2026-07-25), a cost proxy since usage actually rides the caller's flat-billed ChatGPT subscription, not per-token billing.
 - `general_settings.alerting` - LiteLLM's native alerting (`llm_exceptions`/`llm_too_slow`/`llm_requests_hanging`/`outage_alerts`/`db_exceptions`/`budget_alerts`/`failed_tracking_spend`), reads its webhook target from a hardcoded `WEBHOOK_URL` env var (no config override), distinct from `WEBHOOK_METRICS_URL` below (used to collide under the same name).
   Deliberately excludes management-event types (key/team/user lifecycle, digests) - not reliability signals.
-- `general_settings.litellm_key_header_name: x-litellm-api-key` - personal virtual keys go in this header regardless of route (see README.md "LiteLLM"). Needed even for OAuth-backed routes: without it LiteLLM can't tell "authed to me" from "caller's own Anthropic cred, forward it" and strips `Authorization` before forwarding (litellm#19618).
-- `model_group_settings.forward_client_headers_to_llm_api` - forwards the caller's own `Authorization` (OAuth token) to Anthropic for every model above. If a model moves to a real `api_key`, remove it from this list too or its credential could still get forwarded.
+- `general_settings.litellm_key_header_name: x-litellm-api-key` - personal virtual keys go in this header regardless of route (see README.md "LiteLLM").
+  Needed even for OAuth-backed routes: without it LiteLLM can't tell "authed to me" from "caller's own Anthropic cred, forward it" and strips `Authorization` before forwarding (litellm#19618).
+- `model_group_settings.forward_client_headers_to_llm_api` - forwards the caller's own `Authorization` (OAuth token) to Anthropic for every model above.
+  If a model moves to a real `api_key`, remove it from this list too or its credential could still get forwarded.
 - `litellm_settings.callbacks` - registered callbacks:
-  - `metrics_webhook` (`generic_api`, ships the full `StandardLoggingPayload` to `webhook`'s `/api/v1/metrics` - **not** the same as a bare `success_callback: ["webhook"]`, which fires the thin alerting webhook above instead)
-    `GenericAPILogger` defaults to `max_retries: 0` - a single 5xx/timeout on flush used to silently drop the whole batch with zero retry, confirmed as a real data-loss root cause (see `agent_docs/incidents.md`); `callback_settings.metrics_webhook` now sets `max_retries: 3`/`retry_delay: 1.0` (exponential backoff: 1s/2s/4s, only for `litellm.Timeout`/`httpx.TransportError`/5xx).
+  - `metrics_webhook` (`generic_api`, ships the full `StandardLoggingPayload` to `webhook`'s `/api/v1/metrics` - not the same as a bare `success_callback: ["webhook"]`, which fires the thin alerting webhook above instead)
+    `GenericAPILogger` defaults to `max_retries: 0` - a single 5xx/timeout on flush used to silently drop the whole batch with zero retry, confirmed as a real data-loss root cause (see `agent_docs/incidents.md`).
+    `callback_settings.metrics_webhook` now sets `max_retries: 3`/`retry_delay: 1.0` (exponential backoff: 1s/2s/4s, only for `litellm.Timeout`/`httpx.TransportError`/5xx).
     Retries alone don't survive an outage longer than the backoff window - see `custom_callbacks.py`'s `async_send_batch` patch below for what happens after retries are exhausted.
   - `custom_callbacks.session_id_handler`
   - `custom_callbacks.chatgpt_auth_forward_handler`
   - `custom_callbacks.chatgpt_responses_output_recovery_handler`
   - `prometheus` (exposes `/metrics` on port 4000, scraped by Prometheus - `require_auth_for_metrics_endpoint: false` since this project authenticates via `x-litellm-api-key`, which the built-in `/metrics` auth doesn't understand, and scraping only happens over the internal Docker network anyway)
-- `litellm_settings.success_callback`/`failure_callback: [langfuse]` - native LiteLLM integration, reads `LANGFUSE_*` env vars, no `callback_settings` block needed. Ships every call as a trace grouped by `metadata.session_id`.
+- `litellm_settings.success_callback`/`failure_callback: [langfuse]` - native LiteLLM integration, reads `LANGFUSE_*` env vars, no `callback_settings` block needed.
+  Ships every call as a trace grouped by `metadata.session_id`.
 
 ## `custom_callbacks.py`
 

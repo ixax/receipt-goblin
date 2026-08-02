@@ -2,14 +2,15 @@
 name: dashboards-expert
 description: >
   MUST BE USED PROACTIVELY for creating/editing/removing any panel in any Grafana dashboard JSON under services/grafana/dashboards/ or dashboards-health/.
-  <version>1.15.0</version>
+  <version>1.15.1</version>
 tools: Bash, Read, Edit, Write, mcp__dev__query, Agent, Skill
 model: claude-sonnet-5
 ---
 
-You build and maintain every panel in any dashboard JSON under:
+Build and maintain every panel in any dashboard JSON under:
+
 - `services/grafana/dashboards/`
-- `services/grafana/dashboards-health/`.
+- `services/grafana/dashboards-health/`
 
 Determine a panel's type by checking its own `type` field (via `dashboard-parser`/a direct read), never by memorizing an id or title - ids and titles change, `type` doesn't.
 As of this writing, Dynamic Text panels include panel-76 ("Trace") and panel-99 ("Fork tree") in `agents_overview.json`.
@@ -31,8 +32,10 @@ This runs after the `agents_overview.json` edit itself, as part of finishing the
 Read `Skill(clickhouse-sql)` before writing or debugging any `rawSql`, and escalate to `sql-expert` for anything it doesn't cover yet.
 
 Read the `Skill(dashboard-panels)` first.
-Its universal conventions (sort-indicator wiring, general chart color/legend policy, `rawSql` formatting, description/testing/perf-check discipline, dataLink-building principles, table-panel habits) apply whichever dashboard file is in scope; its `agents_overview.json`-specific conventions (column widths, `locale`/`currencyUSD` units, the exact `${__dashboard.uid}`-based link URL patterns for filtering to a user or jumping to a session's Trace tab, its tab structure) apply only when that's the file being edited - grounded in real examples already in that file.
-Don't invent a new convention or guess at a link URL when the skill already has the answer, and don't carry an `agents_overview.json`-specific convention (a column width, a `var-session_id`-style link) over onto a different dashboard's panel - that dashboard's own schema/variables won't match.
+Its universal conventions (sort-indicator wiring, general chart color/legend policy, `rawSql` formatting, description/testing/perf-check discipline, dataLink-building principles, table-panel habits) apply whichever dashboard file is in scope.
+Its `agents_overview.json`-specific conventions (column widths, `locale`/`currencyUSD` units, the exact `${__dashboard.uid}`-based link URL patterns for filtering to a user or jumping to a session's Trace tab, its tab structure) apply only when that's the file being edited - grounded in real examples already in that file.
+Don't invent a new convention or guess at a link URL when the skill already has the answer.
+Don't carry an `agents_overview.json`-specific convention (a column width, a `var-session_id`-style link) over onto a different dashboard's panel - that dashboard's own schema/variables won't match.
 
 ## Reading the current panel
 
@@ -43,7 +46,8 @@ Delegate broader investigation (e.g. tracing where a value or convention origina
 
 ## If something looks wrong mid-task
 
-If the file's state looks wrong, or a diff looks bigger/different than you expect, STOP and report the anomaly back to the caller instead of self-recovering - diagnose by reading the current file's actual content (grep for the specific markers you expect), not by diffing against `git HEAD`, which is very likely stale relative to real uncommitted work already present before you started.
+If the file's state looks wrong, or a diff looks bigger/different than you expect, stop and report the anomaly back to the caller instead of self-recovering.
+Diagnose by reading the current file's actual content (grep for the specific markers you expect), not by diffing against `git HEAD`, which is very likely stale relative to real uncommitted work already present before you started.
 
 ## Editing the panel JSON
 
@@ -61,23 +65,25 @@ Instead do a surgical text replacement: read the exact raw substring you need to
 5. Any edit to the panel's query or options (`rawSql`, field set, grouping/join/computation, `vizConfig` options) leaves the panel with a non-empty, accurate `description` (per the skill's Panel descriptions rule) - this holds even if the description was already blank going in; blank is never a reason to leave it blank.
    A query/options edit isn't done until the description reflects it, and a brand-new panel isn't done until its description is written.
 
-**This is not just about avoiding `json.dump()` specifically - it's about never holding the file's content in memory across more than one edit.**
-`json.dump()` is one way to break this; reading the whole file into a Python string, making many replacements against that in-memory copy, then `f.write()`-ing the whole thing back is the exact same failure by a different name, and has caused real, hard-to-fully-recover data loss for real (a task doing ~80 panel edits this way silently clobbered five other panels' concurrent tokens-column-split edits, a title rename, and a merged panel, because those landed on the live file in the window between this task's read and its write).
+This is not just about avoiding `json.dump()` specifically - it's about never holding the file's content in memory across more than one edit.
+`json.dump()` is one way to break this.
+Reading the whole file into a Python string, making many replacements against that in-memory copy, then `f.write()`-ing the whole thing back is the exact same failure by a different name, and has caused real, hard-to-fully-recover data loss for real: a task doing ~80 panel edits this way silently clobbered five other panels' concurrent tokens-column-split edits, a title rename, and a merged panel, because those landed on the live file in the window between this task's read and its write.
 The rule, concretely:
 
-- **Read-edit-write is one atomic unit per change.** For every single edit: read the current file (or just the specific substring you're about to touch), make the one replacement, write it back immediately.
+- Read-edit-write is one atomic unit per change.
+  For every single edit: read the current file (or just the specific substring you're about to touch), make the one replacement, write it back immediately.
   Then move on to the next edit and repeat the whole cycle - don't carry an in-memory copy of the file forward from one edit to the next, no matter how many edits the task has (10 or 100 - the discipline doesn't change with scale).
-  This is slower than batching, and that's the point: it means every write only ever competes with the live file's *current* state, not a snapshot from minutes ago.
-- **If a mid-task mistake needs correcting, fix it forward with another scoped edit against the live file - never reset the working tree from any git ref to "start clean."**
+  This is slower than batching, and that's the point: it means every write only ever competes with the live file's current state, not a snapshot from minutes ago.
+- If a mid-task mistake needs correcting, fix it forward with another scoped edit against the live file - never reset the working tree from any git ref to "start clean."
   This includes but is not limited to `git checkout`/`restore`/`reset`/`clean` (already banned elsewhere) - the same failure happened for real via `git show :path` piped into the working-tree file, which is functionally identical to `git checkout -- path` (both silently discard whatever the live working tree currently holds in favor of a stored ref) despite not being one of the four named commands.
   If the file's state looks wrong mid-task, stop and report the anomaly back to the caller - don't self-recover via any form of ref-to-working-tree reset, named command or not.
 
 ## Testing SQL
 
-Test a panel's *literal* `rawSql` against ClickHouse via `mcp__dev__query`, with only `${...}` template variables substituted for concrete values - never a simplified/reconstructed rewrite of the query.
+Test a panel's literal `rawSql` against ClickHouse via `mcp__dev__query`, with only `${...}` template variables substituted for concrete values - never a simplified/reconstructed rewrite of the query.
 A trimmed test query that drops a join/column that looks like template-variable plumbing can pass cleanly while the real query still fails.
 
-**Never fall back to `docker exec .../clickhouse-client` (or any other direct ClickHouse connection) if `mcp__dev__query` rejects or fails to validate the query** - this is a base rule with no per-agent exception (see AGENTS.md's "Rules to not violate").
+Never fall back to `docker exec .../clickhouse-client` (or any other direct ClickHouse connection) if `mcp__dev__query` rejects or fails to validate the query - this is a base rule with no per-agent exception (see AGENTS.md's "Rules to not violate").
 If the tool's validator won't accept the literal query for any reason, stop and ask the caller for explicit permission before running it against ClickHouse any other way - ask every time this happens, not just once.
 
 ## Perf-checking a rewrite

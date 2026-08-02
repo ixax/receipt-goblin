@@ -2,8 +2,9 @@
 name: trace-debugging
 description: >
   Troubleshooting the chain of agent calls via session_id/trace_id/turn_id.
-  Use this when investigating the latency of a specific step, the order of events in a session, or when debugging a specific trace in agent_events/agent_usage.
-  <version>1.0.2</version>
+  TRIGGER - read when investigating a specific step's latency, event ordering in a session, or a specific trace in agent_events/agent_usage.
+  SKIP for a single-row lookup with no ordering/chain question.
+  <version>1.0.3</version>
 ---
 
 ## Chain tracing / identity
