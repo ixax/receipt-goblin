@@ -213,14 +213,22 @@ observability-status: check-env
 # services/webhook/tests/test_server.py exists. No live ClickHouse needed -
 # see each dir's conftest.py. Needs services/webhook/requirements-dev.txt
 # installed in .venv first: `pip install -r
-# services/webhook/requirements-dev.txt`. services/webhook/pytest.ini silences
+# services/webhook/requirements-dev.txt`. The root `pytest.ini` (shared by
+# every service's invocation below, not owned by any one service) silences
 # dependency warnings (urllib3/clickhouse-connect deprecation noise
 # unrelated to this repo's own code).
+# services/mcp-dev/tests is NOT included below: its `src/server.py` imports
+# the `mcp` SDK (`mcp.server.fastmcp`), which requires Python >=3.10 and
+# can't be installed into this repo's Python 3.9 `.venv` - run it
+# separately with a Python 3.10+ interpreter/venv that has
+# services/mcp-dev/requirements.txt installed
+# (`python3.11 -m pytest -c pytest.ini services/mcp-dev/tests`) until the
+# shared `.venv` is upgraded.
 test: check-env
-	.venv/bin/python -m pytest -c services/webhook/pytest.ini services/worker/tests
-	.venv/bin/python -m pytest -c services/webhook/pytest.ini services/reparse/tests
-	.venv/bin/python -m pytest -c services/webhook/pytest.ini services/loadtest/tests
-	.venv/bin/python -m pytest -c services/webhook/pytest.ini services/_common/tests
+	.venv/bin/python -m pytest -c pytest.ini services/worker/tests
+	.venv/bin/python -m pytest -c pytest.ini services/reparse/tests
+	.venv/bin/python -m pytest -c pytest.ini services/loadtest/tests
+	.venv/bin/python -m pytest -c pytest.ini services/_common/tests
 
 # Runs hooks/harness_audit/tests (pure Python unittest, no dependencies).
 test-harness-audit:

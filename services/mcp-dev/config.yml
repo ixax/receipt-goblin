@@ -20,6 +20,7 @@ allowed_tables:
   - litellm_alerts
   - plan_proposals
   - schema_migrations
+  - clients
   # Narrow, deliberate exception to the system.* ban below (server.py's
   # _validate_readonly_sql special-cases "system.query_log" specifically -
   # this bare name alone doesn't grant access, the schema-qualifier check
@@ -76,3 +77,18 @@ max_concurrent_queries: 2
 
 # Hard cap on queries per query() call when sql is a list.
 max_batch_queries: 10
+
+# ClickHouse `max_execution_time` (seconds) for `query`/`profile_query`.
+# `max_execution_time_default_s` is used when a caller doesn't pass the
+# tool's own `max_duration_s` parameter.
+# `max_execution_time_hard_cap_s` is the absolute ceiling - a caller's
+# `max_duration_s` is clamped to this, the same way `max_rows` is clamped
+# to `max_rows_hard_cap` above.
+max_execution_time_default_s: 10
+
+# TEMPORARILY raised from 10 to unblock correctness/perf verification of
+# panel-76 ("Trace"): its original (pre-optimization) rawSql doesn't
+# complete within 10s even on a small session, so there was nothing to
+# diff a rewrite's output against.
+# Revert to 10 once that panel's optimization work is done.
+max_execution_time_hard_cap_s: 60

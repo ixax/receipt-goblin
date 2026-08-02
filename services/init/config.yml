@@ -67,6 +67,8 @@ roles:
       - "GRANT SELECT ON {database}.*"
       - "GRANT SELECT ON system.query_log"
       - "GRANT SYSTEM FLUSH LOGS ON *.*"
+      - "GRANT dictGet ON {database}.ai_gateway_users_dict"
+      - "GRANT dictGet ON {database}.session_git_branch_dict"
 
   - name: mcp_stats
     user_env: CLICKHOUSE_MCP_STATS_USER

@@ -145,7 +145,7 @@ run`/`uv sync`, regardless of whatever `python3` resolves to on `PATH`.
 automatically — no more hand-run `pip install` step.
 
 **`Makefile`** — `test:` becomes `uv run pytest -c
-services/webhook/pytest.ini services/webhook/tests` (same target,
+pytest.ini services/webhook/tests` (same target,
 underlying `.venv` now uv-managed instead of hand-built); `test-harness-audit`
 stays on plain `python3` (stdlib-only `unittest`, no deps, no version
 sensitivity worth pinning).
@@ -237,7 +237,7 @@ real deps).
   demonstrating the "stays in sync" property.
 
 **Part 2 (uv adoption):**
-- `rm -rf .venv && uv run pytest -c services/webhook/pytest.ini
+- `rm -rf .venv && uv run pytest -c pytest.ini
   services/webhook/tests` from a clean checkout — confirm `uv` builds
   `.venv` from `.python-version`/`pyproject.toml` and tests pass, with no
   manual `pip install` step.
