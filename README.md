@@ -252,7 +252,9 @@ operation only.
 
 ## Running tests
 
-`make test` runs `services/worker/tests`, `services/reparse/tests`, `services/loadtest/tests`, and `services/_common/tests` as separate pytest invocations (see the `Makefile`'s own `test` target comment for why not one combined run) - together covering every function in `services/_common/src/ingest_parsing.py`/`ingest_db.py` that doesn't touch ClickHouse (row/id/text parsing, not the `client.insert`/`client.query` calls), plus `worker.py`/`reparse.py`/`loadtest.py`'s own logic.
+`make test` runs `make test-services` (pytest suite) followed by `make test-hooks` (harness audit unit tests).
+`make test-services` runs `services/webhook/tests`, `services/worker/tests`, `services/reparse/tests`, `services/loadtest/tests`, and `services/_common/tests` as separate pytest invocations (see the `Makefile`'s own `test-services` target comment for why not one combined run) - together covering every function in `services/_common/src/ingest_parsing.py`/`ingest_db.py` that doesn't touch ClickHouse (row/id/text parsing, not the `client.insert`/`client.query` calls), plus `webhook.py`/`worker.py`/`reparse.py`/`loadtest.py`'s own logic.
+`make test-hooks` runs the harness audit unit tests (`hooks/harness_audit/tests`).
 It needs no live ClickHouse or docker-compose stack: each dir's `conftest.py` stubs the required `CLICKHOUSE_*` env vars before import, and tests exercising real payloads load them from `services/_common/tests/captures/*.json` (copies of actual `services/webhook/captures/<session_id>/*.json` files) rather than hand-built fixtures.
 
 First-time setup:
@@ -343,7 +345,9 @@ Most are covered in more depth elsewhere in this README - follow the section poi
 | `stop` / `down`            | `SERVICE=<name>` (optional)       | Tears down the core stack, scoped to SERVICE if provided; always tears down Langfuse/observability as a courtesy - see "Stop the stack". |
 | `logs`                     | `SERVICE=<name>` (optional)       | Tails logs for the core stack (or a single service with `SERVICE=<name>`).                           |
 | `setup-client`             |                                   | Prints shell-export/config-file snippets to route a CLI through the local LiteLLM proxy.             |
-| `test`                     |                                   | Runs `services/webhook/tests` (needs `requirements-dev.txt` installed in `.venv` first).             |
+| `test`                     |                                   | Runs both `test-services` and `test-hooks`.                                                          |
+| `test-services`            |                                   | Runs service pytest suites (webhook/worker/reparse/loadtest/_common) - needs `requirements-dev.txt` in `.venv` first. |
+| `test-hooks`               |                                   | Runs harness audit unit tests (`hooks/harness_audit/tests`).                                         |
 | `reparse`                  | `SESSION=<session_id>` (required) | Reparses one session's events from `ingest_raw` - see "Debugging ingestion".                         |
 | `reparse-all`              |                                   | Reparses every event in `ingest_raw`.                                                                |
 | `loadtest`                 | see "Load testing" below          | Replays captured traffic at a ramping concurrency profile - see "Load testing".                      |
@@ -523,45 +527,35 @@ Built and run standalone (no compose, no `--reload`), it's the same self-contain
 
 Subagents and Skills are identified differently by Claude Code (frontmatter `name:` vs. directory name - confirmed against actual Claude Code behavior, not assumed).
 Both used to bake the version into that identifier itself (`<name>_v<version>`) - abandoned because a Skill's directory name *is* its invocation identifier, so bumping the version meant renaming the directory, which could break an in-flight session still referencing the old name.
-The current convention instead keeps every identifier bare and permanent, and carries the version in a marker placed wherever Claude Code actually re-injects that file's content into the conversation.
+The current convention instead keeps every identifier bare and permanent, and carries the version in a bare `vX.Y.Z` token placed strictly as the last token of `description:` - wherever Claude Code actually re-injects that file's content into the conversation.
 
 **Subagents** (`.claude/agents/*.md`) - frontmatter `name:` is the actual invocation identifier (the filename doesn't have to match) and stays bare forever.
-The version goes in a `<agent_version>X.Y.Z</agent_version>` marker as the very first thing in `description:` - that text is injected verbatim into every call's `messages` via the "Available agent types" system-reminder listing, confirmed against a real captured payload (the agent's own body/system-prompt is *not* logged).
+The version goes as the last token of `description:` - that text is injected verbatim into every call's `messages` via the "Available agent types" system-reminder listing, confirmed against a real captured payload (the agent's own body/system-prompt is *not* logged).
 
 ```
 ---
 name: test-researcher
 description: >
-  <agent_version>1.0.0</agent_version> Minimal test agent that searches for information and produces a short summary.
+  Minimal test agent that searches for information and produces a short summary.
+  v1.0.0
 ---
 ```
 
 **Skills** (`.claude/skills/<dirname>/SKILL.md`) - the *directory name* is the invocation identifier (`/<dirname>`) and stays bare forever; frontmatter `name:` is purely a cosmetic display label and does not affect invocation.
-Same marker convention as Subagents, `<skill_version>X.Y.Z</skill_version>` as the first thing in `description:`, surfaced the same way via the "available skills" listing:
+Same marker convention as Subagents, `vX.Y.Z` as the last token of `description:`, surfaced the same way via the "available skills" listing:
 
 ```
 ---
 name: test-linter
 description: >
-  <skill_version>2.0.0</skill_version> Minimal test skill that checks a file for obvious style issues.
+  Minimal test skill that checks a file for obvious style issues.
+  v2.0.0
 ---
 ```
 
-**Commands** (`.claude/commands/*.md`) - the filename is the invocation identifier (`/foo` for `foo.md`) and stays bare forever.
-There's no persistent "available commands" listing the way agents/skills have, so the marker instead lives in the command file's own body (after the frontmatter) as `<command_version>X.Y.Z</command_version>` - that body text is what gets expanded into the triggering message alongside the `<command-name>` tag Claude Code already injects:
+Commands (`.claude/commands/*.md`) are being retired as an entity type, so they carry no documented version-marker convention here.
 
-```
----
-description: Report cost/token spend for the current Claude Code session plus the last 30 days, and the top 5 most expensive operations in this session, from ClickHouse
----
-
-<command_version>2.0.0</command_version>
-
-# me
-...
-```
-
-A newly-created Subagent/Skill/Command starts with no version marker at all - only added once it has shipped and is being edited again.
+A newly-created Subagent/Skill starts with no version marker at all - only added once it has shipped and is being edited again.
 A self-named/ad-hoc agent (`general-purpose`, `Explore`, `Plan`, ...) has no backing file and no marker either; version comes back blank in both cases.
 
 `agent_registry`/`skill_registry` were dropped (`DROP TABLE`, not just left empty) - they were only ever populated by the retired transcript-reading hooks pipeline and had been sitting empty since.

@@ -70,7 +70,7 @@ VKEY := $(if $(strip $(LITELLM_VIRTUAL_KEY)),$(LITELLM_VIRTUAL_KEY),<virtual key
 $(shell python3 scripts/resolve_image_version.py > .image-tags.mk)
 include .image-tags.mk
 
-.PHONY: check-env init start up restart up-no-deps build status migrate stop down logs setup-client test test-harness-audit harness-index langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
+.PHONY: check-env init start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit harness-index langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	observability-up observability-down observability-logs observability-status loadtest \
@@ -220,21 +220,30 @@ observability-status: check-env
 # services/mcp-dev/requirements.txt installed
 # (`python3.11 -m pytest -c pytest.ini services/mcp-dev/tests`) until the
 # shared `.venv` is upgraded.
-test: check-env
-	.venv/bin/python -m pytest -c pytest.ini services/webhook/tests
-	.venv/bin/python -m pytest -c pytest.ini services/worker/tests
-	.venv/bin/python -m pytest -c pytest.ini services/reparse/tests
-	.venv/bin/python -m pytest -c pytest.ini services/loadtest/tests
-	.venv/bin/python -m pytest -c pytest.ini services/_common/tests
+test-services:
+	@for svc in webhook worker reparse loadtest _common; do \
+	  out=$$(.venv/bin/python -m pytest -c pytest.ini services/$$svc/tests 2>&1); code=$$?; \
+	  if [ $$code -ne 0 ]; then echo "$$out"; exit $$code; fi; \
+	  summary=$$(echo "$$out" | grep -E 'passed|failed' | tail -n 1); \
+	  if [ -n "$$summary" ]; then echo "$$svc: $$summary"; fi; \
+	done
 
 # Runs hooks/harness_audit/tests (pure Python unittest, no dependencies).
-test-harness-audit:
-	python3 -m unittest discover -s hooks/harness_audit/tests
+test-hooks:
+	@out=$$(python3 -m unittest discover -s hooks/harness_audit/tests 2>&1); code=$$?; \
+	if [ $$code -ne 0 ]; then echo "$$out"; exit $$code; fi; \
+	echo "hooks: $$(echo "$$out" | grep -v '^$$' | tail -n 2 | tr '\n' ' ')"
+
+# Umbrella target that runs both service and hook tests.
+test: test-services test-hooks
+
+# Backward-compat alias for test-hooks (deprecated, use test-hooks instead).
+test-harness-audit: test-hooks
 
 # Generates/refreshes agent_docs/harness-index.md (a table of every
 # skill/agent's name+description+path, derived from frontmatter, for
 # Codex CLI discovery).
-harness-index: check-env
+harness-index:
 	python3 scripts/sync_harness.py
 
 # Prints export statements to route Claude Code, Codex, and other OpenAI/
@@ -250,7 +259,7 @@ harness-index: check-env
 # no config.toml equivalent of Claude's "env" block for that. `<virtual key>`
 # is a placeholder unless LITELLM_VIRTUAL_KEY is already set in .env, in
 # which case it's substituted everywhere below.
-setup-client: check-env
+setup-client:
 	@echo '# --- ~/.zshrc / ~/.bashrc (paste as-is, or use the config blocks below instead) ---'
 	@echo 'export LITELLM_VIRTUAL_KEY="$(VKEY)"'
 	@echo 'export LITELLM_AUTH_HEADER="Bearer $(VKEY)"'

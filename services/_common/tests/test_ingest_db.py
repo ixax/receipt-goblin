@@ -145,11 +145,11 @@ def test_ingest_events_batch_unsuccess_poison_row_isolated_to_ingest_dlq(monkeyp
 
 
 def test_ingest_events_batch_success_backfills_skill_version_from_sibling_event(monkeypatch):
-    # success_with_agent_and_skill predates the <version> marker convention,
+    # success_with_agent_and_skill predates the version marker convention,
     # so its own skill_version always resolves blank (see
     # test_active_skill_name_and_version_success_splits_skill_argument).
     # A second event in the same session, whose own message snapshot *does*
-    # carry a <version> marker for the same skill, should backfill the
+    # carry a version marker for the same skill, should backfill the
     # first event's skill_version rather than leaving it blank - this is
     # the "куча данных без версии" fix: a judge/gate-style call with a
     # reduced message list shouldn't lose version attribution when a
@@ -164,7 +164,7 @@ def test_ingest_events_batch_success_backfills_skill_version_from_sibling_event(
         if isinstance(content, str) and "- test-summarizer: Minimal test skill" in content:
             message["content"] = content.replace(
                 "Use to verify the tracking stack end to end.\n- trace-debugging",
-                "Use to verify the tracking stack end to end. <version>1.2.3</version>\n- trace-debugging",
+                "Use to verify the tracking stack end to end. v1.2.3\n- trace-debugging",
             )
 
     events = [build_event(no_version_payload), build_event(with_version_payload)]

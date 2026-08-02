@@ -354,35 +354,37 @@ def test_split_name_version_unsuccess_no_version_suffix():
 # _version_marker_for_name / _flatten_messages_text
 # ---------------------------------------------------------------------------
 
-def test_version_marker_for_name_success_finds_marker_at_start_of_listing_line():
+def test_version_marker_for_name_unsuccess_marker_at_start_of_listing_line_returns_empty():
+    # Marker must be strictly the last token of the description now - a
+    # marker anywhere else on the line no longer counts.
     text = (
         "Available agent types for the Agent tool:\n"
-        "- clickhouse-analyst: <version>1.1.0</version> Delegate target for...\n"
+        "- clickhouse-analyst: v1.1.0 Delegate target for...\n"
         "- general-purpose: General-purpose agent for researching...\n"
     )
-    assert ip._version_marker_for_name(text, "clickhouse-analyst", "version") == "1.1.0"
+    assert ip._version_marker_for_name(text, "clickhouse-analyst") == ""
 
 
-def test_version_marker_for_name_success_finds_marker_in_middle_of_listing_line():
+def test_version_marker_for_name_unsuccess_marker_in_middle_of_listing_line_returns_empty():
     text = (
         "Available agent types for the Agent tool:\n"
-        "- clickhouse-analyst: Delegate target for... <version>1.1.0</version> more text after.\n"
+        "- clickhouse-analyst: Delegate target for... v1.1.0 more text after.\n"
     )
-    assert ip._version_marker_for_name(text, "clickhouse-analyst", "version") == "1.1.0"
+    assert ip._version_marker_for_name(text, "clickhouse-analyst") == ""
 
 
 def test_version_marker_for_name_success_finds_marker_at_end_of_listing_line():
     text = (
         "Available agent types for the Agent tool:\n"
-        "- clickhouse-analyst: Delegate target for questions answerable from ClickHouse. <version>1.1.0</version>\n"
+        "- clickhouse-analyst: Delegate target for questions answerable from ClickHouse. v1.1.0\n"
     )
-    assert ip._version_marker_for_name(text, "clickhouse-analyst", "version") == "1.1.0"
+    assert ip._version_marker_for_name(text, "clickhouse-analyst") == "1.1.0"
 
 
 def test_version_marker_for_name_unsuccess_name_has_no_marker_returns_empty():
     text = "- general-purpose: General-purpose agent for researching...\n"
-    assert ip._version_marker_for_name(text, "general-purpose", "version") == ""
-    assert ip._version_marker_for_name(text, "", "version") == ""
+    assert ip._version_marker_for_name(text, "general-purpose") == ""
+    assert ip._version_marker_for_name(text, "") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -459,7 +461,7 @@ def test_agent_invocations_from_messages_success_recovers_version_marker():
             "role": "system",
             "content": (
                 "Available agent types for the Agent tool:\n"
-                "- clickhouse-analyst: Delegate target for... <version>1.1.0</version>\n"
+                "- clickhouse-analyst: Delegate target for... v1.1.0\n"
             ),
         },
         {"role": "assistant", "content": [{"type": "tool_use", "name": "Agent", "id": "toolu_1", "input": {"subagent_type": "clickhouse-analyst", "description": "look up cost"}}]},
@@ -552,7 +554,7 @@ def test_active_skill_name_and_version_success_recovers_version_marker():
             "role": "system",
             "content": (
                 "available skills for the Skill tool:\n"
-                "- test-linter: Minimal test skill... <version>2.0.0</version>\n"
+                "- test-linter: Minimal test skill... v2.0.0\n"
             ),
         },
     ]

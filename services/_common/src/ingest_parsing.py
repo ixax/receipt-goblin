@@ -368,7 +368,7 @@ def _split_name_version(value: str) -> tuple[str, str]:
 def _flatten_messages_text(messages: Any) -> str:
     """Every message's text, joined - used to search for the "Available
     agent types"/"available skills" listings Claude Code injects, where
-    <version> markers surface.
+    version markers surface.
     Not restricted to one message since the listing can sit several turns
     back."""
     if not isinstance(messages, list):
@@ -382,20 +382,20 @@ def _flatten_messages_text(messages: Any) -> str:
     return "\n".join(parts)
 
 
-def _version_marker_for_name(text: str, name: str, tag: str) -> str:
+def _version_marker_for_name(text: str, name: str) -> str:
     """Claude Code only - agent/skill listings with these markers are
     injected by Claude Code, never by Codex CLI, so this always returns ""
     against a Codex payload.
-    Finds "- <name>: ...<tag>version</tag>" in an agent/skill listing (see
-    AGENTS.md for the marker convention) - the tag can sit anywhere on that
-    line, not just immediately after "- name: ", since the convention puts
-    it at the end of the description now.
+    Finds "- <name>: ...vX.Y.Z" in an agent/skill listing (see AGENTS.md
+    for the marker convention) - the marker must be the last token on that
+    line, since the convention places it strictly at the end of the
+    description.
     Takes the last match so a mid-session refreshed listing wins over a
     stale one.
     "" if no marker."""
     if not name:
         return ""
-    pattern = re.compile(rf"^- {re.escape(name)}: .*?<{tag}>([^<]*)</{tag}>", re.MULTILINE)
+    pattern = re.compile(rf"^- {re.escape(name)}: .*\bv(\d+\.\d+\.\d+)\s*$", re.MULTILINE)
     matches = pattern.findall(text)
     return matches[-1] if matches else ""
 
@@ -463,9 +463,9 @@ def _agent_invocations_from_messages(messages: Any) -> list[tuple[str, str, str,
     Scan messages for Agent tool_use blocks paired with the following
     tool_result, pulling the spawned subagent's agent_id from its text
     (e.g. "agentId: a04bd3c594bf74fb9").
-    agent_version comes from the "<version>" marker in the "Available agent
-    types" listing, falling back to splitting a legacy "_v<version>" suffix
-    off subagent_type (see _split_name_version).
+    agent_version comes from the bare "vX.Y.Z" marker in the "Available
+    agent types" listing, falling back to splitting a legacy "_v<version>"
+    suffix off subagent_type (see _split_name_version).
     Returns (agent_id, subagent_type, agent_version, description) tuples,
     usually empty."""
     if not isinstance(messages, list):
@@ -486,7 +486,7 @@ def _agent_invocations_from_messages(messages: Any) -> list[tuple[str, str, str,
             agent_id = _agent_id_from_tool_result(messages, i, tool_use_id)
             if agent_id:
                 subagent_type = input_.get("subagent_type", "")
-                agent_version = _version_marker_for_name(listing_text, subagent_type, "version")
+                agent_version = _version_marker_for_name(listing_text, subagent_type)
                 if not agent_version:
                     bare_name, suffix_version = _split_name_version(subagent_type)
                     if suffix_version:
@@ -571,7 +571,7 @@ def _active_skill_name_and_version(payload: dict, messages: Any) -> tuple[str, s
     payload.
     skill_name is the bare directory name (no version suffix -
     see AGENTS.md).
-    skill_version comes from the "<version>" marker in the
+    skill_version comes from the bare "vX.Y.Z" marker in the
     "available skills" listing, already present in this payload's messages.
 
     Priority 1: this call's own response invoked "Skill" - return it
@@ -592,7 +592,7 @@ def _active_skill_name_and_version(payload: dict, messages: Any) -> tuple[str, s
         if name == "Skill" and arguments.get("skill"):
             skill_name = arguments["skill"]
             skill_version = _version_marker_for_name(
-                _flatten_messages_text(messages), skill_name, "version"
+                _flatten_messages_text(messages), skill_name
             )
             return skill_name, skill_version
     if not isinstance(messages, list):
@@ -609,7 +609,7 @@ def _active_skill_name_and_version(payload: dict, messages: Any) -> tuple[str, s
                     if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") == "Skill":
                         skill_name = (block.get("input") or {}).get("skill", "")
                         if skill_name:
-                            return skill_name, _version_marker_for_name(listing_text, skill_name, "version")
+                            return skill_name, _version_marker_for_name(listing_text, skill_name)
             continue  # no Skill invocation in this assistant turn - keep walking back
         if role != "user":
             continue
@@ -854,7 +854,7 @@ def _classify_event(payload: dict) -> tuple[str, dict]:
             subagent_type = first_args.get("subagent_type", "")
             return "agent_spawn", {
                 "subagent_type": subagent_type,
-                "agent_version": _version_marker_for_name(listing_text, subagent_type, "version"),
+                "agent_version": _version_marker_for_name(listing_text, subagent_type),
                 "description": first_args.get("description", ""),
             }
         if first_name == "Skill":
