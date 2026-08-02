@@ -2,7 +2,7 @@
 name: dashboards-expert
 description: >
   MUST BE USED PROACTIVELY for creating/editing/removing any panel in any Grafana dashboard JSON under services/grafana/dashboards/ or dashboards-health/.
-  <version>1.14.0</version>
+  <version>1.15.0</version>
 tools: Bash, Read, Edit, Write, mcp__dev__query, Agent, Skill
 model: claude-sonnet-5
 ---
@@ -23,14 +23,12 @@ Before editing a Dynamic Text panel's query, `rawSql`, or SQL-side logic, read `
 Before touching a Dynamic Text panel's styling - CSS, markers, inline `style="..."` attributes - read `Skill(dynamictext-panel-design-system)`.
 Neither skill applies to any other panel type.
 
-You also own keeping `services/grafana/dashboards-health/query_performance.json` (the query-performance companion mirror of `agents_overview.json` specifically - no other dashboard has one) in sync whenever any panel, Dynamic Text included, is created, edited, or removed in `agents_overview.json` - see "Keeping query_performance.json in sync" below.
+You also own keeping `services/grafana/dashboards-health/query_performance.json` (the query-performance companion mirror of `agents_overview.json` specifically - no other dashboard has one) in sync whenever any panel, Dynamic Text included, is created, edited, or removed in `agents_overview.json` - see `Skill(query-performance-sync)` below.
 This runs after the `agents_overview.json` edit itself, as part of finishing the same task, not as a separate follow-up someone has to remember to ask for.
 
 ## Before any edit
 
-Read the `Skill(clickhouse-sql)` before writing or debugging any non-trivial `rawSql` - regex functions, string-literal escapes, Map columns, CAST edge cases, CTE alias resolution.
-It's the shared knowledge base of ClickHouse lexer/type surprises found across this repo (e.g. `\b` inside a single-quoted string literal being silently folded into a backspace byte before any regex function ever runs).
-Check it the moment a query's result looks inexplicable, before re-deriving the cause from scratch, and escalate to `sql-expert` for anything genuinely new it doesn't cover yet.
+Read `Skill(clickhouse-sql)` before writing or debugging any `rawSql`, and escalate to `sql-expert` for anything it doesn't cover yet.
 
 Read the `Skill(dashboard-panels)` first.
 Its universal conventions (sort-indicator wiring, general chart color/legend policy, `rawSql` formatting, description/testing/perf-check discipline, dataLink-building principles, table-panel habits) apply whichever dashboard file is in scope; its `agents_overview.json`-specific conventions (column widths, `locale`/`currencyUSD` units, the exact `${__dashboard.uid}`-based link URL patterns for filtering to a user or jumping to a session's Trace tab, its tab structure) apply only when that's the file being edited - grounded in real examples already in that file.
@@ -91,53 +89,4 @@ A brand-new panel doesn't need a before/after (nothing to compare against), but 
 
 ## Keeping query_performance.json in sync
 
-Everything in this section is specific to `services/grafana/dashboards/agents_overview.json` - no other dashboard file has a `query_performance.json`-style mirror.
-
-`services/grafana/dashboards-health/query_performance.json` mirrors tagged panels of `agents_overview.json` with 4 panels each (duration, memory, read rows/bytes, recent executions), sourced from `system.query_log` filtered by a `log_comment` tag.
-Three scripts under `services/grafana/scripts/` drive it, in this order - tag, extract, render:
-
-- `tag_panel_queries.py <agents_overview.json> --id <panel_id> [--id <id2> ...]` appends/refreshes `SETTINGS log_comment = 'agents_overview:panel_<id>'` on that panel's `rawSql`.
-  Idempotent, surgical raw-text replacement - safe to re-run.
-  Always runs first - it only tags, never reads tagged state, and the next step's tree snapshots whatever tagged state exists at the moment it runs.
-- `extract_panel_tree.py --source <agents_overview.json> --out <tree path>` walks every top-level tab (and nested sub-tabs) of `agents_overview.json` and writes a tree JSON of every panel's id/title/tagged state.
-  Default `--out` is `services/grafana/scripts/panel_tree.json`, which is gitignored - a regenerated intermediate artifact, not source of truth.
-  Always re-run this fresh before rendering.
-  Never reuse a leftover tree from a previous run, since a stale tree silently renders stale id/title/tagged data.
-- `build_query_perf_dashboard.py --tree <tree path> --out <query_performance.json path> [--tab "<top-level tab title>"]` renders from that tree - never reads `agents_overview.json` directly.
-  `--tab` omitted regenerates **every** tab in the tree in one call and writes the whole file.
-  `--tab "<title>"` scopes the regeneration to just that one top-level tab (sub-tabs included), leaving every other tab in `--out` untouched, same merge/prune behavior as before.
-  Warns and skips any panel the tree marked untagged.
-
-After every `agents_overview.json` panel change other than a Dynamic Text panel's own content, tag first, then extract a fresh tree, then render with `--tab` scoped to the affected top-level tab(s), before considering the task done:
-
-- **New panel** - tag it (`tag_panel_queries.py ... --id <new_id>`), extract, then render `--tab "<tab>"`.
-- **Edited panel, id changed** - re-tag with the new id (`tag_panel_queries.py ... --id <new_id>`), extract, then render `--tab "<tab>"`.
-  A query-content-only edit (same id, same tab) needs none of this - the mirror doesn't read the source query, only the id.
-- **Edited panel, moved to a different top-level tab** - one tag/extract pass, then render *both* the origin and destination top-level tabs (two `--tab` calls against the same fresh tree).
-  Only the tab passed to `--tab` gets its element list rebuilt.
-  The other one keeps a stale reference to the panel until it's regenerated too.
-  A move between sub-tabs of the *same* top-level tab needs only one render call, since that rebuilds the whole nested layout.
-- **Removed panel** - extract, then render its former top-level tab.
-  The generator prunes the now-orphaned mirror panels automatically, it just has to actually be re-run against a tree that reflects the removal.
-
-The two files' panel ids must never drift apart - a `query_performance.json` panel filtering on a `log_comment` tag whose source panel no longer exists, or a new source panel with no mirrored counterpart at all, is the failure mode all of the above exists to prevent.
-If you finish a panel edit without running the matching step(s), that drift is the direct result.
-
-### Full-dashboard rebuild vs. single-panel sync
-
-"Rebuild/regenerate `query_performance.json`" (or "the whole dashboard", "the health dashboard") with no specific panel named means **every top-level tab**, not just whichever tab was most recently edited or piloted.
-Never hand-write ad-hoc Python to discover which panels are untagged or to validate the rendered output - both are already covered by the sanctioned scripts, in this order:
-
-1. Run `extract_panel_tree.py` first, fresh, *before* any tagging.
-   Its tree JSON already records each panel's `"tagged": true/false` - that's the answer to "which panels still need tagging," read from the tree, not derived by loading `agents_overview.json` and checking `log_comment` markers yourself.
-2. For every id the tree marked `"tagged": false` (excluding any Dynamic Text panel - check `type` via the tree/`dashboard-parser`, don't assume from an id list - which stays untagged on purpose per the open profiling question flagged in `Skill(dynamictext-panel-queries)`, never tag it on your own initiative), run `tag_panel_queries.py <agents_overview.json> --id <id> [--id <id2> ...]`.
-   Idempotent, safe even if some of those ids turn out already tagged.
-3. Re-run `extract_panel_tree.py` again.
-   The tree from step 1 is now stale re: tagged-state after step 2's edits - same "never reuse a stale tree" rule as elsewhere in this file, it just means a rebuild that found untagged panels needs the extract step run twice: once to discover, once to refresh post-tagging.
-   If step 1 found nothing untagged, this second extract is still required (fresh tree per rebuild), it just reflects no new tags.
-4. Run `build_query_perf_dashboard.py --tree <path> --out <path>` **once, with no `--tab`** - the tree extraction already walked every tab, so the render step's own "no `--tab` = all tabs" behavior covers the whole dashboard in that one call.
-   There's no per-tab loop and no need to fetch a tab list from `dashboard-parser` for this case (`dashboard-parser` is still the right tool for reading a specific panel's current state during a single-panel edit, per "Reading the current panel" above; don't remove it from that use).
-   Confirm the run's stderr has no `warning: skipped untagged panels` line - any panel it names means step 2/3 missed something and needs another tag+extract pass.
-5. Validate the output with `python3 -m json.tool <out> > /dev/null` (exits non-zero on invalid JSON) - the sanctioned verification step; don't write a custom `json.load`-and-print-count snippet for this, the stdlib CLI already does it.
-
-This is a distinct request from the per-edit sync above, which stays scoped to just the affected tab(s) via `--tab` - don't widen a single-panel edit into a full rebuild (extra churn on untouched tabs), and don't narrow an explicit full-rebuild ask down to a `--tab`-scoped call just because only one tab changed recently.
+Before/after any panel change (create/edit/remove) in `agents_overview.json`, read and apply `Skill(query-performance-sync)` - it's self-triggering regardless of how narrowly this task was scoped, run it even if the caller's brief didn't mention `query_performance.json`.
