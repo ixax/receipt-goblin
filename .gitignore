@@ -2,6 +2,7 @@
 .claude/settings.local.json
 .claude/data/
 .env
+.ruff_cache/
 .venv
 **/__pycache__/
 .pytest_cache/
@@ -10,4 +11,3 @@ services/webhook/.venv
 services/litellm/user_configs/*.yaml
 .image-tags.mk
 services/grafana/scripts/panel_tree.json
-MIN_DUMP.md
