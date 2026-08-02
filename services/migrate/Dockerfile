@@ -12,6 +12,7 @@ COPY services/migrate/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/_common/src/ ./common/
+COPY services/_common/queue.yml ./common/queue.yml
 COPY services/migrate/src/ ./src/
 # Only used by this role, but this is the only role that needs it.
 COPY services/clickhouse/migrations/ ./migrations/

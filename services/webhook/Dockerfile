@@ -14,6 +14,7 @@ COPY services/webhook/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/_common/src/ ./common/
+COPY services/_common/queue.yml ./common/queue.yml
 COPY services/webhook/src/ ./src/
 
 EXPOSE 8000

@@ -20,9 +20,9 @@ from common.config.queue import BATCH_SIZE, FLUSH_INTERVAL_MS, CONSUMER_GROUP, S
 from common.ingest_db import clickhouse_alive, ingest_events_batch
 from common.ingest_parsing import build_event
 from common.logging_config import create_logger
-from common.queue_client import get_redis
 
 from .config import WORKER_METRICS_PORT
+from .queue import get_redis
 
 logger = create_logger("webhook.worker")
 

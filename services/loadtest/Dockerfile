@@ -13,6 +13,7 @@ COPY services/loadtest/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/_common/src/ ./common/
+COPY services/_common/queue.yml ./common/queue.yml
 COPY services/loadtest/src/ ./src/
 
 CMD ["python", "-m", "src.loadtest"]

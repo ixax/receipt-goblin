@@ -279,7 +279,8 @@ services:
 
   redis:
     # Queue between webhook (producer) and worker (consumer) - see
-    # queue_client.py. Tuning lives in redis.conf, baked in at build time -
+    # services/webhook/src/queue.py and services/worker/src/queue.py.
+    # Tuning lives in redis.conf, baked in at build time -
     # no dev override for this one, rarely edited live.
     build: ./services/redis
     image: receipt-goblin-redis:${REDIS_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
@@ -304,7 +305,7 @@ services:
     networks:
       - receipt-goblin
 
-  # Two stateless replicas behind load-balancer, instead of one instance (webhook only produces onto Redis - see queue_client.py - so any request can land on either).
+  # Two stateless replicas behind load-balancer, instead of one instance (webhook only produces onto Redis - see services/webhook/src/queue.py - so any request can land on either).
   # Fixed names + static IPs (below) are needed for load-balancer's nginx.conf upstream block to do real least_conn balancing.
   # Duplicated instead of `docker compose up --scale` so each replica keeps its own container_name/healthcheck.
   webhook-1: &webhook-service
@@ -453,7 +454,7 @@ services:
       - receipt-goblin
 
   worker:
-    # Drains queue_client.STREAM_KEY in batches and does the ClickHouse inserts.
+    # Drains common/config/queue.py's STREAM_KEY stream in batches and does the ClickHouse inserts.
     # See worker.py.
     build:
       context: .
@@ -481,7 +482,7 @@ services:
     labels:
       - autoheal=true
     healthcheck:
-      test: ["CMD", "python", "-c", "from common.queue_client import get_redis; get_redis().ping()"]
+      test: ["CMD", "python", "-c", "from src.queue import get_redis; get_redis().ping()"]
       interval: 5s
       timeout: 3s
       retries: 20

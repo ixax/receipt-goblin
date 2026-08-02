@@ -26,7 +26,7 @@ def test_loads_success_parses_str():
 
 
 def test_loads_unsuccess_invalid_json_raises_value_error():
-    # Callers (worker.py, queue_client.py) catch (TypeError, ValueError) -
+    # Callers (worker.py, webhook/worker's queue.py) catch (TypeError, ValueError) -
     # orjson.JSONDecodeError must satisfy that, not just its own type.
     with pytest.raises(ValueError):
         fastjson.loads(b"{not valid json")

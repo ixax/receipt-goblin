@@ -1,6 +1,6 @@
 """
 Receives LiteLLM's generic_api webhook payloads and hands them to
-queue_client.enqueue()/enqueue_raw() - a fast, DB-free push onto Redis.
+queue.enqueue()/enqueue_raw() - a fast, DB-free push onto Redis.
 webhook-worker (worker.py) is what actually parses/inserts into ClickHouse,
 in batches - see AGENTS.md.
 """
@@ -11,17 +11,13 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel
 
 from common.config.litellm import LITELLM_BASE_URL, LITELLM_MASTER_KEY
-from common.ingest_db import (
-    clickhouse_alive,
-    ingest_git_branch,
-    ingest_litellm_alert,
-    ingest_plan_proposal,
-)
+from common.ingest_db import clickhouse_alive
 from common.litellm_auth import virtual_key_is_valid
 from common.logging_config import create_logger
-from common.queue_client import enqueue_raw, get_async_redis
 
 from .config import APP_VERSION
+from .ingest import ingest_git_branch, ingest_litellm_alert, ingest_plan_proposal
+from .queue import enqueue_raw, get_async_redis
 
 logger = create_logger("webhook.server")
 

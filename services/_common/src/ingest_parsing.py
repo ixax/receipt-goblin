@@ -1249,19 +1249,6 @@ def _message_row(payload: dict, ctx: EventContext, now: Optional[datetime] = Non
     ]
 
 
-_ISSUE_ID_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9]{1,9}-\d+)(?![A-Za-z0-9])")
-
-
-def _issue_id_from_branch(git_branch: str) -> str:
-    """Ticket ID embedded in a branch name, e.g. "VIEW-12345", matched
-    case-insensitively and uppercased.
-    Trailing boundary is a negative lookahead, not \\b: \\b treats
-    digit/underscore as the same word class and would miss
-    "VIEW-100500_my-branch"."""
-    match = _ISSUE_ID_RE.search(git_branch or "")
-    return match.group(1).upper() if match else ""
-
-
 def _serialize_row(row: Optional[list], timestamp_idx: int) -> Optional[list]:
     if row is None:
         return None

@@ -258,7 +258,7 @@ It needs no live ClickHouse or docker-compose stack: each dir's `conftest.py` st
 First-time setup:
 
 ```bash
-.venv/bin/pip install -r services/webhook/requirements-dev.txt
+.venv/bin/pip install -r requirements-dev.txt
 ```
 
 This installs `services/webhook/requirements.txt` plus `pytest`.
@@ -617,7 +617,7 @@ Seven template variables in order: `$agent_name`, `$skill_name`, `$command_name`
 ### Debugging ingestion
 
 Field extraction from the LiteLLM payload is best-effort and can drift across LiteLLM versions.
-`docker compose logs -f webhook` shows one log line per exception raised while enqueueing (`queue_client.enqueue` - Redis-availability issues, not parsing, since `webhook` no longer parses anything; never re-raised, so a bad payload never breaks LiteLLM's ack); `docker compose logs -f webhook-worker` shows the same for both the parsing side (`build_event`, called from `worker.py`'s `_decode_into`) and the batched-insert side (`ingest_events_batch`).
+`docker compose logs -f webhook` shows one log line per exception raised while enqueueing (`queue.enqueue` - Redis-availability issues, not parsing, since `webhook` no longer parses anything; never re-raised, so a bad payload never breaks LiteLLM's ack); `docker compose logs -f webhook-worker` shows the same for both the parsing side (`build_event`, called from `worker.py`'s `_decode_into`) and the batched-insert side (`ingest_events_batch`).
 `redis-cli -h localhost XLEN webhook:events` shows the current backlog - non-zero-but-draining is normal, non-zero-and-growing means `webhook-worker` has fallen behind or died.
 `make loadtest-fixtures` (see "Preparing load-test fixtures" below) can pull already-ingested events verbatim out of ClickHouse for offline inspection/replay, once they've landed there.
 

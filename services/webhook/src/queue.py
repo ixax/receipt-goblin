@@ -1,22 +1,22 @@
-"""Redis Streams queue between webhook (producer) and webhook-worker
-(consumer) - see AGENTS.md. webhook XADDs each raw StandardLoggingPayload
-completely unmodified - no parsing, no build_event() - so its own request
-path stays cheap (I/O only); webhook-worker calls build_event() itself when
-it drains the stream, then does the actual ClickHouse inserts in batches.
+"""Redis Streams producer side - webhook (server.py) XADDs each raw
+StandardLoggingPayload completely unmodified onto the stream worker.py
+drains - no parsing, no build_event() - so webhook's own request path
+stays cheap (I/O only); webhook-worker calls build_event() itself when it
+drains the stream, then does the actual ClickHouse inserts in batches.
+Split out of common/queue_client.py - see
+plans/common-module-cleanup-refactor.md.
 """
 import logging
 
-import redis
 import redis.asyncio as aioredis
 
 from common import fastjson as json
 from common.config.queue import MAXLEN, STREAM_KEY
 from common.config.redis import REDIS_HOST, REDIS_PORT
 
-logger = logging.getLogger("webhook.queue_client")
+logger = logging.getLogger("webhook.queue")
 
 _async_client = None
-_sync_client = None
 
 
 def get_async_redis() -> aioredis.Redis:
@@ -25,15 +25,6 @@ def get_async_redis() -> aioredis.Redis:
     if _async_client is None:
         _async_client = aioredis.Redis(host=REDIS_HOST, port=REDIS_PORT)
     return _async_client
-
-
-def get_redis() -> redis.Redis:
-    """Used by webhook-worker - a plain blocking consumer loop, no event
-    loop to share. decode_responses=True since it only reads back JSON text."""
-    global _sync_client
-    if _sync_client is None:
-        _sync_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-    return _sync_client
 
 
 async def enqueue(payloads: list) -> None:

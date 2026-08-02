@@ -197,9 +197,9 @@ observability-status: check-env
 	docker compose $(COMPOSE_FILES) --profile observability ps $(OBSERVABILITY_SERVICES)
 
 # Runs each service's test directory as its own pytest invocation, plus
-# services/_common/tests (the shared ingest_parsing/ingest_db/fastjson/
-# queue_client suite, split out of services/webhook by the
-# webhook-worker-split refactor - see plans/webhook-worker-split.md).
+# services/_common/tests (the shared ingest_parsing/ingest_db/fastjson
+# suite, split out of services/webhook by the webhook-worker-split
+# refactor - see plans/webhook-worker-split.md).
 # Deliberately NOT one combined `pytest a b c d e` invocation: every
 # service's src/ is a bare top-level `src` package (e.g. `from src import
 # worker`), so a single pytest process collecting multiple services would
@@ -207,16 +207,12 @@ observability-status: check-env
 # later service's `from .config import ...` against that first service's
 # config instead of its own - confirmed via a real ImportError when this
 # was tried. Separate invocations sidestep that entirely.
-# services/webhook/tests has no test files of its own right now (server.py
-# has none) - not included here since an empty dir makes pytest exit
-# non-zero ("no tests collected") and abort `make`; add it back once
-# services/webhook/tests/test_server.py exists. No live ClickHouse needed -
-# see each dir's conftest.py. Needs services/webhook/requirements-dev.txt
-# installed in .venv first: `pip install -r
-# services/webhook/requirements-dev.txt`. The root `pytest.ini` (shared by
-# every service's invocation below, not owned by any one service) silences
-# dependency warnings (urllib3/clickhouse-connect deprecation noise
-# unrelated to this repo's own code).
+# No live ClickHouse needed - see each dir's conftest.py.
+# Needs requirements-dev.txt installed in .venv first:
+# `pip install -r requirements-dev.txt`. The root
+# `pytest.ini` (shared by every service's invocation below, not owned by
+# any one service) silences dependency warnings (urllib3/clickhouse-connect
+# deprecation noise unrelated to this repo's own code).
 # services/mcp-dev/tests is NOT included below: its `src/server.py` imports
 # the `mcp` SDK (`mcp.server.fastmcp`), which requires Python >=3.10 and
 # can't be installed into this repo's Python 3.9 `.venv` - run it
@@ -225,6 +221,7 @@ observability-status: check-env
 # (`python3.11 -m pytest -c pytest.ini services/mcp-dev/tests`) until the
 # shared `.venv` is upgraded.
 test: check-env
+	.venv/bin/python -m pytest -c pytest.ini services/webhook/tests
 	.venv/bin/python -m pytest -c pytest.ini services/worker/tests
 	.venv/bin/python -m pytest -c pytest.ini services/reparse/tests
 	.venv/bin/python -m pytest -c pytest.ini services/loadtest/tests

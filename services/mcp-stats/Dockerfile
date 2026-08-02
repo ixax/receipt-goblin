@@ -11,6 +11,7 @@ COPY services/mcp-stats/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/_common/src/ ./common/
+COPY services/_common/queue.yml ./common/queue.yml
 COPY services/mcp-stats/src/ ./src/
 
 EXPOSE 8002

@@ -9,7 +9,6 @@ import io
 import json
 import sys
 import unittest
-from contextlib import redirect_stdout
 from pathlib import Path
 
 HOOK_DIR = Path(__file__).resolve().parent.parent
@@ -102,6 +101,16 @@ class TestHook(unittest.TestCase):
         code = self.run_hook({
             "tool_name": "Read",
             "tool_input": {"file_path": "x.py"},
+        })
+        self.assertEqual(code, 0)
+
+    def test_plans_dir_violation_skipped(self):
+        code = self.run_hook({
+            "tool_name": "Edit",
+            "tool_input": {
+                "file_path": "plans/scratch.py",
+                "new_string": "# One sentence. Two sentence.\n",
+            },
         })
         self.assertEqual(code, 0)
 

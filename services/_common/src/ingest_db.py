@@ -5,7 +5,6 @@ half this module imports from, and AGENTS.md for the overall pipeline.
 """
 import logging
 from datetime import datetime, timezone
-from typing import Optional
 
 import clickhouse_connect
 
@@ -58,15 +57,10 @@ from common.ingest_parsing import (
     _derive_context,
     _event_row,
     _group_row,
-    _issue_id_from_branch,
     _message_row,
-    _serialize_row,
-    _serialize_row_multi,
     _source_row,
     _usage_row,
-    _user_agent,
     _user_row,
-    build_event,
     session_and_trace_id,
 )
 
@@ -97,13 +91,7 @@ def clickhouse_alive() -> None:
 
 
 _CLIENT_COLUMNS = ["id", "value", "updated_at"]
-_GIT_BRANCH_COLUMNS = ["session_id", "git_branch", "git_repo", "issue_id", "captured_at"]
-_PLAN_PROPOSAL_COLUMNS = ["session_id", "plan_text", "captured_at"]
 _FAILURE_COLUMNS = ["occurred_at", "stage", "error", "litellm_call_id", "session_id", "raw_row"]
-_LITELLM_ALERT_COLUMNS = [
-    "received_at", "event", "event_group", "key_alias", "team_id", "user_id",
-    "spend", "max_budget", "event_message", "raw_payload",
-]
 
 
 def _insert_agent_invocations(client, rows: list[list]) -> None:
@@ -126,18 +114,6 @@ def _insert_message(client, row: list) -> None:
 
 def _insert_source(client, row: list) -> None:
     client.insert("ingest_raw", [row], column_names=_SOURCE_COLUMNS)
-
-
-def _insert_git_branch(client, row: list) -> None:
-    client.insert("session_git_branch", [row], column_names=_GIT_BRANCH_COLUMNS)
-
-
-def _insert_plan_proposal(client, row: list) -> None:
-    client.insert("plan_proposals", [row], column_names=_PLAN_PROPOSAL_COLUMNS)
-
-
-def _insert_litellm_alert(client, row: list) -> None:
-    client.insert("litellm_alerts", [row], column_names=_LITELLM_ALERT_COLUMNS)
 
 
 def _insert_ai_gateway_groups(client, rows: list[list]) -> None:
@@ -255,59 +231,6 @@ def ingest_standard_logging_payload(payload: dict) -> None:
             payload.get("litellm_call_id", ""), trace_id, session_id,
             payload.get("status", ""), payload.get("call_type", ""),
         )
-
-
-def ingest_git_branch(session_id: str, git_branch: str, git_repo: str = "") -> None:
-    """Insert a session's git branch/repo (hooks/report_git_branch.py).
-    Never raises - a tracking failure must not surface to the CLI session."""
-    try:
-        client = get_client()
-        issue_id = _issue_id_from_branch(git_branch)
-        _insert_git_branch(client, [session_id, git_branch, git_repo, issue_id, datetime.now(timezone.utc)])
-    except Exception:
-        logger.exception("failed to ingest git branch (session_id=%s)", session_id)
-
-
-def ingest_plan_proposal(session_id: str, plan_text: str) -> None:
-    """Insert an ExitPlanMode call's plan text (hooks/report_plan_proposal.py).
-    Never raises - a tracking failure must not surface to the CLI session."""
-    try:
-        client = get_client()
-        _insert_plan_proposal(client, [session_id, plan_text, datetime.now(timezone.utc)])
-    except Exception:
-        logger.exception("failed to ingest plan proposal (session_id=%s)", session_id)
-
-
-def ingest_litellm_alert(payload: dict) -> None:
-    """Insert one LiteLLM native-alerting webhook event (budget/outage/
-    exception/hang signals - see general_settings.alerting in
-    services/litellm/config.yaml).
-    Direct-to-ClickHouse, not queued through Redis: these events are rare
-    compared to per-call metrics traffic, same low-volume pattern as
-    ingest_git_branch/ingest_plan_proposal.
-    Never raises - a tracking failure must not surface to LiteLLM's own
-    retry logic for its alerting webhook.
-
-    Only the budget-event shape is fully documented by LiteLLM's own docs -
-    other alert types (llm_exceptions/outage_alerts/db_exceptions/...)
-    likely carry different fields, so raw_payload keeps the full body
-    regardless of which fields above happen to be present."""
-    try:
-        client = get_client()
-        _insert_litellm_alert(client, [
-            datetime.now(timezone.utc),
-            payload.get("event") or "",
-            payload.get("event_group") or "",
-            payload.get("key_alias") or "",
-            payload.get("team_id") or "",
-            payload.get("user_id") or "",
-            payload.get("spend"),
-            payload.get("max_budget"),
-            payload.get("event_message") or "",
-            json.dumps(payload, default=str).decode(),
-        ])
-    except Exception:
-        logger.exception("failed to ingest LiteLLM alert (event=%s)", payload.get("event", ""))
 
 
 def ingest_webhook_body(body) -> None:

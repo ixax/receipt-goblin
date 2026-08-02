@@ -8,6 +8,7 @@ import json
 from conftest import load_capture
 
 from common import ingest_db as db
+from common.ingest_parsing import build_event
 
 
 class _FakeClient:
@@ -30,8 +31,8 @@ class _FakeClient:
 
 def test_ingest_events_batch_success_issues_one_insert_per_table(monkeypatch):
     events = [
-        db.build_event(load_capture("success_plain")),
-        db.build_event(load_capture("success_with_command")),
+        build_event(load_capture("success_plain")),
+        build_event(load_capture("success_with_command")),
     ]
     fake_client = _FakeClient()
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
@@ -55,8 +56,8 @@ def test_ingest_events_batch_success_dedups_dimension_rows_by_id(monkeypatch):
     # Both captures share the same user/team, so this batch should insert
     # one ai_gateway_users/ai_gateway_groups row, not one per event.
     events = [
-        db.build_event(load_capture("success_plain")),
-        db.build_event(load_capture("success_with_command")),
+        build_event(load_capture("success_plain")),
+        build_event(load_capture("success_with_command")),
     ]
     fake_client = _FakeClient()
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
@@ -74,8 +75,8 @@ def test_ingest_events_batch_success_resolves_and_dedups_client_rows(monkeypatch
     # Both captures carry the same claude-cli user_agent - one dedup'd
     # `clients` row, and every event_row's event_client_id should match it.
     events = [
-        db.build_event(load_capture("success_plain")),
-        db.build_event(load_capture("success_with_command")),
+        build_event(load_capture("success_plain")),
+        build_event(load_capture("success_with_command")),
     ]
     fake_client = _FakeClient()
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
@@ -118,7 +119,7 @@ class _PoisonRowClient(_FakeClient):
 def test_ingest_events_batch_unsuccess_poison_row_isolated_to_ingest_dlq(monkeypatch):
     good_payload = load_capture("success_plain")
     poison_payload = load_capture("success_with_command")
-    events = [db.build_event(good_payload), db.build_event(poison_payload)]
+    events = [build_event(good_payload), build_event(poison_payload)]
     fake_client = _PoisonRowClient(poison_call_id=poison_payload["litellm_call_id"])
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
 
@@ -166,7 +167,7 @@ def test_ingest_events_batch_success_backfills_skill_version_from_sibling_event(
                 "Use to verify the tracking stack end to end. <version>1.2.3</version>\n- trace-debugging",
             )
 
-    events = [db.build_event(no_version_payload), db.build_event(with_version_payload)]
+    events = [build_event(no_version_payload), build_event(with_version_payload)]
     assert events[0]["usage_row"][db._USAGE_SKILL_VERSION_IDX] == ""
     assert events[1]["usage_row"][db._USAGE_SKILL_VERSION_IDX] == "1.2.3"
 

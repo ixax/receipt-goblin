@@ -14,6 +14,7 @@ COPY services/mcp-dev/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/_common/src/ ./common/
+COPY services/_common/queue.yml ./common/queue.yml
 COPY services/mcp-dev/src/ ./src/
 COPY services/mcp-dev/config.yml .
 
