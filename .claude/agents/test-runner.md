@@ -1,15 +1,16 @@
 ---
-name: runner-test-services
+name: test-runner
 description: >
-  MUST BE USED PROACTIVELY, without waiting to be asked, any time the webhook-worker-split services' pytest suites (`make test-services`) need to run - after every change to services/worker/, services/reparse/, services/loadtest/, or services/_common/ (ingest_parsing.py/ingest_db.py), and whenever the user asks to run/verify the tests.
-  On failure `make test-services` dumps full raw pytest output for the one failing service - delegate here so that dump never fills the main conversation's context.
-  Success output is already a compact one-line-per-service summary.
-  v1.2.0
+  Runs this repo's webhook-worker-split service pytest suites (`make test-services`) and reports back compactly.
+  MUST BE USED PROACTIVELY, without waiting to be asked, any time those suites need to run - after every change to services/worker/, services/reparse/, services/loadtest/, or services/_common/, and whenever the user asks to run/verify the tests.
+  Keeps raw on-failure pytest dumps out of the main conversation.
+  v1.2.4
 tools: Bash, Read, Skill
 model: claude-haiku-4-5
 ---
 
 Run this repo's test suite and report back a short result, keeping raw pytest failure output out of the caller's context.
+Triggers after changes to services/worker/, services/reparse/, services/loadtest/, or services/_common/ - especially `ingest_parsing.py`/`ingest_db.py` - or whenever asked to run/verify tests.
 
 Run `make test-services` from the repo root.
 It runs each service's pytest suite (webhook, worker, reparse, loadtest, _common) as a separate invocation and prints one compact summary line per service on success (e.g. `webhook: 10 passed in 0.35s`).

@@ -13,7 +13,7 @@ Dev/prod split: `agent_docs/architecture.md`; per-service detail: `agent_docs/se
 - `make stop` / `make down [SERVICE=x]` - tear down.
 - `make setup-client` - print CLI-proxy shell/config snippets.
 - `make test` - umbrella: runs `test-services` + `test-hooks`.
-- `make test-services` - webhook pytest suite; always via `runner-test-services`, never inline.
+- `make test-services` - webhook pytest suite; always via `test-runner`, never inline.
 - `make test-hooks` - budget-audit unit tests.
 - `make loadtest` - ramping load test; always via `loadtest-runner`, never inline.
 - `make loadtest-fixtures [VOLUME=small|medium|large]` - build fixtures from ClickHouse.
@@ -67,7 +67,7 @@ Proactive (dispatch without being asked):
 
 - `harness-expert` - harness entities, `AGENTS.md`, `agent_docs/*.md`
 - `dev-ops` - services, compose, backups, opt-in stacks
-- `runner-test-services` - test runs
+- `test-runner` - test runs
 - `loadtest-runner` - load tests
 - `dashboards-expert` - dashboard panel edits
 - `dashboard-parser` - `agents_overview.json` reads

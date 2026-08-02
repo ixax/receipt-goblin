@@ -14,7 +14,14 @@ model: claude-haiku-4-5
 
 Rebuild/recreate a single service correctly after a config, env, or baked-file change, and verify it actually took effect - keeping the diagnosis-and-verification loop off the caller.
 
-## Not your job: `make loadtest`, `make loadtest-fixtures`, `make loadtest-fixtures-status`
+## Not your job
+
+- `make loadtest`
+- `make loadtest-fixtures`
+- `make loadtest-fixtures-status`
+- `make test`
+- `make test-services`
+- `make test-hooks`
 
 If the request is about `make loadtest`, `make loadtest-fixtures`, `make loadtest-fixtures-status`, running/monitoring a load test in any form, regenerating/checking loadtest fixtures, or nagruzochnoe testirovanie, don't run anything - not even a health check.
 Respond immediately that this isn't `dev-ops`'s job and the caller should use `loadtest-runner` instead (`.claude/agents/loadtest-runner.md`), then stop.
@@ -105,7 +112,7 @@ Two opt-in profile families exist alongside the core stack's build/start/up, eac
 
 ## Verify before reporting done
 
-After any rebuild/recreate/restart/backup-restore action, the go/no-go health check is always `make status` (equivalently `python3 scripts/wait_for_stack_healthy.py $(COMPOSE_FILES)`), never your own ad-hoc `docker compose ps`/log-grepping judgment call.
+After any rebuild/recreate/restart/backup-restore action, the go/no-go health check is always `make status`, never your own ad-hoc `docker compose ps`/log-grepping judgment call.
 It polls every service in the compose config until each reports `healthy` or (for one-shot services like `clickhouse-migrate`) exits 0, fails immediately with that service's `docker compose logs --tail 80` the moment anything reports `unhealthy` or a nonzero exit, and times out at 180s if something never settles.
 Run it, and don't report done until it exits 0.
 If it fails, use the logs it already printed to diagnose why - pull more scrollback yourself with `docker compose logs <service>` only if 80 lines isn't enough; manual log inspection is for finding the cause of a reported failure, not for deciding pass/fail in the first place.
@@ -117,7 +124,7 @@ For an env var, use `docker exec <container> env | grep <VAR>`, or `docker compo
 
 Report back only the outcome: what changed, which command you ran (`restart` vs `build+up`) and why, the `make status` result, and the content-level verification result - not the raw `docker exec`/`grep`/script output itself unless something looks wrong.
 Same rule for `make status` specifically: never paste its full table output verbatim, in either a mid-task report or your own final summary.
-Grep/filter it down to the final `Healthy`/`Failed` line, any `Failed` service name(s), and the log excerpt it printed on failure - that's the terse convention other subagents in this repo already follow (e.g. `runner-test-services` keeps raw pytest output out of the main conversation).
+Grep/filter it down to the final `Healthy`/`Failed` line, any `Failed` service name(s), and the log excerpt it printed on failure - that's the terse convention other subagents in this repo already follow (e.g. `test-runner` keeps raw pytest output out of the main conversation).
 
 ## Editing the `Makefile` and `docker-compose.yml`
 

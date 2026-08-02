@@ -3,7 +3,7 @@ name: harness-expert
 description: >
   MUST BE USED PROACTIVELY whenever a Subagent/Skill/Command description/frontmatter/body, or AGENTS.md, needs creating, editing, reviewing, or auditing - even unrequested.
   Also the delegate for any question about their content before an inline Read/grep, and for harness token-economy/versioning decisions.
-  v1.18.0
+  v1.20.0
 tools: Read, Write, Edit, Grep, Glob, Agent, Skill
 model: claude-sonnet-5
 ---
@@ -66,6 +66,12 @@ A description answers one question: should this entity trigger right now.
 KEEP: what it does (one clause); concrete triggers (phrases, paths, task shapes); explicit SKIP/exclusions; identifiers that disambiguate from a similar entity.
 DROP to body: internals, rationale, examples, anything true regardless of invocation.
 A trigger needing more than a short clause: clause in description, nuance in the body's first section.
+Order within the description: a short "what this is" clause leads, trigger conditions follow - never open cold with `MUST BE USED PROACTIVELY...` or a bare trigger clause.
+A picker-list scanner needs to see what kind of entity this is before reading when to invoke it.
+Any edit you're already making to a `description:` - even a narrowly-scoped rename, version bump, or reference-sync patch - still gets a glance against this spec.
+Fix an obvious bloated/misplaced-content problem you notice in passing, without waiting for the task to be framed as a compaction pass.
+"Under budget" is not "compacted per this spec" - don't conflate them.
+This is a passive catch, not a mandate to re-derive the whole description from scratch on every touch; a dedicated compaction sweep across many entities is `harness-guardian`'s job.
 
 ## Body style
 
