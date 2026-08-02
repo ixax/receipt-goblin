@@ -1,10 +1,10 @@
 ---
-description: Report cost/token spend for the current Claude Code session plus the last 30 days, and the top 5 most expensive operations in this session, from ClickHouse
+description: >
+  Report cost/token spend for the current session plus the last 30 days, and the top 5 most expensive operations in this session.
+  <version>2.0.1</version>
 ---
 
-# me
-
-Report cost/tokens for the current Claude Code session, the last 30 days
+Report cost/tokens for the current session, the last 30 days
 across all sessions/users, and the 5 most expensive operations in this
 session.
 Reads go through the `mcp-stats` MCP server, not `docker exec` -
@@ -57,5 +57,3 @@ instead of printing an empty list.
 If `session.cost` is null or `0`, say
 plainly there's been no spend yet this session rather than printing a
 zeroed-out report.
-
-<version>2.0.1</version>

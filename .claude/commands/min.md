@@ -1,9 +1,8 @@
 ---
-description: Curated context compaction - classifies session state into active work worth keeping vs. resolved noise worth discarding, then compacts accordingly. Manual only, CLI-agnostic (Claude Code or Codex); invoke as /min when context is large but the session should continue, not restart.
-disable-model-invocation: true
+description: >
+  Curated context compaction - classifies session state into active work worth keeping vs. resolved noise worth discarding, then compacts accordingly.
+  Manual only, CLI-agnostic (Claude Code or Codex); invoke as /min when context is large but the session should continue, not restart.
 ---
-
-# /min - curated compaction (Claude Code + Codex CLI)
 
 ## 1. Classify the session before compacting
 
@@ -33,48 +32,27 @@ DROP:
 - One-off questions that were fully answered and have no bearing on
   what's left to do
 
-## 2. Write the snapshot
+## 2. Print the snapshot
 
-Write (create or overwrite) `MIN_DUMP.md` in the project root - one fixed
-path, not per-session, so a later /min or a fresh session can find it
-without knowing any session id:
+Print the classified snapshot directly in the response as a blockquote, not to a file - so it's visually unambiguous what the user would be copying:
 
-    # Session state - <ISO timestamp>
-    ## Open tasks
-    - ...
-    ## Open bugs
-    - ...
-    ## Decisions not yet persisted to AGENTS.md/specs
-    - ...
-
-This file is the durable backup - it survives even if compaction below
-drops something the instructions didn't anticipate.
-It gets overwritten
-by the next /min run, so it holds the latest snapshot only, not a history.
+> Session state - <ISO timestamp>
+> Open tasks: ...
+> Open bugs: ...
+> Decisions not yet persisted to AGENTS.md/specs: ...
 
 ## 3. Hand off compaction
 
-Build the instruction string once:
+Build the instruction string from that same classification.
+No tool call can trigger `/compact` from inside a turn on either CLI - it's a command the user types, not something invocable via a tool.
+Do NOT attempt to compact yourself.
+Print the ready-to-run line as its own blockquote, a single clean copy target:
 
-    Keep only: (1) open tasks and bugs with current status, (2) decisions
-    made this session not yet in AGENTS.md/specs, (3) codebase facts
-    discovered this session that update or contradict existing docs.
-    Drop:
-    resolved side-quests, raw tool/test output already summarized, fixed
-    errors (one-line cause+fix only), fully-answered one-off questions.
-
-No tool call can trigger `/compact` from inside a turn on either CLI - it's
-a command the user types, not something invocable via a tool.
-Do NOT
-attempt to compact yourself.
-Print exactly this and stop:
-
-    Snapshot written to MIN_DUMP.md
-    Run this to compact:
-    /compact <instruction string above>
+> /compact Keep only: (1) open tasks and bugs with current status, (2) decisions made this session not yet in AGENTS.md/specs, (3) codebase facts discovered this session that update or contradict existing docs. Drop: resolved side-quests, raw tool/test output already summarized, fixed errors (one-line cause+fix only), fully-answered one-off questions.
 
 ## 4. Report back
 
-After handing off the command, give a short summary: how many open tasks/bugs survived, and point to `MIN_DUMP.md` as the on-disk backup.
+Stop after printing both blockquotes - the user copies the `/compact` line and runs it themselves.
+No file is written; nothing to report beyond the snapshot already shown.
 
-<version>1.0.0</version>
+<version>1.1.0</version>

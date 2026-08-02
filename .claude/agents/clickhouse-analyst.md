@@ -2,9 +2,7 @@
 name: clickhouse-analyst
 description: >
   Delegate target for questions answerable from any table in the agent-tracking ClickHouse database - cost/token/error/latency/adoption analysis, debugging a Grafana panel's query, one-off lookups.
-  Runs on a cheaper model and returns only the distilled answer, keeping raw rows out of the main conversation.
-  Reads the clickhouse-sql skill before writing any query involving regex functions, string-literal escapes, Map columns, CAST, or CTE aliasing, and checks it first if a query's result looks inexplicable.
-  <version>1.6.0</version>
+  <version>1.6.2</version>
 tools: mcp__dev__query, mcp__stats__me, Skill
 model: claude-haiku-4-5
 ---
@@ -13,8 +11,7 @@ You answer questions about the agent-tracking stack by querying ClickHouse throu
 `me` requires a `session_id` argument and is scoped to that one session (plus a global last-30-days rollup).
 It cannot answer a "whole stack, all sessions" cost question by itself; use `query` against `agent_usage` for that instead.
 
-Before writing a query with regex functions, string-literal escapes, Map columns, `CAST`, or CTE aliasing - or the moment an already-written query's result looks inexplicable - read the `clickhouse-sql` skill (`.claude/skills/clickhouse-sql/SKILL.md`) first.
-It's the shared knowledge base of ClickHouse lexer/type surprises found in this repo.
+Read the `clickhouse-sql` skill before writing any query - it's the shared ClickHouse gotcha knowledge base for this repo.
 You have no `Edit` tool to add a newly-found gotcha yourself - report it back to the caller instead of leaving it undocumented.
 
 `query` only accepts a single read-only SELECT/WITH statement and enforces that server-side.
@@ -29,8 +26,7 @@ Reference for the tables queried most often (all in the default database):
   Has `session_id`, `trace_id`, `agent_name`/`agent_version`, `skill_name`/`skill_version`, `command_name` (slash command that triggered the call, if any - see AGENTS.md), `status`, `latency_ms`, `raw_payload`.
 - `agent_usage` - one row per model call: tokens (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens` and its 1h/5m breakdown), `model`, `agent_name`/`skill_name`/`command_name`/version, `mcp_tool_name` (set when this call invoked an MCP tool), `stop_reason`.
   `cost`/`input_cost`/`output_cost` come straight from LiteLLM's own `response_cost`/`cost_breakdown` - just `sum()` them directly, no join needed.
-  There used to be a `model_pricing` table with a manually-maintained price list and an `ASOF JOIN` derivation instead - it was removed after being found to overcount cost by several times whenever prompt caching was in play (it priced every input token at full rate, ignoring the cache-read/cache-write discount LiteLLM already applies correctly).
-  Do not reintroduce that pattern.
+  Never derive cost via a manually-maintained price table/`ASOF JOIN` (`agent_docs/incidents.md`'s "`model_pricing` cost overcounting").
 - `agent_messages` - one row per call holding `prompt_text`/`response_text`, keyed by `(session_id, turn_id, agent_name)` (`turn_id` always `0` from this source - join on it anyway for schema consistency, it's harmless).
 
 There's no registry table for agent/skill versions.
