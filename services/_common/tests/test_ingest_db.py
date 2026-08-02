@@ -15,7 +15,7 @@ class _FakeClient:
     def __init__(self):
         self.inserts = []
 
-    def insert(self, table, rows, column_names):
+    def insert(self, table, rows, column_names, column_type_names=None):
         self.inserts.append((table, rows, column_names))
 
     def query(self, query, parameters=None, **kwargs):
@@ -106,14 +106,14 @@ class _PoisonRowClient(_FakeClient):
         super().__init__()
         self.poison_call_id = poison_call_id
 
-    def insert(self, table, rows, column_names):
+    def insert(self, table, rows, column_names, column_type_names=None):
         if table == "agent_usage" and len(rows) > 1:
             raise ValueError("simulated column range violation")
         if table == "agent_usage" and len(rows) == 1:
             call_id_idx = column_names.index("litellm_call_id")
             if rows[0][call_id_idx] == self.poison_call_id:
                 raise ValueError("simulated column range violation")
-        super().insert(table, rows, column_names)
+        super().insert(table, rows, column_names, column_type_names)
 
 
 def test_ingest_events_batch_unsuccess_poison_row_isolated_to_ingest_dlq(monkeypatch):

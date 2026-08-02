@@ -66,6 +66,54 @@ from common.ingest_parsing import (
 
 logger = logging.getLogger("webhook.ingest_db")
 
+# Type-name strings for each _X_COLUMNS list above, same order.
+# Passed as client.insert()'s column_type_names so clickhouse_connect skips
+# its per-insert DESCRIBE TABLE (driver/client.py:create_insert_context).
+# Types taken from services/clickhouse/schema.sql.
+_INVOCATION_COLUMN_TYPES = [
+    "String", "String", "LowCardinality(String)", "LowCardinality(String)",
+    "String", "Nullable(String)", "DateTime64(3)",
+]
+_EVENT_COLUMN_TYPES = [
+    "DateTime64(3)", "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)",
+    "String", "String", "UInt32", "LowCardinality(String)", "LowCardinality(String)",
+    "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)",
+    "LowCardinality(String)", "LowCardinality(String)", "String", "LowCardinality(String)",
+    "Nullable(UInt32)", "LowCardinality(String)", "String", "String",
+    "String", "UInt64", "LowCardinality(String)", "String", "DateTime64(3)",
+]
+_USAGE_COLUMN_TYPES = [
+    "DateTime64(3)", "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)",
+    "String", "String", "UInt32", "LowCardinality(String)",
+    "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)",
+    "LowCardinality(String)", "LowCardinality(String)", "String", "LowCardinality(String)",
+    "UInt32", "UInt32", "UInt32", "UInt32",
+    "LowCardinality(String)",
+    "UInt32", "UInt32",
+    "Float64", "Float64", "Float64", "UInt8", "UInt32",
+    "String", "LowCardinality(String)", "DateTime64(3)",
+]
+_MESSAGE_COLUMN_TYPES = [
+    "DateTime64(3)", "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)",
+    "String", "String", "UInt32",
+    "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)",
+    "LowCardinality(String)", "LowCardinality(String)", "String", "String", "String",
+    "String", "DateTime64(3)",
+]
+_SOURCE_COLUMN_TYPES = ["String", "String", "DateTime64(3)", "String"]
+_GROUP_COLUMN_TYPES = ["LowCardinality(String)", "LowCardinality(String)", "DateTime64(3)"]
+_USER_COLUMN_TYPES = ["LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)", "DateTime64(3)"]
+_CLIENT_COLUMN_TYPES = ["UInt64", "String", "DateTime64(3)"]
+_FAILURE_COLUMN_TYPES = ["DateTime64(3)", "LowCardinality(String)", "String", "String", "String", "String"]
+
+# Keyed by table name - _BatchWriter.insert_with_dlq_fallback's generic
+# table/columns signature looks its column_type_names up here.
+_COLUMN_TYPES_BY_TABLE = {
+    "agent_events": _EVENT_COLUMN_TYPES,
+    "agent_usage": _USAGE_COLUMN_TYPES,
+    "agent_messages": _MESSAGE_COLUMN_TYPES,
+}
+
 _client = None
 
 
@@ -97,41 +145,41 @@ _FAILURE_COLUMNS = ["occurred_at", "stage", "error", "litellm_call_id", "session
 def _insert_agent_invocations(client, rows: list[list]) -> None:
     if not rows:
         return
-    client.insert("agent_invocations", rows, column_names=_INVOCATION_COLUMNS)
+    client.insert("agent_invocations", rows, column_names=_INVOCATION_COLUMNS, column_type_names=_INVOCATION_COLUMN_TYPES)
 
 
 def _insert_event(client, row: list) -> None:
-    client.insert("agent_events", [row], column_names=_EVENT_COLUMNS)
+    client.insert("agent_events", [row], column_names=_EVENT_COLUMNS, column_type_names=_EVENT_COLUMN_TYPES)
 
 
 def _insert_usage(client, row: list) -> None:
-    client.insert("agent_usage", [row], column_names=_USAGE_COLUMNS)
+    client.insert("agent_usage", [row], column_names=_USAGE_COLUMNS, column_type_names=_USAGE_COLUMN_TYPES)
 
 
 def _insert_message(client, row: list) -> None:
-    client.insert("agent_messages", [row], column_names=_MESSAGE_COLUMNS)
+    client.insert("agent_messages", [row], column_names=_MESSAGE_COLUMNS, column_type_names=_MESSAGE_COLUMN_TYPES)
 
 
 def _insert_source(client, row: list) -> None:
-    client.insert("ingest_raw", [row], column_names=_SOURCE_COLUMNS)
+    client.insert("ingest_raw", [row], column_names=_SOURCE_COLUMNS, column_type_names=_SOURCE_COLUMN_TYPES)
 
 
 def _insert_ai_gateway_groups(client, rows: list[list]) -> None:
     if not rows:
         return
-    client.insert("ai_gateway_groups", rows, column_names=_GROUP_COLUMNS)
+    client.insert("ai_gateway_groups", rows, column_names=_GROUP_COLUMNS, column_type_names=_GROUP_COLUMN_TYPES)
 
 
 def _insert_ai_gateway_users(client, rows: list[list]) -> None:
     if not rows:
         return
-    client.insert("ai_gateway_users", rows, column_names=_USER_COLUMNS)
+    client.insert("ai_gateway_users", rows, column_names=_USER_COLUMNS, column_type_names=_USER_COLUMN_TYPES)
 
 
 def _insert_clients(client, rows: list[list]) -> None:
     if not rows:
         return
-    client.insert("clients", rows, column_names=_CLIENT_COLUMNS)
+    client.insert("clients", rows, column_names=_CLIENT_COLUMNS, column_type_names=_CLIENT_COLUMN_TYPES)
 
 
 def _agent_name_and_version_for_invocation(client, agent_invocation_id: str) -> tuple[str, str]:
@@ -342,7 +390,7 @@ class _BatchWriter:
             if (row := _deserialize_row(event.get("source_row"), _SOURCE_INGESTED_AT_IDX)) is not None
         ]
         if source_rows:
-            client.insert("ingest_raw", source_rows, column_names=_SOURCE_COLUMNS)
+            client.insert("ingest_raw", source_rows, column_names=_SOURCE_COLUMNS, column_type_names=_SOURCE_COLUMN_TYPES)
 
         # Dedup by id within the batch (last wins); ReplacingMergeTree would
         # collapse duplicates on merge anyway, this just skips redundant inserts.
@@ -435,8 +483,9 @@ class _BatchWriter:
         if not rows:
             return
         client = self.client
+        column_types = _COLUMN_TYPES_BY_TABLE[table]
         try:
-            client.insert(table, rows, column_names=columns)
+            client.insert(table, rows, column_names=columns, column_type_names=column_types)
             return
         except Exception:
             logger.exception("failed to insert into %s (n=%d) - retrying row-by-row", table, len(rows))
@@ -444,7 +493,7 @@ class _BatchWriter:
         failure_rows = []
         for row in rows:
             try:
-                client.insert(table, [row], column_names=columns)
+                client.insert(table, [row], column_names=columns, column_type_names=column_types)
             except Exception as exc:
                 failure_rows.append([
                     datetime.now(timezone.utc), table, str(exc),
@@ -454,6 +503,6 @@ class _BatchWriter:
         if failure_rows:
             logger.error("dropped %d row(s) into ingest_dlq (stage=%s)", len(failure_rows), table)
             try:
-                client.insert("ingest_dlq", failure_rows, column_names=_FAILURE_COLUMNS)
+                client.insert("ingest_dlq", failure_rows, column_names=_FAILURE_COLUMNS, column_type_names=_FAILURE_COLUMN_TYPES)
             except Exception:
                 logger.exception("failed to record ingest_dlq (stage=%s, n=%d)", table, len(failure_rows))

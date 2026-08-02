@@ -16,8 +16,7 @@ from common.litellm_auth import virtual_key_is_valid
 from common.logging_config import create_logger
 
 from .config import APP_VERSION
-from .ingest import ingest_git_branch, ingest_litellm_alert, ingest_plan_proposal
-from .queue import enqueue_raw, get_async_redis
+from .queue import enqueue_raw, enqueue_side, get_async_redis
 
 logger = create_logger("webhook.server")
 
@@ -130,7 +129,8 @@ async def receive_metrics(request: Request):
 async def receive_git_branch(payload: GitBranchPayload, _: None = Depends(require_virtual_key)):
     # Reported by hooks/report_git_branch.py (SessionStart/CwdChanged) since
     # neither StandardLoggingPayload nor ANTHROPIC_CUSTOM_HEADERS carry cwd/git state.
-    ingest_git_branch(payload.session_id, payload.git_branch, payload.git_repo)
+    # Queued (not a direct ClickHouse insert) - see queue.enqueue_side.
+    await enqueue_side("git_branch", payload.model_dump())
     return {"status": "received"}
 
 
@@ -144,7 +144,8 @@ async def receive_git_branch(payload: GitBranchPayload, _: None = Depends(requir
 async def receive_plan_proposal(payload: PlanProposalPayload, _: None = Depends(require_virtual_key)):
     # Reported by hooks/report_plan_proposal.py (PreToolUse: ExitPlanMode) -
     # StandardLoggingPayload's arguments come back empty for ExitPlanMode.
-    ingest_plan_proposal(payload.session_id, payload.plan_text)
+    # Queued (not a direct ClickHouse insert) - see queue.enqueue_side.
+    await enqueue_side("plan_proposal", payload.model_dump())
     return {"status": "received"}
 
 
@@ -160,10 +161,9 @@ async def receive_litellm_alert(request: Request):
     # in services/litellm/config.yaml, WEBHOOK_URL env var) - same trust
     # model as /api/v1/metrics (internal-network-only; LiteLLM's generic
     # alerting webhook has no header-auth mechanism to check against).
-    # Direct-to-ClickHouse insert, not queued through Redis - see
-    # ingest_litellm_alert's own docstring for why (low event volume).
+    # Queued (not a direct ClickHouse insert) - see queue.enqueue_side.
     # Not a Pydantic model - alert shape varies by event type and
-    # ingest_litellm_alert keeps the full raw_payload regardless.
+    # _litellm_alert_row keeps the full raw_payload regardless.
     body = await request.json()
-    ingest_litellm_alert(body)
+    await enqueue_side("litellm_alert", body)
     return {"status": "received"}

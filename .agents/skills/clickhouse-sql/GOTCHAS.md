@@ -34,6 +34,17 @@ Keep each entry a few lines max, no essays.
   Fix: none from the query-authoring side.
   Substitute by hand using `BARE_VAR_DEFAULTS['window']` (3600) and profile via `mcp__dev__profile_query` directly.
 
+## `column_type_names` bypasses schema verification (`clickhouse_connect`)
+
+- `services/_common/src/ingest_db.py` and `services/_common/src/side_ingest.py` pass `column_type_names=...` on every `client.insert(...)` call (e.g. `_INVOCATION_COLUMN_TYPES`, `_EVENT_COLUMN_TYPES`, `_USAGE_COLUMN_TYPES`, `_MESSAGE_COLUMN_TYPES`, `_SOURCE_COLUMN_TYPES`, `_GROUP_COLUMN_TYPES`, `_USER_COLUMN_TYPES`, `_CLIENT_COLUMN_TYPES`, `_FAILURE_COLUMN_TYPES` in `ingest_db.py`; `_GIT_BRANCH_COLUMN_TYPES`/`_PLAN_PROPOSAL_COLUMN_TYPES`/`_LITELLM_ALERT_COLUMN_TYPES` in `side_ingest.py`) so `clickhouse_connect` skips its per-insert `DESCRIBE TABLE` round trip (this was ~half of all queries from the `ingest` ClickHouse user - 828 `DESCRIBE` calls/10min before the fix, 0 after, confirmed via `system.query_log`).
+- This is a hint, not a re-verified fact: `clickhouse_connect` trusts and encodes by whatever type the Python list says, and does NOT check it against the live schema.
+  These lists are hand-copied from `services/clickhouse/schema.sql` at write time, so they can drift silently if the schema changes later without the matching constant being updated.
+- Consequences of schema.sql changing a column's type without the Python constant following it in the same change:
+  - Type narrowed/changed incompatibly -> insert can fail loudly, or in subtler cases silently truncate/corrupt data instead of erroring.
+  - Column added to the table -> harmless, just unpopulated (existing lists stay valid, new column gets its `DEFAULT`) until code is updated to include it.
+  - Column renamed/removed -> insert fails loudly with a clear "column doesn't exist" error, easy to catch.
+- Fix/rule: whenever a column used by one of these `column_type_names` lists changes type in `schema.sql`, update the matching Python constant in the same change - `column_type_names` bypasses ClickHouse's own schema check, so nothing else will catch the mismatch.
+
 ## `mcp-dev` SQL validator (`services/mcp-dev/src/server.py`)
 
 - The `;`/keyword/`SYSTEM`/table-function checks scan SQL text with string literals masked out first, via quote-aware `_mask_string_literals` - unmasked, a literal containing `;` (e.g. HTML entities like `&amp;`) or a forbidden-looking word as plain text would false-reject.

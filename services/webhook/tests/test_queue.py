@@ -95,3 +95,24 @@ def test_enqueue_success_skips_non_dict_items(fake_redis):
 
     assert len(fake_redis.xadd_calls) == 1
     assert json.loads(fake_redis.xadd_calls[0][1]["event"]) == {"litellm_call_id": "abc"}
+
+
+def test_enqueue_side_success_tags_payload_with_kind(fake_redis):
+    _run(queue.enqueue_side("git_branch", {"session_id": "s1", "git_branch": "main"}))
+
+    assert len(fake_redis.xadd_calls) == 1
+    stream_key, fields, maxlen, _ = fake_redis.xadd_calls[0]
+    assert stream_key == queue.SIDE_STREAM_KEY
+    assert maxlen == queue.SIDE_MAXLEN
+    assert fields["kind"] == "git_branch"
+    assert json.loads(fields["event"]) == {"session_id": "s1", "git_branch": "main"}
+
+
+def test_enqueue_side_unsuccess_xadd_failure_does_not_raise(monkeypatch):
+    class _BoomRedis:
+        async def xadd(self, *args, **kwargs):
+            raise ConnectionError("redis down")
+
+    monkeypatch.setattr(queue, "get_async_redis", lambda: _BoomRedis())
+
+    _run(queue.enqueue_side("plan_proposal", {"session_id": "s1"}))  # must not raise

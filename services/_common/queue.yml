@@ -21,3 +21,13 @@ flush_interval_ms: 2000
 # XAUTOCLAIM threshold (ms) - reclaims entries left un-XACK'd this long
 # (covers a worker crashing mid-batch).
 stale_idle_ms: 300000
+
+# Second, separate stream for low-volume side-channel hooks (session
+# git-branch, plan-proposal, LiteLLM native alerts) - kept off webhook:events
+# so a side-event burst can't crowd out main-event batching.
+# Distinguished by a `kind` field per XADD entry rather than split into
+# three streams - see plans/side-channel-redis-and-describe-fix.md.
+side_stream_key: webhook:side-events
+
+# Low volume; generous headroom over expected burst size.
+side_maxlen: 200

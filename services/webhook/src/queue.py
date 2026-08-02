@@ -11,7 +11,7 @@ import logging
 import redis.asyncio as aioredis
 
 from common import fastjson as json
-from common.config.queue import MAXLEN, STREAM_KEY
+from common.config.queue import MAXLEN, SIDE_MAXLEN, SIDE_STREAM_KEY, STREAM_KEY
 from common.config.redis import REDIS_HOST, REDIS_PORT
 
 logger = logging.getLogger("webhook.queue")
@@ -88,3 +88,21 @@ async def enqueue_raw(body: bytes) -> None:
         logger.exception("failed to decode bundled payload array")
         return
     await enqueue(parsed if isinstance(parsed, list) else [parsed])
+
+
+async def enqueue_side(kind: str, payload: dict) -> None:
+    """kind: "git_branch" | "plan_proposal" | "litellm_alert".
+    Fire-and-forget onto a second, separate stream from enqueue()/enqueue_raw()
+    above, so a burst of these low-volume session-metadata/alert events can't
+    crowd out webhook:events' own batching - see queue.yml.
+    Never raises, same reasoning as enqueue()."""
+    client = get_async_redis()
+    try:
+        await client.xadd(
+            SIDE_STREAM_KEY,
+            {"kind": kind, "event": json.dumps(payload, default=str)},
+            maxlen=SIDE_MAXLEN,
+            approximate=True,
+        )
+    except Exception:
+        logger.exception("failed to enqueue side event (kind=%s)", kind)
