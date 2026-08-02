@@ -11,6 +11,7 @@ import stat
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 
 HOOK_DIR = Path(__file__).resolve().parent.parent
@@ -68,11 +69,14 @@ class TestMainEndToEnd(unittest.TestCase):
         return script
 
     def run_hook(self, file_path: str):
+        # sync_hook.main() forwards the sync script's stderr on failure -
+        # intended for the live hook, but noise a passing test shouldn't print.
         payload = json.dumps({"tool_input": {"file_path": file_path}})
         old_stdin = sys.stdin
         sys.stdin = io.StringIO(payload)
         try:
-            return sync_hook.main()
+            with redirect_stderr(io.StringIO()):
+                return sync_hook.main()
         finally:
             sys.stdin = old_stdin
 

@@ -9,7 +9,6 @@ vars are a misconfiguration and are allowed to crash the hook.
 import json
 import os
 import sys
-import urllib.error
 import urllib.request
 
 INGEST_API_URL = os.environ["AGENT_CLI_TRACKING_API_URL"]

@@ -8,7 +8,7 @@ description: >
   Also covers read-only `git` (log/diff/show/status/blame) like `ls`/`find`/`grep`/read-only `docker` - hand it a goal, not commands.
   SKIP for state-changing `git`/`docker`, or trivial read/write.
   Flags (not designs) any ClickHouse SQL gotcha in exact text it's asked to write.
-  <version>1.7.1</version>
+  v1.7.1
 tools: Bash, Read, Write, Edit, Glob, Grep, Skill
 model: claude-haiku-4-5
 ---

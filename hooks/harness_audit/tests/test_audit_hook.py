@@ -10,6 +10,7 @@ import os
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 
 HOOK_DIR = Path(__file__).resolve().parent.parent
@@ -60,11 +61,15 @@ class TestMainEndToEnd(unittest.TestCase):
         self._tmp.cleanup()
 
     def run_hook(self, file_path: str):
+        # audit_hook.main() prints its violation report to stderr on the
+        # blocking path - that's real, intended behavior for the live hook,
+        # but it's noise a passing test run shouldn't dump to the terminal.
         payload = json.dumps({"tool_input": {"file_path": file_path}})
         old_stdin = sys.stdin
         sys.stdin = io.StringIO(payload)
         try:
-            return audit_hook.main()
+            with redirect_stderr(io.StringIO()):
+                return audit_hook.main()
         finally:
             sys.stdin = old_stdin
 

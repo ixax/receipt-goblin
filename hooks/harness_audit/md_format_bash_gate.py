@@ -33,7 +33,7 @@ from pathlib import Path
 
 HOOK_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(HOOK_DIR))
-from md_format_skill_gate import already_read, has_multiline_comment_block  # noqa: E402
+from md_format_skill_gate import already_read, has_multiline_comment_block, under_excluded_dir  # noqa: E402
 
 TARGET_RE = re.compile(
     r"(?:>{1,2}|\btee\b(?:\s+-a)?)\s+"
@@ -65,6 +65,8 @@ def qualifies(command: str) -> str:
         return ""
     body = heredoc_body(command)
     for target in targets:
+        if under_excluded_dir(target):
+            continue
         if target.endswith(".md"):
             return target
         if target.endswith((".py", ".yml", ".yaml")) and body:

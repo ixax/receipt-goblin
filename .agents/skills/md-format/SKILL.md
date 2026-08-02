@@ -5,7 +5,7 @@ description: >
   TRIGGER - read before EVERY Edit/Write touching .md prose or tables (agent_docs/*.md, README.md, AGENTS.md, SKILL.md, agent/command bodies, any .md), and before writing a multi-sentence `#` comment or docstring in .py/.yml/.yaml.
   Covers: line wrapping, one-sentence-per-line, short sentences, enumeration-vs-list, quoting example text, heading hierarchy, table alignment.
   SKIP for a single-sentence code comment, and .md edits touching only code blocks/frontmatter.
-  <version>1.8.0</version>
+  v1.8.0
 ---
 
 Apply to prose paragraphs, list formatting, and table pipe formatting only.

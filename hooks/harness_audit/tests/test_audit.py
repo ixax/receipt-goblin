@@ -52,6 +52,121 @@ class TestTokensAndWords(unittest.TestCase):
         self.assertEqual(audit.description_words("just a body, no frontmatter"), 0)
 
 
+class TestRuleFunctions(unittest.TestCase):
+    """Each check_* rule in audit.py is a pure function of its arguments -
+    no filesystem, no shared state - so it's tested directly here instead
+    of only indirectly through main()."""
+
+    def test_check_token_budget_over(self):
+        text = "x " * (audit.BUDGETS["root_md"] * 5)
+        v = audit.check_token_budget("AGENTS.md", "root_md", text)
+        self.assertEqual(len(v), 1)
+        self.assertIn("tokens > budget", v[0])
+
+    def test_check_token_budget_under(self):
+        self.assertEqual(audit.check_token_budget("AGENTS.md", "root_md", "short"), [])
+
+    def test_check_token_budget_ignores_other_kinds(self):
+        text = "x " * (audit.BUDGETS["root_md"] * 5)
+        self.assertEqual(audit.check_token_budget("README.md", "other_md", text), [])
+
+    def test_check_skill_line_budget_over(self):
+        body = "\n".join(f"line {i}" for i in range(audit.BUDGETS["skill_lines"] + 10))
+        v = audit.check_skill_line_budget("x/SKILL.md", "skill", body)
+        self.assertEqual(len(v), 1)
+        self.assertIn("lines > budget", v[0])
+
+    def test_check_skill_line_budget_ignores_non_skill(self):
+        body = "\n".join(f"line {i}" for i in range(audit.BUDGETS["skill_lines"] + 10))
+        self.assertEqual(audit.check_skill_line_budget("x.md", "other_md", body), [])
+
+    def test_check_description_word_budget_over(self):
+        long_desc = " ".join(["word"] * (audit.BUDGETS["description_words"] + 10))
+        text = f"---\nname: x\ndescription: {long_desc}\n---\nbody\n"
+        v = audit.check_description_word_budget("x.md", "agent", text)
+        self.assertEqual(len(v), 1)
+        self.assertIn("words >", v[0])
+
+    def test_check_description_word_budget_ignores_other_kinds(self):
+        long_desc = " ".join(["word"] * (audit.BUDGETS["description_words"] + 10))
+        text = f"---\nname: x\ndescription: {long_desc}\n---\nbody\n"
+        self.assertEqual(audit.check_description_word_budget("x.md", "root_md", text), [])
+
+    def test_check_volatile_content_flagged(self):
+        v = audit.check_volatile_content("AGENTS.md", "root_md", "Current sprint: 2026-07-29.\n", is_symlink=False)
+        self.assertEqual(len(v), 1)
+        self.assertIn("volatile content", v[0])
+
+    def test_check_volatile_content_skips_symlink(self):
+        v = audit.check_volatile_content("AGENTS.md", "root_md", "Current sprint: 2026-07-29.\n", is_symlink=True)
+        self.assertEqual(v, [])
+
+    def test_check_one_sentence_per_line_flagged(self):
+        text = "This is one sentence. This is a second sentence on the same line.\n"
+        v = audit.check_one_sentence_per_line("x.md", "other_md", text)
+        self.assertEqual(len(v), 1)
+        self.assertIn("one-sentence-per-line", v[0])
+
+    def test_check_one_sentence_per_line_ignores_unlisted_kind(self):
+        text = "This is one sentence. This is a second sentence on the same line.\n"
+        self.assertEqual(audit.check_one_sentence_per_line("x.md", "harness_index", text), [])
+
+    def test_check_dead_references_flags_missing(self):
+        text = "See `agent_docs/does-not-exist.md` for details.\n"
+        v = audit.check_dead_references("AGENTS.md", text, exists_fn=lambda ref: False)
+        self.assertEqual(len(v), 1)
+        self.assertIn("dead reference", v[0])
+
+    def test_check_dead_references_skips_existing(self):
+        text = "See `agent_docs/architecture.md` for details.\n"
+        v = audit.check_dead_references("AGENTS.md", text, exists_fn=lambda ref: True)
+        self.assertEqual(v, [])
+
+    def test_check_dead_references_skips_thoughts_prefix(self):
+        text = "See `thoughts/scratch.md` for details.\n"
+        v = audit.check_dead_references("AGENTS.md", text, exists_fn=lambda ref: False)
+        self.assertEqual(v, [])
+
+    def test_rule_candidate_lines_skips_other_md(self):
+        text = "- This exact bullet line is long enough to count as a rule\n"
+        self.assertEqual(audit.rule_candidate_lines("other_md", text), [])
+
+    def test_rule_candidate_lines_collects_bullets(self):
+        text = "- This exact bullet line is long enough to count as a rule\nshort\n"
+        self.assertEqual(
+            audit.rule_candidate_lines("agent", text),
+            ["- this exact bullet line is long enough to count as a rule"],
+        )
+
+    def test_check_duplicate_rules_flags_shared_line(self):
+        line_index = {"- shared line": ["a.md", "b.md"], "- unique line": ["a.md"]}
+        v = audit.check_duplicate_rules(line_index)
+        self.assertEqual(len(v), 1)
+        self.assertIn("duplicate rule", v[0])
+
+    def test_check_agents_chain_budget_over(self):
+        files = {"AGENTS.md": ("root_md", "x" * (33 * 1024))}
+        v = audit.check_agents_chain_budget(files, is_symlink_fn=lambda rel: False)
+        self.assertEqual(len(v), 1)
+        self.assertIn("Codex 32 KiB cap", v[0])
+
+    def test_check_agents_chain_budget_symlink_excluded(self):
+        files = {"AGENTS.md": ("root_md", "x" * (33 * 1024))}
+        v = audit.check_agents_chain_budget(files, is_symlink_fn=lambda rel: True)
+        self.assertEqual(v, [])
+
+    def test_check_claude_agents_pairing_flags_both_present(self):
+        files = {"CLAUDE.md": ("root_md", "a"), "AGENTS.md": ("root_md", "b")}
+        v = audit.check_claude_agents_pairing(files, is_symlink_fn=lambda rel: False)
+        self.assertEqual(len(v), 1)
+        self.assertIn("separate files", v[0])
+
+    def test_check_claude_agents_pairing_symlink_not_flagged(self):
+        files = {"CLAUDE.md": ("root_md", "a"), "AGENTS.md": ("root_md", "b")}
+        v = audit.check_claude_agents_pairing(files, is_symlink_fn=lambda rel: True)
+        self.assertEqual(v, [])
+
+
 class TestCollectAndMain(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

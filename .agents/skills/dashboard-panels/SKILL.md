@@ -11,7 +11,7 @@ description: >
   TRIGGER - read BEFORE creating/editing a panel's query/options, or reviewing a panel edit, in any of
   those files.
   SKIP for non-panel dashboard edits (annotations, variables, dashboard-level settings).
-  <version>1.6.1</version>
+  v1.6.1
 ---
 
 Conventions for building or editing a panel/graph/widget in any dashboard JSON in this repo (`services/grafana/dashboards/*.json`, `services/grafana/dashboards-health/*.json`).

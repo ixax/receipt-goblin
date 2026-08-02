@@ -43,6 +43,14 @@ from comment_format import comment_lines_in_text  # noqa: E402
 SKILL_NAME = "md-format"
 SKILL_FILE_SUFFIX = str(Path(".claude") / "skills" / "md-format" / "SKILL.md")
 
+# Directories exempt from the md-format gate entirely (freeform docs, not harness prose).
+# Add more names here as needed.
+EXCLUDED_DIRS = {"plans"}
+
+
+def under_excluded_dir(path: str) -> bool:
+    return not EXCLUDED_DIRS.isdisjoint(Path(path).parts)
+
 
 def _block_satisfies_gate(block: dict) -> bool:
     if not isinstance(block, dict) or block.get("type") != "tool_use":
@@ -127,6 +135,8 @@ def added_lines(old_text: str, new_text: str) -> str:
 
 
 def qualifies(path: str, text: str) -> bool:
+    if under_excluded_dir(path):
+        return False
     if path.endswith(".md"):
         return True
     if path.endswith((".py", ".yml", ".yaml")):

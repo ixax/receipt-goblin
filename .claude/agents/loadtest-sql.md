@@ -4,7 +4,7 @@ description: >
   Delegate target for load-testing the ClickHouse SQL behind Grafana dashboard widgets (e.g. services/grafana/dashboards/agents_overview.json) - given a request naming a tab, widget title(s), or "all", finds the matching panels, extracts each panel's rawSql, substitutes Grafana macros/template variables with concrete values, runs each query repeatedly through the mcp-dev `query` tool, and reports min/avg/max execution time per widget.
   Runs on a cheap model and returns only the distilled timing table, keeping raw dashboard JSON and per-run query output out of the main conversation.
   Can delegate mechanical file/investigation work outside this narrow scope to the `script-ops` agent.
-  <version>1.3.1</version>
+  v1.3.1
 tools: Bash, Read, mcp__dev__query, Agent, Skill
 model: claude-haiku-4-5
 ---

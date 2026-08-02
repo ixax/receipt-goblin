@@ -3,7 +3,7 @@ name: clickhouse-sql
 description: >
   ClickHouse SQL gotchas and sanctioned tool/script pointers for this repo's agent-tracking stack.
   TRIGGER - read before writing or debugging any ClickHouse SQL query against this stack.
-  <version>2.1.0</version>
+  v2.1.0
 ---
 
 ## Gotchas

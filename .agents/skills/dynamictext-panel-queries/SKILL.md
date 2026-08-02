@@ -5,7 +5,7 @@ description: >
   Current examples: panel-76 ("Trace"), companion panel-77, and panel-99 ("Fork tree").
   TRIGGER - read only when the current dashboards-expert task is actually to write or fix a Dynamic Text panel's query, `rawSql`, or SQL-side logic.
   SKIP for styling-only work (use `dynamictext-panel-design-system` instead) or any non-Dynamic-Text panel.
-  <version>1.2.0</version>
+  v1.2.0
 ---
 
 Query/data reference for `dashboards-expert`, read on demand - see description for the trigger condition.

@@ -76,6 +76,110 @@ def description_words(text: str) -> int:
     return len(d.group(1).split()) if d else 0
 
 
+# --- Per-file rules --------------------------------------------------------
+# Each check_* function takes only the data it needs and returns a list of
+# formatted violation strings - no I/O, no shared state, so each is testable
+# in isolation.
+
+def check_token_budget(rel: str, kind: str, text: str) -> list:
+    if kind not in ("root_md", "nested_md", "rule"):
+        return []
+    tok = tokens(text)
+    if tok > BUDGETS[kind]:
+        return [f"{rel}: {tok} tokens > budget {BUDGETS[kind]}"]
+    return []
+
+
+def check_skill_line_budget(rel: str, kind: str, text: str) -> list:
+    if kind != "skill":
+        return []
+    nlines = text.count("\n") + 1
+    if nlines > BUDGETS["skill_lines"]:
+        return [f"{rel}: {nlines} lines > budget {BUDGETS['skill_lines']}"]
+    return []
+
+
+def check_description_word_budget(rel: str, kind: str, text: str) -> list:
+    if kind not in ("skill", "agent"):
+        return []
+    dw = description_words(text)
+    if dw > BUDGETS["description_words"]:
+        return [f"{rel}: description {dw} words > {BUDGETS['description_words']}"]
+    return []
+
+
+def check_volatile_content(rel: str, kind: str, text: str, is_symlink: bool) -> list:
+    if kind not in ("root_md", "nested_md", "rule") or is_symlink:
+        return []
+    violations = []
+    for i, line in enumerate(text.splitlines(), 1):
+        if VOLATILE_PATTERN.search(line):
+            violations.append(f"{rel}:{i}: volatile content in cached prefix -> {line.strip()[:70]}")
+    return violations
+
+
+def check_one_sentence_per_line(rel: str, kind: str, text: str) -> list:
+    if kind not in ("agent", "skill", "rule", "root_md", "nested_md", "deep_dive", "other_md"):
+        return []
+    return [f"{rel}:{i}: md-format one-sentence-per-line -> {s}" for i, s in multi_sentence_lines(text)]
+
+
+def check_dead_references(rel: str, text: str, exists_fn) -> list:
+    """exists_fn(ref) -> bool is injected so this stays a pure function of
+    its inputs instead of reaching into the filesystem itself."""
+    violations = []
+    for ref in set(REF_PATTERN.findall(text)):
+        if ref.startswith("thoughts/"):
+            continue
+        if not exists_fn(ref):
+            violations.append(f"{rel}: dead reference -> {ref}")
+    return violations
+
+
+def rule_candidate_lines(kind: str, text: str) -> list:
+    """List-item lines from this file eligible for the duplicate-rule check
+    below, or [] for kinds that don't carry token-budgeted rules."""
+    if kind == "other_md":
+        return []
+    return [
+        line.strip().lower() for line in text.splitlines()
+        if len(line.strip()) > 30 and line.strip().startswith(("- ", "* "))
+    ]
+
+
+# --- Cross-file rules --------------------------------------------------------
+# These need the full file set, so they run once after the per-file loop.
+
+def check_duplicate_rules(line_index: dict) -> list:
+    violations = []
+    for line, where in line_index.items():
+        if len(set(where)) > 1:
+            violations.append(f"duplicate rule in {sorted(set(where))}: {line[:60]}...")
+    return violations
+
+
+def check_agents_chain_budget(files: dict, is_symlink_fn) -> list:
+    agents_chain = sum(
+        len(t.encode("utf-8")) for rel, (k, t) in files.items()
+        if os.path.basename(rel) == "AGENTS.md" and not is_symlink_fn(rel)
+    )
+    if agents_chain > 32 * 1024:
+        return [f"AGENTS.md chain {agents_chain} bytes > Codex 32 KiB cap (silent truncation)"]
+    return []
+
+
+def check_claude_agents_pairing(files: dict, is_symlink_fn) -> list:
+    violations = []
+    for rel in files:
+        if os.path.basename(rel) != "CLAUDE.md":
+            continue
+        d = os.path.dirname(rel)
+        other = os.path.join(d, "AGENTS.md")
+        if other in files and not (is_symlink_fn(rel) or is_symlink_fn(other)):
+            violations.append(f"{d or '.'}: CLAUDE.md and AGENTS.md are separate files — symlink one to the other")
+    return violations
+
+
 def collect():
     files = {}
     seen_real = set()
@@ -135,67 +239,42 @@ def main():
     violations = []
     line_index = defaultdict(list)
 
+    def is_symlink(rel):
+        return os.path.islink(os.path.join(ROOT, rel))
+
     print(f"{'file':<55} {'kind':<10} {'tokens':>7} {'lines':>6}")
     for rel, (kind, text) in sorted(files.items()):
         tok = tokens(text)
         nlines = text.count("\n") + 1
         print(f"{rel:<55} {kind:<10} {tok:>7} {nlines:>6}")
 
-        if kind in ("root_md", "nested_md", "rule") and tok > BUDGETS[kind]:
-            violations.append(f"{rel}: {tok} tokens > budget {BUDGETS[kind]}")
-        if kind == "skill" and nlines > BUDGETS["skill_lines"]:
-            violations.append(f"{rel}: {nlines} lines > budget {BUDGETS['skill_lines']}")
-        if kind in ("skill", "agent"):
-            dw = description_words(text)
-            if dw > BUDGETS["description_words"]:
-                violations.append(f"{rel}: description {dw} words > {BUDGETS['description_words']}")
+        violations.extend(check_token_budget(rel, kind, text))
+        violations.extend(check_skill_line_budget(rel, kind, text))
+        violations.extend(check_description_word_budget(rel, kind, text))
 
-        if kind != "other_md":
-            for line in text.splitlines():
-                s = line.strip().lower()
-                if len(s) > 30 and s.startswith(("- ", "* ")):
-                    line_index[s].append(rel)
+        for line in rule_candidate_lines(kind, text):
+            line_index[line].append(rel)
 
-        if kind in ("root_md", "nested_md", "rule") and not os.path.islink(os.path.join(ROOT, rel)):
-            for i, line in enumerate(text.splitlines(), 1):
-                if VOLATILE_PATTERN.search(line):
-                    violations.append(f"{rel}:{i}: volatile content in cached prefix -> {line.strip()[:70]}")
-
-        if kind in ("agent", "skill", "rule", "root_md", "nested_md", "deep_dive", "other_md"):
-            for i, s in multi_sentence_lines(text):
-                violations.append(f"{rel}:{i}: md-format one-sentence-per-line -> {s}")
+        violations.extend(check_volatile_content(rel, kind, text, is_symlink(rel)))
+        violations.extend(check_one_sentence_per_line(rel, kind, text))
 
         base = os.path.dirname(os.path.join(ROOT, rel))
-        for ref in set(REF_PATTERN.findall(text)):
-            if ref.startswith("thoughts/"):
-                continue
-            if not (os.path.exists(os.path.join(ROOT, ref)) or os.path.exists(os.path.join(base, ref))):
-                violations.append(f"{rel}: dead reference -> {ref}")
 
-    for line, where in line_index.items():
-        if len(set(where)) > 1:
-            violations.append(f"duplicate rule in {sorted(set(where))}: {line[:60]}...")
+        def exists_fn(ref, base=base):
+            return os.path.exists(os.path.join(ROOT, ref)) or os.path.exists(os.path.join(base, ref))
+
+        violations.extend(check_dead_references(rel, text, exists_fn))
+
+    violations.extend(check_duplicate_rules(line_index))
 
     total = sum(
         tokens(t) for rel, (k, t) in files.items()
-        if k in ("root_md", "nested_md", "rule") and not os.path.islink(os.path.join(ROOT, rel))
+        if k in ("root_md", "nested_md", "rule") and not is_symlink(rel)
     )
     print(f"\nalways-loaded layer total: ~{total} tokens")
 
-    agents_chain = sum(
-        len(t.encode("utf-8")) for rel, (k, t) in files.items()
-        if os.path.basename(rel) == "AGENTS.md" and not os.path.islink(os.path.join(ROOT, rel))
-    )
-    if agents_chain > 32 * 1024:
-        violations.append(f"AGENTS.md chain {agents_chain} bytes > Codex 32 KiB cap (silent truncation)")
-
-    for rel in files:
-        if os.path.basename(rel) != "CLAUDE.md":
-            continue
-        d = os.path.dirname(rel)
-        other = os.path.join(d, "AGENTS.md")
-        if other in files and not (os.path.islink(os.path.join(ROOT, rel)) or os.path.islink(os.path.join(ROOT, other))):
-            violations.append(f"{d or '.'}: CLAUDE.md and AGENTS.md are separate files — symlink one to the other")
+    violations.extend(check_agents_chain_budget(files, is_symlink))
+    violations.extend(check_claude_agents_pairing(files, is_symlink))
 
     if violations:
         print("\nVIOLATIONS:")

@@ -7,7 +7,7 @@ description: >
   Not for git, whole-stack `docker compose down`, or broad blast-radius calls beyond one service/target's scope.
   Not for `make loadtest`/`loadtest-fixtures*` (loadtest-runner's job), except accepting its delegated webhook-1/webhook-2/webhook-worker recreate with CH overrides.
   Also owns editing Makefile/docker-compose.yml.
-  <version>1.15.1</version>
+  v1.15.1
 tools: Bash, Read, Grep, Glob, Edit, Write, Skill
 model: claude-haiku-4-5
 ---
@@ -117,7 +117,7 @@ For an env var, use `docker exec <container> env | grep <VAR>`, or `docker compo
 
 Report back only the outcome: what changed, which command you ran (`restart` vs `build+up`) and why, the `make status` result, and the content-level verification result - not the raw `docker exec`/`grep`/script output itself unless something looks wrong.
 Same rule for `make status` specifically: never paste its full table output verbatim, in either a mid-task report or your own final summary.
-Grep/filter it down to the final `Healthy`/`Failed` line, any `Failed` service name(s), and the log excerpt it printed on failure - that's the terse convention other subagents in this repo already follow (e.g. `webhook-test-runner` keeps raw pytest output out of the main conversation).
+Grep/filter it down to the final `Healthy`/`Failed` line, any `Failed` service name(s), and the log excerpt it printed on failure - that's the terse convention other subagents in this repo already follow (e.g. `runner-test-services` keeps raw pytest output out of the main conversation).
 
 ## Editing the `Makefile` and `docker-compose.yml`
 

@@ -11,4 +11,4 @@ Distinct from `services/loadtest-fixtures/` (`agent_docs/services/loadtest-fixtu
   Always run via `loadtest-runner`, never inline.
 
 `services/loadtest/tests/` has its own pytest suite.
-Run with `make test` (a separate pytest invocation per service directory - see the `Makefile`), always via `webhook-test-runner`, never inline.
+Run with `make test-services` (a separate pytest invocation per service directory - see the `Makefile`), always via `runner-test-services`, never inline.

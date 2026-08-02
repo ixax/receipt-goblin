@@ -2,7 +2,7 @@
 name: dashboards-expert
 description: >
   MUST BE USED PROACTIVELY for creating/editing/removing any panel in any Grafana dashboard JSON under services/grafana/dashboards/ or dashboards-health/.
-  <version>1.15.1</version>
+  v1.15.1
 tools: Bash, Read, Edit, Write, mcp__dev__query, Agent, Skill
 model: claude-sonnet-5
 ---

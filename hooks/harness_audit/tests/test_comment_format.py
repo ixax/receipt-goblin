@@ -9,6 +9,7 @@ import io
 import json
 import sys
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 
 HOOK_DIR = Path(__file__).resolve().parent.parent
@@ -49,11 +50,14 @@ class TestCheckText(unittest.TestCase):
 
 class TestHook(unittest.TestCase):
     def run_hook(self, payload):
+        # comment_format_hook.main() prints its violation list to stderr on
+        # the blocking path - intended for the live hook, not a passing test.
         buf_in = io.StringIO(json.dumps(payload))
         old_stdin = sys.stdin
         sys.stdin = buf_in
         try:
-            return comment_format_hook.main()
+            with redirect_stderr(io.StringIO()):
+                return comment_format_hook.main()
         finally:
             sys.stdin = old_stdin
 

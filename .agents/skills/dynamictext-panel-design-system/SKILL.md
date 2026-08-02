@@ -10,7 +10,7 @@ description: >
   TRIGGER - read only when the current dashboards-expert task is to add/update a Dynamic Text
   panel's CSS, or rewrite/regenerate row markup using `t-` classes or inline styling.
   SKIP for a pure data/SQL change, or any markup change that doesn't touch styling.
-  <version>3.0.0</version>
+  v3.0.0
 ---
 
 Design-system reference for `dashboards-expert`, read on demand - see this skill's own description for the trigger.

@@ -35,7 +35,7 @@ Not its own compose service - imported by the other ingest services below.
 - `fastjson.py` - see "`fastjson` adoption status" below.
 
 The pure/DB-touching `ingest_parsing`/`ingest_db` pytest suite (real payloads from `tests/captures/`) lives at `services/_common/tests/`.
-Run with `make test` (a separate pytest invocation per service directory - see the `Makefile`), always via `webhook-test-runner`, never inline.
+Run with `make test-services` (a separate pytest invocation per service directory - see the `Makefile`), always via `runner-test-services`, never inline.
 
 ## `fastjson` adoption status
 

@@ -9,7 +9,7 @@ description: >
   pass.
   SKIP for routine per-edit budget checks - the PostToolUse hook runs
   those automatically.
-  <version>1.4.0</version>
+  v1.4.0
 ---
 
 Keep the always-loaded context layer minimal.

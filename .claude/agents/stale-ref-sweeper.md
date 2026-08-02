@@ -4,7 +4,7 @@ description: >
   MUST BE USED PROACTIVELY, without waiting to be asked, whenever an edit renames, removes, or moves a named entity anywhere in this repo (table/column, function/class, file path, config key, etc.), and before writing a comment/docstring/doc passage naming an entity, to confirm it's still current.
   Given the old name (and replacement), greps the whole repo - code and non-code (.md, docstrings, config) - then classifies each hit: stale live reference (fix via Edit), legitimate historical reference (leave alone, note why), or ambiguous (flag, don't guess).
   Scoped to comments/docs only, never code logic - reports a code bug back instead.
-  <version>1.1.1</version>
+  v1.1.1
 tools: Read, Grep, Bash, Edit, Skill
 model: claude-sonnet-5
 ---

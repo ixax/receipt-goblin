@@ -20,6 +20,7 @@ from pathlib import Path
 HOOK_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(HOOK_DIR))
 from comment_format import check_text  # noqa: E402
+from md_format_skill_gate import under_excluded_dir  # noqa: E402
 
 
 def main() -> int:
@@ -27,7 +28,7 @@ def main() -> int:
     tool_name = payload.get("tool_name", "")
     tool_input = payload.get("tool_input", {})
     path = tool_input.get("file_path", "")
-    if not path or not path.endswith((".py", ".yml", ".yaml")):
+    if not path or not path.endswith((".py", ".yml", ".yaml")) or under_excluded_dir(path):
         return 0
     is_py = path.endswith(".py")
 

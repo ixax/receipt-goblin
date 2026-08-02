@@ -126,6 +126,27 @@ class TestQualifies(unittest.TestCase):
     def test_unrelated_extension_does_not_qualify(self):
         self.assertFalse(gate.qualifies("x.json", "{}"))
 
+    def test_plans_dir_md_file_does_not_qualify(self):
+        self.assertFalse(gate.qualifies("plans/my-plan.md", "trivial"))
+
+    def test_plans_dir_nested_md_file_does_not_qualify(self):
+        self.assertFalse(gate.qualifies("plans/features/sub-plan.md", "trivial"))
+
+    def test_plans_dir_absolute_path_does_not_qualify(self):
+        self.assertFalse(gate.qualifies("/repo/plans/my-plan.md", "trivial"))
+
+    def test_plans_like_filename_outside_plans_dir_still_qualifies(self):
+        # "plans" only exempts the directory, not files that merely mention it.
+        self.assertTrue(gate.qualifies("agent_docs/plans-overview.md", "trivial"))
+
+
+class TestUnderExcludedDir(unittest.TestCase):
+    def test_plans_dir_matches(self):
+        self.assertTrue(gate.under_excluded_dir("plans/my-plan.md"))
+
+    def test_non_plans_dir_does_not_match(self):
+        self.assertFalse(gate.under_excluded_dir("agent_docs/architecture.md"))
+
 
 class TestMain(unittest.TestCase):
     def _run(self, tool_name, file_path, text, transcript_lines):

@@ -4,7 +4,7 @@ description: >
   Troubleshooting the chain of agent calls via session_id/trace_id/turn_id.
   TRIGGER - read when investigating a specific step's latency, event ordering in a session, or a specific trace in agent_events/agent_usage.
   SKIP for a single-row lookup with no ordering/chain question.
-  <version>1.0.3</version>
+  v1.0.3
 ---
 
 ## Chain tracing / identity

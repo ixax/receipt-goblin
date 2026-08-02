@@ -18,4 +18,4 @@ The only service that writes `/api/v1/metrics` traffic to ClickHouse - see `comm
   `_decode_into()` calls `common.ingest_parsing.build_event()` on each raw payload as it's decoded, flushing once `common.config.queue.BATCH_SIZE` fills or `FLUSH_INTERVAL_MS` elapses, then calls `common.ingest_db.ingest_events_batch()` on the accumulated batch.
 
 `services/worker/tests/` has its own pytest suite.
-Run with `make test` (a separate pytest invocation per service directory - see the `Makefile`), always via `webhook-test-runner`, never inline.
+Run with `make test-services` (a separate pytest invocation per service directory - see the `Makefile`), always via `runner-test-services`, never inline.

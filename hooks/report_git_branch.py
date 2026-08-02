@@ -10,7 +10,6 @@ import json
 import os
 import subprocess
 import sys
-import urllib.error
 import urllib.request
 
 INGEST_API_URL = os.environ["AGENT_CLI_TRACKING_API_URL"]

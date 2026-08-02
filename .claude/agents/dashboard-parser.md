@@ -6,7 +6,7 @@ description: >
   Never eyeball or hand-roll jq/python against agents_overview.json - always run services/grafana/scripts/parse_dashboard.py instead.
   Has no Edit/Write tools: owns every read around an edit, while the main conversation performs the edit.
   Delegate investigation outside this scope to `script-ops`.
-  <version>1.2.1</version>
+  v1.2.1
 tools: Bash, Read, Agent, Skill
 model: claude-haiku-4-5
 ---

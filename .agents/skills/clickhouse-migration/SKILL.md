@@ -3,7 +3,7 @@ name: clickhouse-migration
 description: >
   Checklist for writing a ClickHouse schema migration.
   TRIGGER - read BEFORE creating or editing any file under `services/clickhouse/migrations/`, or changing `agent_events`/`agent_usage`/`agent_messages`/`ingest_raw` schema in any other way.
-  <version>1.0.2</version>
+  v1.0.2
 ---
 
 `mcp-dev`'s `query` tool is read-only by validation (SELECT/WITH only, DDL rejected server-side) - no agent can run a schema change through it.

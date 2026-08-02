@@ -3,7 +3,7 @@ name: harness-expert
 description: >
   MUST BE USED PROACTIVELY whenever a Subagent/Skill/Command description/frontmatter/body, or AGENTS.md, needs creating, editing, reviewing, or auditing - even unrequested.
   Also the delegate for any question about their content before an inline Read/grep, and for harness token-economy/versioning decisions.
-  <version>1.17.0</version>
+  v1.18.0
 tools: Read, Write, Edit, Grep, Glob, Agent, Skill
 model: claude-sonnet-5
 ---
@@ -43,12 +43,13 @@ Work out entity, change kind, and version bump yourself from the raw wording.
 
 ## Version marker
 
-- One tag for all kinds: `<version>X.Y.Z</version>`.
-- Placement: last line of `description:` (Subagent/Skill); last line of body (Command).
-  Only `name:`/`description:` and a command's expanded body reach the LiteLLM-logged `messages` (via the "Available agent types"/"available skills" listings).
-  A frontmatter `version:` key is invisible to the ingest parser (`services/_common/src/ingest_parsing.py`: `_version_marker_for_name`, `_active_command_name_and_version`).
-- Never rename an identifier (`name:`, skill dirname, command filename) to encode a version - breaks in-flight sessions.
-- New entity: `<version>1.0.0</version>` immediately.
+- Scope: Subagent/Skill only.
+  Command entity type is being retired - not covered here.
+- Format: bare `vX.Y.Z`, strictly the last token of `description:` - no XML wrapper.
+- Only `name:`/`description:` reach the LiteLLM-logged `messages` (via the "Available agent types"/"available skills" listings).
+  A frontmatter `version:` key is invisible to the ingest parser (`services/_common/src/ingest_parsing.py`: `_version_marker_for_name`).
+- Never rename an identifier (`name:`, skill dirname) to encode a version - breaks in-flight sessions.
+- New entity: `v1.0.0` immediately.
 - Behavior edit: bump - patch for wording/clarity/tightened description, minor for a new capability/section, major for a rename-free breaking change.
   A user-stated segment wins over your judgment.
   Pure cosmetic edit (typo, formatting): no bump.
