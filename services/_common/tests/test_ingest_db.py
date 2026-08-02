@@ -14,6 +14,7 @@ from common.ingest_parsing import build_event
 class _FakeClient:
     def __init__(self):
         self.inserts = []
+        self.invocation_queries = 0
 
     def insert(self, table, rows, column_names, column_type_names=None):
         self.inserts.append((table, rows, column_names))
@@ -26,6 +27,8 @@ class _FakeClient:
         # asserted without a real ClickHouse connection.
         if parameters and "v" in parameters and "cityHash64" in query:
             _Result.result_rows = [[abs(hash(parameters["v"])) or 1]]
+        if parameters and "agent_id" in parameters:
+            self.invocation_queries += 1
         return _Result()
 
 
@@ -142,6 +145,89 @@ def test_ingest_events_batch_unsuccess_poison_row_isolated_to_ingest_dlq(monkeyp
     # agent_events/agent_messages (unaffected tables) still got their rows.
     event_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_events")
     assert len(event_rows) == 2
+
+
+def test_ingest_events_batch_resolves_agent_fields_from_same_batch_spawn(monkeypatch):
+    # success_with_agent_and_skill's invocation_rows spawns agent_id
+    # "aac9d05f148e9ae4a" (test-researcher v1.0.0).
+    # success_subagent_call's own x-claude-code-agent-id header is that
+    # same agent_id - the spawn-and-child's-first-call-in-the-same-batch
+    # case from plans/fix-agent-version-ingest-race.md.
+    # This should resolve from _invocation_batch_map with zero ClickHouse
+    # round trips.
+    spawner_payload = load_capture("success_with_agent_and_skill")
+    child_payload = load_capture("success_subagent_call")
+    events = [build_event(spawner_payload), build_event(child_payload)]
+    fake_client = _FakeClient()
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.ingest_events_batch(events)
+
+    assert fake_client.invocation_queries == 0
+
+    event_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_events")
+    child_call_id = child_payload["litellm_call_id"]
+    child_row = next(row for row in event_rows if row[db._EVENT_CALL_ID_IDX] == child_call_id)
+    assert child_row[db._EVENT_AGENT_NAME_IDX] == "test-researcher"
+    assert child_row[db._EVENT_AGENT_VERSION_IDX] == "1.0.0"
+
+
+class _EventuallyResolvingClient(_FakeClient):
+    """Returns a blank agent_invocations lookup for its first `blank_calls`
+    query()s, then a real row - simulates the spawn row committing a beat
+    after the child's first call is processed."""
+
+    def __init__(self, blank_calls, subagent_type, agent_version):
+        super().__init__()
+        self.blank_calls = blank_calls
+        self.subagent_type = subagent_type
+        self.agent_version = agent_version
+
+    def query(self, query, parameters=None, **kwargs):
+        class _Result:
+            result_rows = []
+        if parameters and "v" in parameters and "cityHash64" in query:
+            _Result.result_rows = [[abs(hash(parameters["v"])) or 1]]
+            return _Result()
+        if parameters and "agent_id" in parameters:
+            self.invocation_queries += 1
+            if self.invocation_queries > self.blank_calls:
+                _Result.result_rows = [[self.subagent_type, self.agent_version]]
+        return _Result()
+
+
+def test_ingest_events_batch_resolves_agent_fields_via_retry_on_cross_batch_miss(monkeypatch):
+    # No same-batch spawn row this time - only the ClickHouse retry loop in
+    # _BatchWriter._agent_fields can resolve it.
+    monkeypatch.setattr(db.time, "sleep", lambda _seconds: None)
+    child_payload = load_capture("success_subagent_call")
+    events = [build_event(child_payload)]
+    fake_client = _EventuallyResolvingClient(blank_calls=2, subagent_type="test-researcher", agent_version="1.0.0")
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.ingest_events_batch(events)
+
+    assert fake_client.invocation_queries == 3
+
+    event_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_events")
+    assert event_rows[0][db._EVENT_AGENT_NAME_IDX] == "test-researcher"
+    assert event_rows[0][db._EVENT_AGENT_VERSION_IDX] == "1.0.0"
+
+
+def test_ingest_events_batch_falls_back_to_blank_after_retries_exhausted(monkeypatch):
+    monkeypatch.setattr(db.time, "sleep", lambda _seconds: None)
+    child_payload = load_capture("success_subagent_call")
+    events = [build_event(child_payload)]
+    fake_client = _EventuallyResolvingClient(blank_calls=99, subagent_type="test-researcher", agent_version="1.0.0")
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.ingest_events_batch(events)
+
+    assert fake_client.invocation_queries == 3
+
+    event_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_events")
+    assert event_rows[0][db._EVENT_AGENT_NAME_IDX] == ""
+    assert event_rows[0][db._EVENT_AGENT_VERSION_IDX] == ""
 
 
 def test_ingest_events_batch_success_backfills_skill_version_from_sibling_event(monkeypatch):

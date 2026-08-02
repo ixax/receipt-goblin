@@ -4,6 +4,7 @@ See ingest_parsing.py's docstring for the DB-free parsing/classification
 half this module imports from, and AGENTS.md for the overall pipeline.
 """
 import logging
+import time
 from datetime import datetime, timezone
 
 import clickhouse_connect
@@ -371,6 +372,7 @@ class _BatchWriter:
     def __init__(self, client):
         self.client = client
         self._agent_fields_cache: dict[str, tuple[str, str]] = {}
+        self._invocation_batch_map: dict[str, tuple[str, str]] = {}
         self._client_id_cache: dict[str, int] = {}
 
     def write_dimensions(self, events: list[dict]) -> None:
@@ -383,6 +385,10 @@ class _BatchWriter:
             for event in events
             for row in (event.get("invocation_rows") or [])
         ]
+        # Resolve same-batch spawn/first-call pairs from memory instead of
+        # racing this insert (see _agent_fields).
+        for row in invocation_rows:
+            self._invocation_batch_map[row[0]] = (row[2], row[3])
         _insert_agent_invocations(client, invocation_rows)
 
         source_rows = [
@@ -409,12 +415,26 @@ class _BatchWriter:
         _insert_ai_gateway_users(client, list(user_rows_by_id.values()))
 
     def _agent_fields(self, agent_invocation_id: str) -> tuple[str, str]:
+        """Resolves agent_name/agent_version for the (sub)agent that made
+        this call, preferring an in-memory hit over a ClickHouse round trip.
+
+        Order: this batch's own invocation_rows (the spawn event and its
+        child's first call landing in the same batch is the dominant case -
+        see migration 013's docstring), then a per-batch cache, then a
+        ClickHouse lookup with a short bounded retry for the near-miss case
+        (spawn row committed in the immediately preceding batch)."""
         if not agent_invocation_id:
             return "", ""
+        if agent_invocation_id in self._invocation_batch_map:
+            return self._invocation_batch_map[agent_invocation_id]
         if agent_invocation_id not in self._agent_fields_cache:
-            self._agent_fields_cache[agent_invocation_id] = _agent_name_and_version_for_invocation(
-                self.client, agent_invocation_id
-            )
+            fields = _agent_name_and_version_for_invocation(self.client, agent_invocation_id)
+            for _ in range(2):
+                if fields != ("", ""):
+                    break
+                time.sleep(0.3)
+                fields = _agent_name_and_version_for_invocation(self.client, agent_invocation_id)
+            self._agent_fields_cache[agent_invocation_id] = fields
         return self._agent_fields_cache[agent_invocation_id]
 
     def _client_id(self, user_agent: str) -> int:
