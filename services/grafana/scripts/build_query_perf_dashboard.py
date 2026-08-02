@@ -9,14 +9,15 @@ onto services/grafana/dashboards-health/query_performance.json, without
 touching agents_overview.json itself.
 
 For each tree panel already tagged by tag_panel_queries.py, emits a
-collapsible row titled "[<id>] <source title>", containing 4 panels:
+collapsible row titled "[<id>] <source title>", containing 5 panels:
 
   - Duration: query_duration_ms over time
   - Memory usage: memory_usage (bytes) over time
   - Rows / bytes read: read_rows / read_bytes over time
+  - Latency percentiles: p50/p90/p95 of query_duration_ms, bucketed over time
   - Recent executions: table of event_time, duration, memory, rows, bytes, query_id
 
-All four are filtered by `log_comment = 'agents_overview:panel_<id>'`
+All five are filtered by `log_comment = 'agents_overview:panel_<id>'`
 against system.query_log - see tag_panel_queries.py for how that tag
 gets onto the source panel's rawSql, and AGENTS.md for the known
 CLICKHOUSE_USER grant fragility this depends on
@@ -287,6 +288,22 @@ def build_panels_for(source_id):
         WHERE {where}
         ORDER BY event_time DESC
         LIMIT 50""")
+    # Bucketed on a fixed 5-minute grain, matching the toStartOfInterval(...,
+    # INTERVAL 5 MINUTE) convention already used for timeseries bucketing in
+    # dashboards-health/litellm_alerting.json - no per-dashboard "window"
+    # template variable exists here (unlike agents_overview.json's
+    # ${window}-driven panels), so a fixed interval is the closest existing
+    # convention rather than a new one.
+    latency_sql = textwrap.dedent(f"""\
+        SELECT
+          toStartOfInterval(event_time, INTERVAL 5 MINUTE) AS time,
+          quantile(0.5)(query_duration_ms) AS p50,
+          quantile(0.9)(query_duration_ms) AS p90,
+          quantile(0.95)(query_duration_ms) AS p95
+        FROM system.query_log
+        WHERE {where}
+        GROUP BY time
+        ORDER BY time""")
 
     panels = [
         timeseries_panel(base + 1, "Duration", "ms", duration_sql, True),
@@ -299,14 +316,24 @@ def build_panels_for(source_id):
             False,
             {"read_rows": "blue", "read_bytes": "white"},
         ),
-        table_panel(base + 4, "Recent executions", table_sql, link_query_id=True),
+        timeseries_panel(
+            base + 4,
+            "Latency percentiles",
+            "ms",
+            latency_sql,
+            False,
+            {"p50": "orange", "p90": "blue", "p95": "red"},
+        ),
+        table_panel(base + 5, "Recent executions", table_sql, link_query_id=True),
     ]
-    refs = [f"panel-{base + i}" for i in (1, 2, 3, 4)]
+    refs = [f"panel-{base + i}" for i in (1, 2, 3, 4, 5)]
     return refs, panels
 
 
 def build_grid(refs):
-    """3 timeseries side by side (x0/8/16, width 8 each), table below (width 24)."""
+    """3 timeseries side by side (x0/8/16, width 8 each), then Latency
+    percentiles full-width below them, then the Recent executions table
+    full-width below that."""
     items = []
     for i, ref in enumerate(refs[:3]):
         items.append(
@@ -315,11 +342,11 @@ def build_grid(refs):
                 "spec": {"x": i * (PANEL_W // 3), "y": 0, "width": PANEL_W // 3, "height": PANEL_H, "element": {"kind": "ElementReference", "name": ref}},
             }
         )
-    if len(refs) == 4:
+    for j, ref in enumerate(refs[3:]):
         items.append(
             {
                 "kind": "GridLayoutItem",
-                "spec": {"x": 0, "y": PANEL_H, "width": PANEL_W, "height": PANEL_H, "element": {"kind": "ElementReference", "name": refs[3]}},
+                "spec": {"x": 0, "y": (j + 1) * PANEL_H, "width": PANEL_W, "height": PANEL_H, "element": {"kind": "ElementReference", "name": ref}},
             }
         )
     return {"kind": "GridLayout", "spec": {"items": items}}
