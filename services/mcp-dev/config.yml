@@ -82,13 +82,12 @@ max_batch_queries: 10
 # `max_execution_time_default_s` is used when a caller doesn't pass the
 # tool's own `max_duration_s` parameter.
 # `max_execution_time_hard_cap_s` is the absolute ceiling - a caller's
-# `max_duration_s` is clamped to this, the same way `max_rows` is clamped
-# to `max_rows_hard_cap` above.
+# `max_duration_s` is clamped to this (min(requested, hard_cap)), the same
+# way `max_rows` is clamped to `max_rows_hard_cap` above.
 max_execution_time_default_s: 10
 
-# TEMPORARILY raised from 10 to unblock correctness/perf verification of
-# panel-76 ("Trace"): its original (pre-optimization) rawSql doesn't
-# complete within 10s even on a small session, so there was nothing to
-# diff a rewrite's output against.
-# Revert to 10 once that panel's optimization work is done.
+# Permanent global ceiling.
+# Raised from an earlier 10 to accommodate heavy Dynamic Text panels
+# (agents_overview.json "Trace"/"Fork tree") whose tree-building queries
+# need more than 10s even post-optimization.
 max_execution_time_hard_cap_s: 60
