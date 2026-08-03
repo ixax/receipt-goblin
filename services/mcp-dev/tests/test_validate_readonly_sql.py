@@ -168,6 +168,18 @@ def test_referenced_tables_handles_comma_join_and_schema_qualifier():
     assert server._referenced_tables(sql) == {"agent_events", "agent_usage", "agent_messages"}
 
 
+def test_array_join_does_not_misparse_array_expression_as_table():
+    # Regression for the real panel-76 ("Trace") failure.
+    # `ARRAY JOIN arrayMap(...)` must not have `arrayMap` picked up as a
+    # joined table.
+    # `_TABLE_REFS_RE` matches `ARRAY JOIN` with group(1) = None precisely
+    # so `_referenced_tables` skips it instead of treating it as a
+    # FROM/JOIN target.
+    sql = "SELECT * FROM agent_events ARRAY JOIN arrayMap(x -> x, arr) AS y"
+    assert server._referenced_tables(sql) == {"agent_events"}
+    server._validate_readonly_sql(sql)
+
+
 # ---------------------------------------------------------------------------
 # Comment stripping (existing behavior)
 # ---------------------------------------------------------------------------
