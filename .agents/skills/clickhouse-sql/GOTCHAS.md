@@ -27,6 +27,16 @@ Keep each entry a few lines max, no essays.
   Confirmed on `agents_overview.json` panel 76 ("Trace").
   Fix: reduce the reference count, not the per-reference cost - collapse downstream CTEs that each independently re-scan the same base CTE into fewer, wider CTEs computed once.
 
+## Same-SELECT alias chains don't memoize - "Query tree is too big"
+
+- Referencing a same-SELECT alias more than once does NOT create a shared node - each reference re-expands the alias's full defining expression at parse time.
+  Chaining N levels of aliases where each level's expression references the previous level's alias twice (e.g. `idx1 -> parent1` used by `idx2`'s definition, `idx2 -> parent2` used by `idx3`'s, ...) blows up combinatorially (~2^N nodes).
+  This hits ClickHouse's internal `500000`-node limit (`Code: 36`, `BAD_ARGUMENTS`, "Query tree is too big") even when the underlying data is tiny.
+  Hit this trying to replace panel-99's 7-level self-join with a `groupArray()`+`indexOf()` ancestor-walk - both embedding the window function directly in one CTE's SELECT list and splitting it into its own upstream CTE failed identically, because the blowup came from the alias chain itself, not from re-scanning a base table.
+  Fix: force real materialization boundaries.
+  Turn the alias chain into a strictly linear pipeline of separate, single-reference CTEs - each new CTE selects only from the immediately preceding CTE, so a later step's inputs are genuine upstream *columns* (cheap to re-project) rather than re-expandable in-SELECT alias expressions.
+  Confirmed fix on panel-99 ("Fork tree"): 15 chained single-purpose CTEs replaced the failing alias-chain design, ran clean, and matched the original 7-level self-join's output byte-for-byte while cutting the biggest real session's wall-clock from ~35.7s to ~9.2s and read_rows from ~774k to ~236k.
+
 ## `query_perf.py` bare-brace `${var}` bug
 
 - `services/grafana/scripts/query_perf.py resolve` doesn't match `${window}` (bare braces, no `:singlequote` suffix) - it reports "resolved" with zero unresolved vars, but the SQL still literally contains `${window}`.
