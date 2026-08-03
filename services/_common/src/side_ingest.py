@@ -15,6 +15,7 @@ import re
 from datetime import datetime
 
 from common import fastjson as json
+from common.ingest_db import insert_rows_with_dlq_fallback
 
 _GIT_BRANCH_COLUMNS = ["session_id", "git_branch", "git_repo", "issue_id", "captured_at"]
 _GIT_BRANCH_COLUMN_TYPES = ["String", "String", "String", "String", "DateTime64(3)"]
@@ -73,18 +74,19 @@ def _litellm_alert_row(payload: dict, now: datetime) -> list:
 
 
 def insert_git_branch_batch(client, rows: list[list]) -> None:
-    if not rows:
-        return
-    client.insert("session_git_branch", rows, column_names=_GIT_BRANCH_COLUMNS, column_type_names=_GIT_BRANCH_COLUMN_TYPES)
+    """session_id is column 0 - see _git_branch_row."""
+    insert_rows_with_dlq_fallback(
+        client, "session_git_branch", rows, _GIT_BRANCH_COLUMNS, _GIT_BRANCH_COLUMN_TYPES, session_id_idx=0,
+    )
 
 
 def insert_plan_proposal_batch(client, rows: list[list]) -> None:
-    if not rows:
-        return
-    client.insert("plan_proposals", rows, column_names=_PLAN_PROPOSAL_COLUMNS, column_type_names=_PLAN_PROPOSAL_COLUMN_TYPES)
+    """session_id is column 0 - see _plan_proposal_row."""
+    insert_rows_with_dlq_fallback(
+        client, "plan_proposals", rows, _PLAN_PROPOSAL_COLUMNS, _PLAN_PROPOSAL_COLUMN_TYPES, session_id_idx=0,
+    )
 
 
 def insert_litellm_alert_batch(client, rows: list[list]) -> None:
-    if not rows:
-        return
-    client.insert("litellm_alerts", rows, column_names=_LITELLM_ALERT_COLUMNS, column_type_names=_LITELLM_ALERT_COLUMN_TYPES)
+    """No call_id/session_id on an alert row - see _litellm_alert_row."""
+    insert_rows_with_dlq_fallback(client, "litellm_alerts", rows, _LITELLM_ALERT_COLUMNS, _LITELLM_ALERT_COLUMN_TYPES)

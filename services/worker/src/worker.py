@@ -171,16 +171,13 @@ def _flush_side(
         return
     ch_client = get_client()
     with FLUSH_LATENCY.time():
-        try:
-            insert_git_branch_batch(ch_client, git_branch_rows)
-            insert_plan_proposal_batch(ch_client, plan_proposal_rows)
-            insert_litellm_alert_batch(ch_client, alert_rows)
-        except Exception:
-            # XACK still happens below - a permanently-failing row would
-            # otherwise wedge this consumer's pending list forever; same
-            # trade-off ingest_events_batch's own DLQ fallback makes for
-            # the main stream.
-            logger.exception("failed to ingest side batch (n=%d)", len(message_ids))
+        # Each call below has its own row-by-row DLQ fallback (see
+        # insert_rows_with_dlq_fallback) and never raises, so one poison
+        # row only costs that row, not the rest of this table's batch or
+        # the other two tables'.
+        insert_git_branch_batch(ch_client, git_branch_rows)
+        insert_plan_proposal_batch(ch_client, plan_proposal_rows)
+        insert_litellm_alert_batch(ch_client, alert_rows)
     client.xack(SIDE_STREAM_KEY, CONSUMER_GROUP, *message_ids)
     BATCHES_FLUSHED.inc()
     SIDE_EVENTS_INGESTED.inc(len(git_branch_rows) + len(plan_proposal_rows) + len(alert_rows))

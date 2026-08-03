@@ -6,6 +6,7 @@ half this module imports from, and AGENTS.md for the overall pipeline.
 import logging
 import time
 from datetime import datetime, timezone
+from typing import Optional
 
 import clickhouse_connect
 
@@ -492,37 +493,47 @@ class _BatchWriter:
     def insert_with_dlq_fallback(
         self, table: str, rows: list[list], columns: list[str], call_id_idx: int, session_id_idx: int,
     ) -> None:
-        """One table's insert.
-        On a rejected batch (e.g. a value out of a column's numeric range),
-        falls back to inserting row-by-row so only the actual poison row(s)
-        are lost - those go to ingest_dlq (see schema.sql) for triage instead
-        of silently vanishing with the rest of a good batch.
+        """One table's insert, via insert_rows_with_dlq_fallback below.
         Each table is independent: one table rejecting its batch must not
         drop another table's otherwise-good rows for this same set of
         events."""
-        if not rows:
-            return
-        client = self.client
-        column_types = _COLUMN_TYPES_BY_TABLE[table]
-        try:
-            client.insert(table, rows, column_names=columns, column_type_names=column_types)
-            return
-        except Exception:
-            logger.exception("failed to insert into %s (n=%d) - retrying row-by-row", table, len(rows))
+        insert_rows_with_dlq_fallback(
+            self.client, table, rows, columns, _COLUMN_TYPES_BY_TABLE[table], call_id_idx, session_id_idx,
+        )
 
-        failure_rows = []
-        for row in rows:
-            try:
-                client.insert(table, [row], column_names=columns, column_type_names=column_types)
-            except Exception as exc:
-                failure_rows.append([
-                    datetime.now(timezone.utc), table, str(exc),
-                    row[call_id_idx], row[session_id_idx],
-                    json.dumps(row, default=str).decode(),
-                ])
-        if failure_rows:
-            logger.error("dropped %d row(s) into ingest_dlq (stage=%s)", len(failure_rows), table)
-            try:
-                client.insert("ingest_dlq", failure_rows, column_names=_FAILURE_COLUMNS, column_type_names=_FAILURE_COLUMN_TYPES)
-            except Exception:
-                logger.exception("failed to record ingest_dlq (stage=%s, n=%d)", table, len(failure_rows))
+
+def insert_rows_with_dlq_fallback(
+    client, table: str, rows: list[list], columns: list[str], column_types: list[str],
+    call_id_idx: Optional[int] = None, session_id_idx: Optional[int] = None,
+) -> None:
+    """One table's insert.
+    On a rejected batch (e.g. a value out of a column's numeric range), falls back to inserting row-by-row.
+    Only the actual poison row(s) are lost that way - those go to ingest_dlq (see schema.sql) for triage instead of silently vanishing with the rest of a good batch.
+    call_id_idx/session_id_idx pick which row fields populate the DLQ row's litellm_call_id/session_id columns.
+    Pass None for tables that don't carry one (recorded as "").
+    Never raises - a poison row (or even a failed DLQ write) is logged, not propagated, so callers can insert unconditionally."""
+    if not rows:
+        return
+    try:
+        client.insert(table, rows, column_names=columns, column_type_names=column_types)
+        return
+    except Exception:
+        logger.exception("failed to insert into %s (n=%d) - retrying row-by-row", table, len(rows))
+
+    failure_rows = []
+    for row in rows:
+        try:
+            client.insert(table, [row], column_names=columns, column_type_names=column_types)
+        except Exception as exc:
+            failure_rows.append([
+                datetime.now(timezone.utc), table, str(exc),
+                row[call_id_idx] if call_id_idx is not None else "",
+                row[session_id_idx] if session_id_idx is not None else "",
+                json.dumps(row, default=str).decode(),
+            ])
+    if failure_rows:
+        logger.error("dropped %d row(s) into ingest_dlq (stage=%s)", len(failure_rows), table)
+        try:
+            client.insert("ingest_dlq", failure_rows, column_names=_FAILURE_COLUMNS, column_type_names=_FAILURE_COLUMN_TYPES)
+        except Exception:
+            logger.exception("failed to record ingest_dlq (stage=%s, n=%d)", table, len(failure_rows))
