@@ -1,0 +1,224 @@
+# Observability stack (Prometheus, Blackbox, redis-exporter, nginx-exporter,
+# cadvisor, node-exporter, Loki, Alloy) for metrics and log aggregation.
+# Only loaded by `make observability-*` targets, which include core files.
+# Depends on core services (redis, load-balancer) being up and healthy.
+
+services:
+  prometheus:
+    # Config baked in at build time - see prometheus.yml for scrape jobs.
+    build: ./services/prometheus
+    image: receipt-goblin-prometheus:${PROMETHEUS_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
+    container_name: receipt-goblin-prometheus
+    profiles:
+      - observability
+    mem_limit: 512m
+    restart: unless-stopped
+    expose:
+      - "9090"
+    volumes:
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - receipt-goblin
+
+  blackbox:
+    # Config baked in at build time - see config.yml for the http_2xx
+    # module Prometheus's blackbox job uses.
+    build: ./services/blackbox
+    image: receipt-goblin-blackbox:${BLACKBOX_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
+    container_name: receipt-goblin-blackbox
+    profiles:
+      - observability
+    # Was 128m - real peak under 100-user load was ~17.9MB (Prometheus,
+    # not docker-stats). 64m keeps a healthy ~3.5x margin.
+    mem_limit: 64m
+    restart: unless-stopped
+    expose:
+      - "9115"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9115/metrics"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - receipt-goblin
+
+  redis-exporter:
+    # Wrapped locally to add curl for healthchecks (stock image lacked tools).
+    # Server-level Redis stats only (memory, clients, commands).
+    # Business-level stream metrics (queue depth, lag) come from
+    # worker's own /metrics instead - redis_exporter can't see those.
+    build: ./services/redis-exporter
+    image: receipt-goblin-redis-exporter:${REDIS_EXPORTER_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
+    container_name: receipt-goblin-redis-exporter
+    profiles:
+      - observability
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    # Was 128m - real peak under 100-user load was ~10.6MB (Prometheus,
+    # not docker-stats). 32m keeps a healthy 3x margin.
+    mem_limit: 32m
+    restart: unless-stopped
+    expose:
+      - "9121"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:9121/metrics"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - receipt-goblin
+
+  nginx-exporter:
+    # Wrapped locally to add curl for healthchecks (stock image lacked tools).
+    # Scrapes load-balancer's internal stub_status endpoint
+    # (services/load-balancer/nginx.conf, port 8080 - not published to the host).
+    # Only gives connection-level counters (accepts/handled/requests).
+    # stub_status has no timing data, unlike webhook/litellm's own richer /metrics.
+    build: ./services/nginx-exporter
+    image: receipt-goblin-nginx-exporter:${NGINX_EXPORTER_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
+    container_name: receipt-goblin-nginx-exporter
+    profiles:
+      - observability
+    command:
+      - --nginx.scrape-uri=http://load-balancer:8080/stub_status
+    mem_limit: 64m
+    restart: unless-stopped
+    expose:
+      - "9113"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:9113/metrics"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      load-balancer:
+        condition: service_healthy
+    networks:
+      - receipt-goblin
+
+  cadvisor:
+    # Stock image.
+    # Read-only host mounts give cgroup/container state, not config - exempt
+    # from the no-config-volume-mounts convention (same class as alloy's
+    # docker.sock below).
+    # Broken under the containerd-snapshotter storage driver (Docker Desktop
+    # default / Colima) - kept anyway, see AGENTS.md "cAdvisor container-level
+    # metrics".
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: receipt-goblin-cadvisor
+    profiles:
+      - observability
+    # Was 256m - real peak under 100-user load was ~80.8MB (Prometheus,
+    # not docker-stats). 128m keeps a healthy 1.5x+ margin.
+    mem_limit: 128m
+    restart: unless-stopped
+    expose:
+      - "8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - receipt-goblin
+
+  node-exporter:
+    # CLI flags baked into the image, no compose `command:` override.
+    # Same host-mount rationale as cadvisor - reports on the Docker Desktop
+    # Linux VM on macOS, the real host on Linux.
+    build: ./services/node-exporter
+    image: receipt-goblin-node-exporter:${NODE_EXPORTER_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
+    container_name: receipt-goblin-node-exporter
+    profiles:
+      - observability
+    # Was 128m - real peak under 100-user load was ~12.1MB (Prometheus,
+    # not docker-stats). 32m keeps a healthy 2.5x margin.
+    mem_limit: 32m
+    restart: unless-stopped
+    expose:
+      - "9100"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9100/metrics"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+    networks:
+      - receipt-goblin
+
+  loki:
+    # Config baked in at build time.
+    # Single-binary, filesystem-backed - no object storage needed at this
+    # scale.
+    build: ./services/loki
+    image: receipt-goblin-loki:${LOKI_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
+    container_name: receipt-goblin-loki
+    profiles:
+      - observability
+    # Was 512m - real peak under 100-user load was ~146.5MB (Prometheus,
+    # not docker-stats). 256m keeps a healthy ~1.7x margin.
+    mem_limit: 256m
+    restart: unless-stopped
+    expose:
+      - "3100"
+    volumes:
+      - loki-data:/loki
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - receipt-goblin
+
+  alloy:
+    # Config baked in at build time (config.alloy).
+    # Docker socket mount is a system-socket exception to the
+    # no-config-volume-mounts convention - needed for discovery.docker to tail
+    # every container's logs.
+    build: ./services/alloy
+    image: receipt-goblin-alloy:${ALLOY_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
+    container_name: receipt-goblin-alloy
+    profiles:
+      - observability
+    # Was 256m - real peak under 100-user load was ~84.6MB (Prometheus,
+    # not docker-stats). 128m keeps a healthy 1.5x margin.
+    mem_limit: 128m
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/12345 && echo -e 'GET /metrics HTTP/1.0\\r\\n\\r\\n' >&3 && timeout 1 cat <&3 | grep -q 'HTTP'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - receipt-goblin
+
+networks:
+  receipt-goblin: {}
+
+volumes:
+  prometheus-data:
+  loki-data:

@@ -7,7 +7,7 @@ description: >
   Not for git, whole-stack `docker compose down`, or broad blast-radius calls beyond one service/target's scope.
   Not for `make loadtest`/`loadtest-fixtures*` (loadtest-runner's job), except accepting its delegated webhook-1/webhook-2/webhook-worker recreate with CH overrides.
   Also owns editing Makefile/docker-compose.yml.
-  v1.15.1
+  v1.16.0
 tools: Bash, Read, Grep, Glob, Edit, Write, Skill
 model: claude-haiku-4-5
 ---
@@ -98,6 +98,9 @@ Two opt-in profile families exist alongside the core stack's build/start/up, eac
 - `langfuse-up`/`langfuse-down`/`langfuse-logs`
 - `observability-up`/`observability-down`/`observability-logs`/`observability-status`
 
+Each stack also lives in its own compose file (`docker-compose.langfuse.yml`, `docker-compose.observability.yml`), loaded automatically by these targets alongside the core file.
+The `--profile langfuse`/`--profile observability` flags stay too, as a belt-and-suspenders gate on top of the file split.
+
 ## Running it
 
 - Always use `make build`/`make start`/`make up` (each optionally scoped with `SERVICE=<name>`), never raw `docker compose build`/`up`.
@@ -128,7 +131,7 @@ Grep/filter it down to the final `Healthy`/`Failed` line, any `Failed` service n
 
 ## Editing the `Makefile` and `docker-compose.yml`
 
-You're the sole owner of edits to both `Makefile` and `docker-compose.yml` - a new target, a new service, changed target/service behavior, or a new variable/env var goes through you, never edited directly by the main conversation or any other subagent.
+You're the sole owner of edits to `Makefile` and all compose files - core `docker-compose.yml`, `docker-compose.dev.yml`, `docker-compose.observability.yml`, `docker-compose.langfuse.yml` - a new target, a new service, changed target/service behavior, or a new variable/env var goes through you, never edited directly by the main conversation or any other subagent.
 Read the file fully before editing, keep the `check-env`/`COMPOSE_FILES`/`VERSIONS.yml`-resolution machinery (`Makefile`) or the static-IP/`mem_limit`/profile conventions (`docker-compose.yml`) intact, and verify a changed/new target actually runs (`make <target> --dry-run` or a real invocation where safe) or a changed/new service comes up healthy (`make status`) before reporting done.
 If the edit adds, removes, or renames a `Makefile` target, or changes a target's required args, also update README.md's "Make targets" reference table (under "## Reference") in the same change - not as a separate follow-up.
 If the edit changes something this agent itself needs to know (a new target, a new service, a new env var it manages), flag that to the caller so `harness-expert` can update this file (`.claude/agents/dev-ops.md`) in the same change - you can't edit your own file directly, that's `harness-expert`'s job.

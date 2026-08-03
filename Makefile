@@ -27,6 +27,9 @@ else
 COMPOSE_FILES := -f docker-compose.yml -f docker-compose.dev.yml
 endif
 
+OBSERVABILITY_COMPOSE_FILES := $(COMPOSE_FILES) -f docker-compose.observability.yml
+LANGFUSE_COMPOSE_FILES := $(COMPOSE_FILES) -f docker-compose.langfuse.yml
+
 PORT := $(if $(strip $(LITELLM_PORT)),$(LITELLM_PORT),4000)
 # Full proxy URI, in case LiteLLM isn't on localhost (a shared/remote host) -
 # LITELLM_PORT alone can't express that, so this takes precedence when set.
@@ -164,37 +167,37 @@ logs: check-env
 # bring up Langfuse without touching the core stack. `make stop`/`make down`
 # will tear it down automatically as a courtesy.
 langfuse-up: check-env
-	docker compose $(COMPOSE_FILES) --profile langfuse up -d --build --force-recreate $(LANGFUSE_SERVICES)
+	docker compose $(LANGFUSE_COMPOSE_FILES) --profile langfuse up -d --build --force-recreate $(LANGFUSE_SERVICES)
 
 # `docker compose --profile langfuse down` (no service args) tears down the
 # core stack too, since --profile langfuse activates langfuse *in addition
 # to* default (no-profile) services - passing $(LANGFUSE_SERVICES) explicitly
 # scopes it to just the six Langfuse containers.
 langfuse-down: check-env
-	docker compose $(COMPOSE_FILES) --profile langfuse down $(LANGFUSE_SERVICES)
+	docker compose $(LANGFUSE_COMPOSE_FILES) --profile langfuse down $(LANGFUSE_SERVICES)
 
 langfuse-logs: check-env
-	docker compose $(COMPOSE_FILES) --profile langfuse logs -f $(LANGFUSE_SERVICES)
+	docker compose $(LANGFUSE_COMPOSE_FILES) --profile langfuse logs -f $(LANGFUSE_SERVICES)
 
 # Opt-in observability stack (Prometheus/Blackbox/redis-exporter/Loki/Alloy -
 # see README "Observability"). Observability never starts automatically - must be
 # run explicitly. Run this directly to start the observability stack. `make stop`/
 # `make down` will tear it down automatically as a courtesy.
 observability-up: check-env
-	docker compose $(COMPOSE_FILES) --profile observability up -d --build --force-recreate $(OBSERVABILITY_SERVICES)
+	docker compose $(OBSERVABILITY_COMPOSE_FILES) --profile observability up -d --build --force-recreate $(OBSERVABILITY_SERVICES)
 
 # `docker compose --profile observability down` (no service args) tears down
 # the core stack too, since --profile observability activates observability
 # *in addition to* default (no-profile) services - passing
 # $(OBSERVABILITY_SERVICES) explicitly scopes it to just those containers.
 observability-down: check-env
-	docker compose $(COMPOSE_FILES) --profile observability down $(OBSERVABILITY_SERVICES)
+	docker compose $(OBSERVABILITY_COMPOSE_FILES) --profile observability down $(OBSERVABILITY_SERVICES)
 
 observability-logs: check-env
-	docker compose $(COMPOSE_FILES) --profile observability logs -f $(OBSERVABILITY_SERVICES)
+	docker compose $(OBSERVABILITY_COMPOSE_FILES) --profile observability logs -f $(OBSERVABILITY_SERVICES)
 
 observability-status: check-env
-	docker compose $(COMPOSE_FILES) --profile observability ps $(OBSERVABILITY_SERVICES)
+	docker compose $(OBSERVABILITY_COMPOSE_FILES) --profile observability ps $(OBSERVABILITY_SERVICES)
 
 # Runs each service's test directory as its own pytest invocation, plus
 # services/_common/tests (the shared ingest_parsing/ingest_db/fastjson

@@ -8,8 +8,8 @@ Single nginx service (`services/load-balancer/`) sits in front of every service 
 - `mcp-dev` (dev-only)
 - `mcp-stats`
 - `clickhouse` (both its HTTP interface and native protocol)
-- `prometheus` (opt-in `observability` profile)
-- `langfuse-web` (opt-in `langfuse` profile)
+- `prometheus` (opt-in `observability` profile, defined in `docker-compose.observability.yml`)
+- `langfuse-web` (opt-in `langfuse` profile, defined in `docker-compose.langfuse.yml`)
 
 ## Ports stay unchanged
 

@@ -55,6 +55,19 @@ Keep each entry a few lines max, no essays.
   - Column renamed/removed -> insert fails loudly with a clear "column doesn't exist" error, easy to catch.
 - Fix/rule: whenever a column used by one of these `column_type_names` lists changes type in `schema.sql`, update the matching Python constant in the same change - `column_type_names` bypasses ClickHouse's own schema check, so nothing else will catch the mismatch.
 
+## Inline `SETTINGS` clause silently ignored when not on the truly outermost statement
+
+- A `SETTINGS key = value` clause attached to a subquery (anything inside a `FROM (...)`) parses without error but has zero effect on that setting for the query's actual execution.
+  ClickHouse only honors `SETTINGS` from the genuinely outermost statement as sent to the server.
+  Confirmed on 24.8.14.39 for `max_memory_usage`: a query with `SETTINGS max_memory_usage = 100000000` on an inner subquery ran past ~400MB with no error; the identical clause on the true top-level statement failed immediately with `maximum: 95.37 MiB` (exactly the requested value), and raising it on the true top-level statement let a query that normally hits the profile's 2.4 GiB default run right past that ceiling.
+- `mcp__dev__query`'s own `_do_query` always wraps whatever SQL you pass it as `SELECT * FROM (<your sql>) AS _query_result LIMIT n` (`services/mcp-dev/src/server.py`).
+  This demotes any `SETTINGS` clause inside your submitted SQL to non-top-level, so testing a `SETTINGS max_memory_usage = ...` override via `query()` will always look like it's being ignored/clamped back to the profile default, even though nothing is actually blocking it.
+- `mcp__dev__profile_query`'s `_do_profile` does NOT wrap (`client.command(f"{sql} FORMAT Null", ...)`).
+  Use `profile_query`, not `query`, to test whether an inline `SETTINGS` override actually takes effect.
+- Practical implication for dashboard panels: a panel's `rawSql` is sent to ClickHouse by Grafana's datasource plugin directly, with no wrapping.
+  A `SETTINGS` clause on the panel query's own final/outermost `SELECT` (e.g. right after its terminal `GROUP BY`/`ORDER BY`, as `agents_overview.json` panel 76 already does) is genuinely top-level and is respected.
+  Don't conclude an override is infeasible just because it appeared to fail when re-tested through `mcp__dev__query`.
+
 ## `mcp-dev` SQL validator (`services/mcp-dev/src/server.py`)
 
 - The `;`/keyword/`SYSTEM`/table-function checks scan SQL text with string literals masked out first, via quote-aware `_mask_string_literals` - unmasked, a literal containing `;` (e.g. HTML entities like `&amp;`) or a forbidden-looking word as plain text would false-reject.
