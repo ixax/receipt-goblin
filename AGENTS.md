@@ -20,16 +20,22 @@ Dev/prod split: `agent_docs/architecture.md`; per-service detail: `agent_docs/se
 - `make loadtest-fixtures [VOLUME=small|medium|large]` - build fixtures from ClickHouse.
 - `make harness-index` - regenerate `agent_docs/harness-index.md` after any frontmatter change.
 
+## Python
+
+- Python version: `.python-version`
+- Every Python-based `Dockerfile`'s `FROM python:${PYTHON_VERSION}-slim` reads that value via a `PYTHON_VERSION` build-arg, propagated through `Makefile` and `docker-compose.yml`'s `build.args`
+- bump `.python-version` -> run `make build`, every image rebuilds against the new version in one shot
+- Local scripts/tests run via `uv run`/`uv sync`, which reads `.python-version` automatically - keeps one interpreter instead of whatever `python3` resolves to locally.
+- Anything touching a `pyproject.toml` dependency (pytest, ruff, any future script needing a third-party package) always runs via `uv run` - never a bare `python3 -m pytest`/manual `pip install`.
+- Stdlib-only scripts (`scripts/*`, `hooks/harness_audit/*`, etc.) stay on plain `python3` - no third-party deps, no `uv run` needed
+- If `uv` isn't installed: `make install-uv`
+
 ## Project structure
 
 Read `agent_docs/*.md` on demand, when a task touches that area.
 Every service has its own `Dockerfile`, dependencies, config.
 Image tags: `agent_docs/architecture.md`.
 Runtime tunables/settings/flags live in an explicit config file, never hardcoded.
-
-Python version: pinned repo-wide in root `.python-version`.
-Every Python-based `Dockerfile`'s `FROM python:${PYTHON_VERSION}-slim` reads that value via a `PYTHON_VERSION` build-arg, propagated through `Makefile` and `docker-compose.yml`'s `build.args` - bump `.python-version`, run `make build`, every image rebuilds against the new version in one shot.
-Local scripts/tests run via `uv run`/`uv sync`, which reads `.python-version` automatically - keeps Claude Code, Codex CLI, and human contributors on one interpreter instead of whatever `python3` resolves to locally.
 
 Orientation only - doc filename `<dirname>.md` under `agent_docs/services/` unless noted:
 
@@ -68,7 +74,7 @@ Root-level:
 Trigger conditions live in each entity's own frontmatter `description` - Claude Code lists them natively; Codex CLI reads `agent_docs/harness-index.md` instead (adapter notes: `agent_docs/architecture.md`).
 Check for an owning agent before inline Bash/Read/Grep.
 
-Proactive (dispatch without being asked):
+PROACTIVE (dispatch without being asked):
 
 - `harness-expert` - harness entities, `AGENTS.md`, `agent_docs/*.md`
 - `dev-ops` - services, compose, backups, opt-in stacks
@@ -81,9 +87,25 @@ Proactive (dispatch without being asked):
 - `code-locator` - codebase search
 - `script-ops` - mechanical / read-only ops
 
-Explicit-dispatch: `clickhouse-analyst`, `sql-expert`, `query-perf-runner`, `loadtest-sql`, `litellm-tester`, `litellm-test-alerting`.
+EXPLICIT DISPATCH:
+- `clickhouse-analyst`
+- `sql-expert`
+- `query-perf-runner`
+- `loadtest-sql`
+- `litellm-tester`
+- `litellm-test-alerting`
 
-Skills: `md-format`, `clickhouse-sql`, `clickhouse-migration`, `dashboard-panels`, `dynamictext-panel-queries`, `dynamictext-panel-design-system`, `trace-debugging`, `harness-guardian`, `me`, `min`.
+SKILLS:
+- `md-format`
+- `clickhouse-sql`
+- `clickhouse-migration`
+- `dashboard-panels`
+- `dynamictext-panel-queries`
+- `dynamictext-panel-design-system`
+- `trace-debugging`
+- `harness-guardian`
+- `me`
+- `min`
 
 ## Code
 

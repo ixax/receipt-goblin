@@ -79,7 +79,7 @@ include .image-tags.mk
 PYTHON_VERSION := $(shell cat .python-version)
 export PYTHON_VERSION
 
-.PHONY: check-env git-hooks-install init start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit harness-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
+.PHONY: check-env git-hooks-install install-uv init start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit harness-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	archive-prometheus archive-clickhouse-logs \
@@ -107,6 +107,9 @@ check-env:
 
 git-hooks-install:
 	sh scripts/install-git-hooks.sh
+
+install-uv:
+	curl -LsSf https://astral.sh/uv/install.sh | sh
 
 init: check-env git-hooks-install
 	python3 services/init/init_clickhouse_users.py $(COMPOSE_FILES)
