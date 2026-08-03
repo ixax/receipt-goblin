@@ -6,7 +6,8 @@
 # and adding `--reload`, so deps stay baked in and only the source is live.
 # See services/mcp-stats for the prod-facing sibling (fixed statistics
 # tools, real auth).
-FROM python:3.12-slim
+ARG PYTHON_VERSION=3.12
+FROM python:${PYTHON_VERSION}-slim
 
 WORKDIR /app
 

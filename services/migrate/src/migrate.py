@@ -49,11 +49,18 @@ import os
 from pathlib import Path
 
 import clickhouse_connect
-
-from common.config.clickhouse import CLICKHOUSE_DATABASE, CLICKHOUSE_HOST, CLICKHOUSE_PORT
+from common.config.clickhouse import (
+    CLICKHOUSE_DATABASE,
+    CLICKHOUSE_HOST,
+    CLICKHOUSE_PORT,
+)
 from common.logging_config import create_logger
 
-from .config import CLICKHOUSE_BOOTSTRAP_PASSWORD, CLICKHOUSE_BOOTSTRAP_USER, MIGRATIONS_DIR
+from .config import (
+    CLICKHOUSE_BOOTSTRAP_PASSWORD,
+    CLICKHOUSE_BOOTSTRAP_USER,
+    MIGRATIONS_DIR,
+)
 
 logger = create_logger("clickhouse.migrate")
 

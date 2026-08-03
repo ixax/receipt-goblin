@@ -58,7 +58,6 @@ from pathlib import Path
 from typing import Optional
 
 import aiohttp
-
 from common.logging_config import create_logger
 
 logger = create_logger("webhook.loadtest")

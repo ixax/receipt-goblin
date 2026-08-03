@@ -6,7 +6,8 @@
 # Split out of the old one-image/APP_ROLE design (worker/reparse/migrate/
 # loadtest each have their own Dockerfile now) - see
 # plans/webhook-worker-split.md.
-FROM python:3.12-slim
+ARG PYTHON_VERSION=3.12
+FROM python:${PYTHON_VERSION}-slim
 
 WORKDIR /app
 

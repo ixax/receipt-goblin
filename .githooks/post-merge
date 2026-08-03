@@ -1,0 +1,6 @@
+#!/bin/sh
+# Fires after `git merge` (including the merge half of `git pull`).
+. "$(dirname "$0")/lib/check-uv.sh"
+check_uv
+
+exit 0

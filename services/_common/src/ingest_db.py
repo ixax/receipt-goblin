@@ -9,12 +9,14 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import clickhouse_connect
-
 from common import fastjson as json
-from common.config.clickhouse import CLICKHOUSE_DATABASE, CLICKHOUSE_HOST, CLICKHOUSE_PORT
+from common.config.clickhouse import (
+    CLICKHOUSE_DATABASE,
+    CLICKHOUSE_HOST,
+    CLICKHOUSE_PORT,
+)
 from common.config.clickhouse_credentials import CLICKHOUSE_PASSWORD, CLICKHOUSE_USER
 from common.ingest_parsing import (
-    EventContext,
     _EVENT_AGENT_NAME_IDX,
     _EVENT_AGENT_VERSION_IDX,
     _EVENT_CALL_ID_IDX,
@@ -51,12 +53,13 @@ from common.ingest_parsing import (
     _USAGE_TIMESTAMP_IDX,
     _USER_COLUMNS,
     _USER_UPDATED_AT_IDX,
+    EventContext,
     _agent_invocation_id,
     _agent_invocation_rows,
     _backfill_missing_skill_versions,
+    _derive_context,
     _deserialize_row,
     _deserialize_row_multi,
-    _derive_context,
     _event_row,
     _group_row,
     _message_row,

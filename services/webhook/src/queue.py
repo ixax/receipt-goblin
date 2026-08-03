@@ -9,7 +9,6 @@ plans/common-module-cleanup-refactor.md.
 import logging
 
 import redis.asyncio as aioredis
-
 from common import fastjson as json
 from common.config.queue import MAXLEN, SIDE_MAXLEN, SIDE_STREAM_KEY, STREAM_KEY
 from common.config.redis import REDIS_HOST, REDIS_PORT

@@ -3,7 +3,8 @@
 # mcp-stats is prod-facing (ships alongside litellm/grafana) - fixed
 # statistics tools only, no arbitrary SQL. See services/mcp-dev for the
 # dev-only sibling (query/profile_query, arbitrary read-only SQL, no auth).
-FROM python:3.12-slim
+ARG PYTHON_VERSION=3.12
+FROM python:${PYTHON_VERSION}-slim
 
 WORKDIR /app
 

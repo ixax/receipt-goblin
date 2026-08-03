@@ -5,15 +5,14 @@ webhook-worker (worker.py) is what actually parses/inserts into ClickHouse,
 in batches - see AGENTS.md.
 """
 
-from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from prometheus_fastapi_instrumentator import Instrumentator
-from pydantic import BaseModel
-
 from common.config.litellm import LITELLM_BASE_URL, LITELLM_MASTER_KEY
 from common.ingest_db import clickhouse_alive
 from common.litellm_auth import virtual_key_is_valid
 from common.logging_config import create_logger
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from prometheus_fastapi_instrumentator import Instrumentator
+from pydantic import BaseModel
 
 from .config import APP_VERSION
 from .queue import enqueue_raw, enqueue_side, get_async_redis

@@ -1,0 +1,27 @@
+[project]
+name = "receipt-goblin-dev"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    # Mirrors services/webhook/requirements.txt (plus aiohttp from
+    # services/loadtest/requirements.txt, needed by test-services'
+    # loadtest suite) - keep in sync by hand, same duplication the old
+    # requirements-dev.txt already had.
+    "fastapi==0.115.0",
+    "uvicorn[standard]==0.30.6",
+    "clickhouse-connect==0.8.3",
+    "redis==5.0.8",
+    "PyYAML==6.0.2",
+    "prometheus-fastapi-instrumentator==7.0.0",
+    "orjson==3.10.7",
+    "aiohttp==3.10.10",
+    "pytest==8.4.2",
+    "ruff==0.16.1",
+]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]

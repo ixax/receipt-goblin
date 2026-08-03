@@ -13,8 +13,9 @@ Dev/prod split: `agent_docs/architecture.md`; per-service detail: `agent_docs/se
 - `make stop` / `make down [SERVICE=x]` - tear down.
 - `make setup-client` - print CLI-proxy shell/config snippets.
 - `make test` - umbrella: runs `test-services` + `test-hooks`.
-- `make test-services` - webhook pytest suite; always via `test-runner`, never inline.
+- `make test-services` - webhook pytest suite; always via `runner-test`, never inline.
 - `make test-hooks` - budget-audit unit tests.
+- `make lint` - repo-wide ruff check; always via `runner-linter`, never inline.
 - `make loadtest` - ramping load test; always via `loadtest-runner`, never inline.
 - `make loadtest-fixtures [VOLUME=small|medium|large]` - build fixtures from ClickHouse.
 - `make harness-index` - regenerate `agent_docs/harness-index.md` after any frontmatter change.
@@ -25,6 +26,10 @@ Read `agent_docs/*.md` on demand, when a task touches that area.
 Every service has its own `Dockerfile`, dependencies, config.
 Image tags: `agent_docs/architecture.md`.
 Runtime tunables/settings/flags live in an explicit config file, never hardcoded.
+
+Python version: pinned repo-wide in root `.python-version`.
+Every Python-based `Dockerfile`'s `FROM python:${PYTHON_VERSION}-slim` reads that value via a `PYTHON_VERSION` build-arg, propagated through `Makefile` and `docker-compose.yml`'s `build.args` - bump `.python-version`, run `make build`, every image rebuilds against the new version in one shot.
+Local scripts/tests run via `uv run`/`uv sync`, which reads `.python-version` automatically - keeps Claude Code, Codex CLI, and human contributors on one interpreter instead of whatever `python3` resolves to locally.
 
 Orientation only - doc filename `<dirname>.md` under `agent_docs/services/` unless noted:
 
@@ -67,7 +72,8 @@ Proactive (dispatch without being asked):
 
 - `harness-expert` - harness entities, `AGENTS.md`, `agent_docs/*.md`
 - `dev-ops` - services, compose, backups, opt-in stacks
-- `test-runner` - test runs
+- `runner-test` - test runs
+- `runner-linter` - lint runs
 - `loadtest-runner` - load tests
 - `dashboards-expert` - dashboard panel edits
 - `dashboard-parser` - `agents_overview.json` reads

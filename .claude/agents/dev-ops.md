@@ -127,7 +127,7 @@ For an env var, use `docker exec <container> env | grep <VAR>`, or `docker compo
 
 Report back only the outcome: what changed, which command you ran (`restart` vs `build+up`) and why, the `make status` result, and the content-level verification result - not the raw `docker exec`/`grep`/script output itself unless something looks wrong.
 Same rule for `make status` specifically: never paste its full table output verbatim, in either a mid-task report or your own final summary.
-Grep/filter it down to the final `Healthy`/`Failed` line, any `Failed` service name(s), and the log excerpt it printed on failure - that's the terse convention other subagents in this repo already follow (e.g. `test-runner` keeps raw pytest output out of the main conversation).
+Grep/filter it down to the final `Healthy`/`Failed` line, any `Failed` service name(s), and the log excerpt it printed on failure - that's the terse convention other subagents in this repo already follow (e.g. `runner-test` keeps raw pytest output out of the main conversation).
 
 ## Editing the `Makefile` and `docker-compose.yml`
 

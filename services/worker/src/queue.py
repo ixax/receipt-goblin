@@ -4,7 +4,6 @@ Split out of common/queue_client.py - see
 plans/common-module-cleanup-refactor.md.
 """
 import redis
-
 from common.config.redis import REDIS_HOST, REDIS_PORT
 
 _sync_client = None

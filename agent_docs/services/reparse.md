@@ -9,4 +9,4 @@ One of five independent services split from a former single `webhook` service, e
   `REPARSE_CHUNK_SIZE` is read directly here, not part of `common`'s shared `config/` package.
 
 `services/reparse/tests/` has its own pytest suite.
-Run with `make test-services` (a separate pytest invocation per service directory - see the `Makefile`), always via `test-runner`, never inline.
+Run with `make test-services` (a separate pytest invocation per service directory - see the `Makefile`), always via `runner-test`, never inline.

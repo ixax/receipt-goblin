@@ -5,10 +5,9 @@ Uses a fake in-memory client throughout; no real ClickHouse connection."""
 
 import json
 
-from conftest import load_capture
-
 from common import ingest_db as db
 from common.ingest_parsing import build_event
+from conftest import load_capture
 
 
 class _FakeClient:

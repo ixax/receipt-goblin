@@ -3,7 +3,8 @@
 # `docker build -t worker -f services/worker/Dockerfile . && docker run worker`.
 # Split out of services/webhook/Dockerfile's one-image/APP_ROLE design -
 # see plans/webhook-worker-split.md.
-FROM python:3.12-slim
+ARG PYTHON_VERSION=3.12
+FROM python:${PYTHON_VERSION}-slim
 
 WORKDIR /app
 

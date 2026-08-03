@@ -73,7 +73,13 @@ VKEY := $(if $(strip $(LITELLM_VIRTUAL_KEY)),$(LITELLM_VIRTUAL_KEY),<virtual key
 $(shell python3 scripts/resolve_image_version.py > .image-tags.mk)
 include .image-tags.mk
 
-.PHONY: check-env init start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit harness-index langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
+# Python version pinned at repo root - reads from .python-version, exported
+# into the environment so docker compose build passes it through to each
+# Python-based service's Dockerfile via the PYTHON_VERSION build-arg.
+PYTHON_VERSION := $(shell cat .python-version)
+export PYTHON_VERSION
+
+.PHONY: check-env git-hooks-install init start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit harness-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	archive-prometheus archive-clickhouse-logs \
@@ -99,7 +105,10 @@ check-env:
 	@echo "⚠️  ENVIRONMENT=$(ENVIRONMENT)"
 	@python3 scripts/resolve_image_version.py | sed 's/^export /⚠️  /'
 
-init: check-env
+git-hooks-install:
+	sh scripts/install-git-hooks.sh
+
+init: check-env git-hooks-install
 	python3 services/init/init_clickhouse_users.py $(COMPOSE_FILES)
 
 # `start`: Brings up containers with existing images (no rebuild/recreate).
@@ -212,10 +221,10 @@ observability-status: check-env
 # config instead of its own - confirmed via a real ImportError when this
 # was tried. Separate invocations sidestep that entirely.
 # No live ClickHouse needed - see each dir's conftest.py.
-# Needs requirements-dev.txt installed in .venv first:
-# `pip install -r requirements-dev.txt`. The root
-# `pytest.ini` (shared by every service's invocation below, not owned by
-# any one service) silences dependency warnings (urllib3/clickhouse-connect
+# uv builds/uses `.venv` automatically from the pinned `.python-version`/
+# `pyproject.toml` - no manual install step needed.
+# The root `pytest.ini` (shared by every service's invocation below, not
+# owned by any one service) silences dependency warnings (urllib3/clickhouse-connect
 # deprecation noise unrelated to this repo's own code).
 # services/mcp-dev/tests is NOT included below: its `src/server.py` imports
 # the `mcp` SDK (`mcp.server.fastmcp`), which requires Python >=3.10 and
@@ -224,9 +233,9 @@ observability-status: check-env
 # services/mcp-dev/requirements.txt installed
 # (`python3.11 -m pytest -c pytest.ini services/mcp-dev/tests`) until the
 # shared `.venv` is upgraded.
-test-services:
+test-services: check-env
 	@for svc in webhook worker reparse loadtest _common; do \
-	  out=$$(.venv/bin/python -m pytest -c pytest.ini services/$$svc/tests 2>&1); code=$$?; \
+	  out=$$(uv run pytest -c pytest.ini services/$$svc/tests 2>&1); code=$$?; \
 	  if [ $$code -ne 0 ]; then echo "$$out"; exit $$code; fi; \
 	  summary=$$(echo "$$out" | grep -E 'passed|failed' | tail -n 1); \
 	  if [ -n "$$summary" ]; then echo "$$svc: $$summary"; fi; \
@@ -243,6 +252,11 @@ test: test-services test-hooks
 
 # Backward-compat alias for test-hooks (deprecated, use test-hooks instead).
 test-harness-audit: test-hooks
+
+# Repo-wide ruff check - repo-wide static linting (E/F/I rules, E501 excluded).
+# uv runs against the pinned .python-version/.pyproject.toml environment.
+lint: check-env
+	uv run ruff check .
 
 # Generates/refreshes agent_docs/harness-index.md (a table of every
 # skill/agent's name+description+path, derived from frontmatter, for

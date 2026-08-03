@@ -1,5 +1,7 @@
+from typing import IO, Any, Callable, Optional
+
 import orjson
-from typing import Any, Callable, IO, Optional
+
 
 def load(fp: IO[bytes]) -> Any:
   """

@@ -17,19 +17,27 @@ import time
 from datetime import datetime, timezone
 
 import redis
-from prometheus_client import Counter, Gauge, Histogram, start_http_server
-
 from common import fastjson as json
 from common.config.queue import (
-    BATCH_SIZE, CONSUMER_GROUP, FLUSH_INTERVAL_MS, SIDE_STREAM_KEY, STALE_IDLE_MS, STREAM_KEY,
+    BATCH_SIZE,
+    CONSUMER_GROUP,
+    FLUSH_INTERVAL_MS,
+    SIDE_STREAM_KEY,
+    STALE_IDLE_MS,
+    STREAM_KEY,
 )
 from common.ingest_db import clickhouse_alive, get_client, ingest_events_batch
 from common.ingest_parsing import build_event
 from common.logging_config import create_logger
 from common.side_ingest import (
-    _git_branch_row, _litellm_alert_row, _plan_proposal_row,
-    insert_git_branch_batch, insert_litellm_alert_batch, insert_plan_proposal_batch,
+    _git_branch_row,
+    _litellm_alert_row,
+    _plan_proposal_row,
+    insert_git_branch_batch,
+    insert_litellm_alert_batch,
+    insert_plan_proposal_batch,
 )
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 from .config import WORKER_METRICS_PORT
 from .queue import get_redis

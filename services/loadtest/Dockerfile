@@ -5,7 +5,8 @@
 # Split out of services/webhook/Dockerfile's one-image/APP_ROLE design.
 # CLI-only, no HTTP API, not started by a plain `docker compose up`
 # (profiles: tools on the compose side).
-FROM python:3.12-slim
+ARG PYTHON_VERSION=3.12
+FROM python:${PYTHON_VERSION}-slim
 
 WORKDIR /app
 

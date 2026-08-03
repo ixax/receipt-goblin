@@ -1,0 +1,13 @@
+#!/bin/sh
+# post-checkout <prev-HEAD> <new-HEAD> <branch-flag>
+# branch-flag is 1 for a real branch checkout/switch, 0 for a file-level
+# checkout (git stash pop, some IDE actions) - only fire on the former so
+# this doesn't become noise.
+branch_flag="$3"
+
+if [ "$branch_flag" = "1" ]; then
+    . "$(dirname "$0")/lib/check-uv.sh"
+    check_uv
+fi
+
+exit 0

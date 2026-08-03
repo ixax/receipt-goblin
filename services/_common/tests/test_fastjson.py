@@ -9,9 +9,7 @@ existing `except (TypeError, ValueError):` call sites keep working)."""
 import io
 
 import pytest
-
 from common import fastjson
-
 
 # ---------------------------------------------------------------------------
 # loads / load

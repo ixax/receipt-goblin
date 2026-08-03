@@ -17,9 +17,7 @@ Two groups of coverage:
   gets executed."""
 
 import pytest
-
 from src import server
-
 
 # ---------------------------------------------------------------------------
 # Valid queries

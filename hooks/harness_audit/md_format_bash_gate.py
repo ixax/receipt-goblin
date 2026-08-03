@@ -33,7 +33,11 @@ from pathlib import Path
 
 HOOK_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(HOOK_DIR))
-from md_format_skill_gate import already_read, has_multiline_comment_block, under_excluded_dir  # noqa: E402
+from md_format_skill_gate import (  # noqa: E402
+    already_read,
+    has_multiline_comment_block,
+    under_excluded_dir,
+)
 
 TARGET_RE = re.compile(
     r"(?:>{1,2}|\btee\b(?:\s+-a)?)\s+"

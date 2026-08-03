@@ -10,15 +10,18 @@ already uses for its own authenticated routes.
 """
 import os
 
+from common.litellm_auth import virtual_key_is_valid
+from common.logging_config import create_logger
+from common.mcp_common import (
+    ClickHouseClientFactory,
+    build_transport_security,
+    make_health_route,
+)
 from mcp.server.fastmcp import FastMCP
 from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-
-from common.litellm_auth import virtual_key_is_valid
-from common.logging_config import create_logger
-from common.mcp_common import ClickHouseClientFactory, build_transport_security, make_health_route
 
 # Defaults live in docker-compose.yml; always set by container start, no fallback needed.
 CLICKHOUSE_HOST = os.environ["CLICKHOUSE_HOST"]

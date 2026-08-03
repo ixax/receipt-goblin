@@ -23,11 +23,14 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import yaml
+from common.logging_config import create_logger
+from common.mcp_common import (
+    ClickHouseClientFactory,
+    build_transport_security,
+    make_health_route,
+)
 from mcp.server.fastmcp import FastMCP
 from prometheus_fastapi_instrumentator import Instrumentator
-
-from common.logging_config import create_logger
-from common.mcp_common import ClickHouseClientFactory, build_transport_security, make_health_route
 
 # Defaults live in docker-compose.yml; always set by container start, no fallback needed.
 CLICKHOUSE_HOST = os.environ["CLICKHOUSE_HOST"]

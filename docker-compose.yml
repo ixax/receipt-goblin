@@ -177,6 +177,8 @@ services:
     build:
       context: .
       dockerfile: services/migrate/Dockerfile
+      args:
+        - PYTHON_VERSION=${PYTHON_VERSION}
     image: receipt-goblin-migrate:${MIGRATE_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-clickhouse-migrate
     profiles:
@@ -238,6 +240,8 @@ services:
     build:
       context: .
       dockerfile: services/mcp-stats/Dockerfile
+      args:
+        - PYTHON_VERSION=${PYTHON_VERSION}
     image: receipt-goblin-mcp-stats:${MCP_STATS_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-mcp-stats
     environment:
@@ -307,6 +311,8 @@ services:
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
+      args:
+        - PYTHON_VERSION=${PYTHON_VERSION}
     # Webhook-specific image - used only by webhook-1/2 replicas.
     image: receipt-goblin-webhook:${WEBHOOK_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-webhook-1
@@ -453,6 +459,8 @@ services:
     build:
       context: .
       dockerfile: services/worker/Dockerfile
+      args:
+        - PYTHON_VERSION=${PYTHON_VERSION}
     image: receipt-goblin-worker:${WORKER_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-worker
     environment:
@@ -496,6 +504,8 @@ services:
     build:
       context: .
       dockerfile: services/reparse/Dockerfile
+      args:
+        - PYTHON_VERSION=${PYTHON_VERSION}
     image: receipt-goblin-reparse:${REPARSE_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-metrics-reparse
     profiles:
@@ -524,6 +534,8 @@ services:
     build:
       context: .
       dockerfile: services/loadtest-fixtures/Dockerfile
+      args:
+        - PYTHON_VERSION=${PYTHON_VERSION}
     image: receipt-goblin-loadtest-fixtures:${LOADTEST_FIXTURES_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-loadtest-fixtures
     profiles:
@@ -561,6 +573,8 @@ services:
     build:
       context: .
       dockerfile: services/loadtest/Dockerfile
+      args:
+        - PYTHON_VERSION=${PYTHON_VERSION}
     image: receipt-goblin-loadtest:${LOADTEST_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-loadtest
     profiles:

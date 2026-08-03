@@ -14,4 +14,4 @@ See `common.md`'s "Why a queue in front of ClickHouse" for why `webhook` only en
 - `queue.py` (`services/webhook/src/`) - `get_async_redis`/`enqueue`/`enqueue_raw`, the producer half of `common.queue_client` before it split by service.
 
 `services/webhook/tests/` has `test_ingest.py` and `test_queue.py`.
-Run with `make test-services` (a separate pytest invocation per service directory - see the `Makefile`), always via `test-runner`, never inline.
+Run with `make test-services` (a separate pytest invocation per service directory - see the `Makefile`), always via `runner-test`, never inline.

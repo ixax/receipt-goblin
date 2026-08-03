@@ -6,10 +6,8 @@ DB-touching functions are out of scope (see test_ingest_db.py)."""
 import json
 from datetime import datetime, timezone
 
-from conftest import load_capture
-
 from common import ingest_parsing as ip
-
+from conftest import load_capture
 
 # ---------------------------------------------------------------------------
 # _to_dt
@@ -780,7 +778,7 @@ def test_build_event_success_returns_json_safe_dict_with_source_row():
     payload = load_capture("success_plain")
     event = ip.build_event(payload)
 
-    encoded = json.dumps(event)  # must not raise - safe to XADD onto Redis
+    json.dumps(event)  # must not raise - safe to XADD onto Redis
     assert event["source_row"] is not None
     assert event["event_row"] is not None
     assert event["usage_row"] is not None

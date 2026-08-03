@@ -37,6 +37,8 @@ When it finishes, continue to "Start the stack" below.
 make init
 ```
 
+`make init` also installs this repo's tracked git hooks (`git config core.hooksPath .githooks`) - standalone via `make git-hooks-install` if you ever need to re-run just that step.
+
 If you'd rather fill in `.env` by hand instead:
 
 ```bash
@@ -257,13 +259,13 @@ operation only.
 `make test-hooks` runs the harness audit unit tests (`hooks/harness_audit/tests`).
 It needs no live ClickHouse or docker-compose stack: each dir's `conftest.py` stubs the required `CLICKHOUSE_*` env vars before import, and tests exercising real payloads load them from `services/_common/tests/captures/*.json` (copies of actual `services/webhook/captures/<session_id>/*.json` files) rather than hand-built fixtures.
 
-First-time setup:
+No first-time setup step is needed - run any `make` target that needs it (`make test`, `make lint`), or `uv sync` directly.
+`uv` builds `.venv` automatically from the pinned `.python-version`/`pyproject.toml`.
 
-```bash
-.venv/bin/pip install -r requirements-dev.txt
-```
+## Linting
 
-This installs `services/webhook/requirements.txt` plus `pytest`.
+`make lint` runs `uv run ruff check .` repo-wide (not just the services `make test` covers).
+It's mandatory alongside tests after any Python code change, always run via the `runner-linter` subagent, never inline.
 
 ## Load testing
 
@@ -332,43 +334,45 @@ Everything below is background/design detail, not needed day-to-day.
 Every target in the `Makefile`, one line each - whoever edits the `Makefile` keeps this table in sync as part of that same change.
 Most are covered in more depth elsewhere in this README - follow the section pointer for details/vars.
 
-| Target                     | Args                              | What it does                                                                                         |
-| -------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `init`                     |                                   | Interactive first-run ClickHouse role/user provisioning - see "Environment variables" above.         |
-| `start`                    | `SERVICE=<name>` (optional)       | Brings up containers with existing images, no rebuild - see "Start the stack".                       |
-| `up`                       | `SERVICE=<name>` (optional)       | Rebuilds and recreates containers - see "Build or start a single service".                           |
-| `restart`                  | `SERVICE=<name>` (optional)       | Restarts running containers in place (no rebuild) - picks up bind-mounted source edits.              |
-| `up-no-deps`               | `SERVICE=<name>` (required)       | Recreates just one service, skipping its `depends_on` chain - for a config/env change, not source.   |
-| `build`                    | `SERVICE=<name>` (optional)       | Builds image(s) without starting anything - see "Build or start a single service".                   |
-| `status`                   |                                   | Waits for every service to report healthy, prints pass/fail - see "Wait until it's healthy".         |
-| `migrate`                  |                                   | Runs just the ClickHouse migration container (`migrations/*.sql` + Dictionaries), nothing else.      |
+| Target                     | Args                              | What it does                                                                                                                             |
+| -------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `init`                     |                                   | Interactive first-run ClickHouse role/user provisioning, plus git hooks install - see "Environment variables" above.                     |
+| `git-hooks-install`        |                                   | Points git at the tracked `.githooks/` directory (also run by `init`) - see "Getting started" above.                                     |
+| `start`                    | `SERVICE=<name>` (optional)       | Brings up containers with existing images, no rebuild - see "Start the stack".                                                           |
+| `up`                       | `SERVICE=<name>` (optional)       | Rebuilds and recreates containers - see "Build or start a single service".                                                               |
+| `restart`                  | `SERVICE=<name>` (optional)       | Restarts running containers in place (no rebuild) - picks up bind-mounted source edits.                                                  |
+| `up-no-deps`               | `SERVICE=<name>` (required)       | Recreates just one service, skipping its `depends_on` chain - for a config/env change, not source.                                       |
+| `build`                    | `SERVICE=<name>` (optional)       | Builds image(s) without starting anything - see "Build or start a single service".                                                       |
+| `status`                   |                                   | Waits for every service to report healthy, prints pass/fail - see "Wait until it's healthy".                                             |
+| `migrate`                  |                                   | Runs just the ClickHouse migration container (`migrations/*.sql` + Dictionaries), nothing else.                                          |
 | `stop` / `down`            | `SERVICE=<name>` (optional)       | Tears down the core stack, scoped to SERVICE if provided; always tears down Langfuse/observability as a courtesy - see "Stop the stack". |
-| `logs`                     | `SERVICE=<name>` (optional)       | Tails logs for the core stack (or a single service with `SERVICE=<name>`).                           |
-| `setup-client`             |                                   | Prints shell-export/config-file snippets to route a CLI through the local LiteLLM proxy.             |
-| `test`                     |                                   | Runs both `test-services` and `test-hooks`.                                                          |
-| `test-services`            |                                   | Runs service pytest suites (webhook/worker/reparse/loadtest/_common) - needs `requirements-dev.txt` in `.venv` first. |
-| `test-hooks`               |                                   | Runs harness audit unit tests (`hooks/harness_audit/tests`).                                         |
-| `reparse`                  | `SESSION=<session_id>` (required) | Reparses one session's events from `ingest_raw` - see "Debugging ingestion".                         |
-| `reparse-all`              |                                   | Reparses every event in `ingest_raw`.                                                                |
-| `loadtest`                 | see "Load testing" below          | Replays captured traffic at a ramping concurrency profile - see "Load testing".                      |
-| `loadtest-fixtures`        | `VOLUME=<size>` (optional)        | Generates test fixtures (small/medium/large) from ClickHouse into the loadtest-fixtures-data volume. |
-| `loadtest-fixtures-status` |                                   | Prints the fixture manifest without consuming resources or reading ClickHouse.                       |
-| `backup-clickhouse`        |                                   | Backs up ClickHouse - see "Backup & restore".                                                        |
-| `backup-litellm`           |                                   | Backs up `litellm-db` - see "Backup & restore".                                                      |
-| `backup-grafana`           |                                   | Backs up Grafana's `grafana.db` - see "Backup & restore".                                            |
-| `backup-all`               |                                   | Runs all three backups above.                                                                        |
-| `restore-clickhouse`       | `FILE=<name>` (required)          | Restores ClickHouse from a backup file - see "Backup & restore".                                     |
-| `restore-litellm`          | `FILE=<name>` (required)          | Restores `litellm-db` from a backup file - see "Backup & restore".                                   |
-| `restore-grafana`          | `FILE=<name>` (required)          | Restores Grafana's `grafana.db` from a backup file - see "Backup & restore".                         |
-| `archive-prometheus`       |                                   | Archives old Prometheus block files to conserve disk space - see "Metric/log retention".              |
-| `archive-clickhouse-logs`  |                                   | Archives old ClickHouse system logs to conserve disk space - see "Metric/log retention".              |
-| `langfuse-up`              |                                   | Starts the opt-in Langfuse stack - see "Langfuse".                                                   |
-| `langfuse-down`            |                                   | Stops just the Langfuse stack, leaving the core stack up.                                            |
-| `langfuse-logs`            |                                   | Tails logs for the Langfuse stack.                                                                   |
-| `observability-up`         |                                   | Starts the opt-in observability stack (Prometheus/Loki/etc.) - see "Observability".                  |
-| `observability-down`       |                                   | Stops just the observability stack, leaving the core stack up.                                       |
-| `observability-logs`       |                                   | Tails logs for the observability stack.                                                              |
-| `observability-status`     |                                   | Shows container status for just the observability stack.                                             |
+| `logs`                     | `SERVICE=<name>` (optional)       | Tails logs for the core stack (or a single service with `SERVICE=<name>`).                                                               |
+| `setup-client`             |                                   | Prints shell-export/config-file snippets to route a CLI through the local LiteLLM proxy.                                                 |
+| `test`                     |                                   | Runs both `test-services` and `test-hooks`.                                                                                              |
+| `test-services`            |                                   | Runs service pytest suites (webhook/worker/reparse/loadtest/_common) via `uv run pytest`.                                                |
+| `test-hooks`               |                                   | Runs harness audit unit tests (`hooks/harness_audit/tests`).                                                                             |
+| `lint`                     |                                   | Runs `uv run ruff check .` repo-wide - see "Linting".                                                                                    |
+| `reparse`                  | `SESSION=<session_id>` (required) | Reparses one session's events from `ingest_raw` - see "Debugging ingestion".                                                             |
+| `reparse-all`              |                                   | Reparses every event in `ingest_raw`.                                                                                                    |
+| `loadtest`                 | see "Load testing" below          | Replays captured traffic at a ramping concurrency profile - see "Load testing".                                                          |
+| `loadtest-fixtures`        | `VOLUME=<size>` (optional)        | Generates test fixtures (small/medium/large) from ClickHouse into the loadtest-fixtures-data volume.                                     |
+| `loadtest-fixtures-status` |                                   | Prints the fixture manifest without consuming resources or reading ClickHouse.                                                           |
+| `backup-clickhouse`        |                                   | Backs up ClickHouse - see "Backup & restore".                                                                                            |
+| `backup-litellm`           |                                   | Backs up `litellm-db` - see "Backup & restore".                                                                                          |
+| `backup-grafana`           |                                   | Backs up Grafana's `grafana.db` - see "Backup & restore".                                                                                |
+| `backup-all`               |                                   | Runs all three backups above.                                                                                                            |
+| `restore-clickhouse`       | `FILE=<name>` (required)          | Restores ClickHouse from a backup file - see "Backup & restore".                                                                         |
+| `restore-litellm`          | `FILE=<name>` (required)          | Restores `litellm-db` from a backup file - see "Backup & restore".                                                                       |
+| `restore-grafana`          | `FILE=<name>` (required)          | Restores Grafana's `grafana.db` from a backup file - see "Backup & restore".                                                             |
+| `archive-prometheus`       |                                   | Archives old Prometheus block files to conserve disk space - see "Metric/log retention".                                                 |
+| `archive-clickhouse-logs`  |                                   | Archives old ClickHouse system logs to conserve disk space - see "Metric/log retention".                                                 |
+| `langfuse-up`              |                                   | Starts the opt-in Langfuse stack - see "Langfuse".                                                                                       |
+| `langfuse-down`            |                                   | Stops just the Langfuse stack, leaving the core stack up.                                                                                |
+| `langfuse-logs`            |                                   | Tails logs for the Langfuse stack.                                                                                                       |
+| `observability-up`         |                                   | Starts the opt-in observability stack (Prometheus/Loki/etc.) - see "Observability".                                                      |
+| `observability-down`       |                                   | Stops just the observability stack, leaving the core stack up.                                                                           |
+| `observability-logs`       |                                   | Tails logs for the observability stack.                                                                                                  |
+| `observability-status`     |                                   | Shows container status for just the observability stack.                                                                                 |
 
 ### Configuration
 

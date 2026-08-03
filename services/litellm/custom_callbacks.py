@@ -243,8 +243,10 @@ chatgpt_responses_output_recovery_handler = ChatGPTResponsesOutputRecoveryHandle
 # Confirmed as the root cause of a ~13min gap in agent_usage/agent_events for one real session - see agent_docs/incidents.md.
 # _post_with_retries (max_retries/retry_delay, set in config.yaml's callback_settings.metrics_webhook) already retries transient failures within one flush; this patch handles the case where those retries are also exhausted, by keeping the unsent items queued for the *next* flush instead of discarding them.
 # Same class attribute-reassignment pattern as the is_anthropic_oauth_key patch above.
-from litellm.integrations.generic_api.generic_api_callback import GenericAPILogger
-from litellm.litellm_core_utils.safe_json_dumps import safe_dumps
+from litellm.integrations.generic_api.generic_api_callback import (  # noqa: E402
+    GenericAPILogger,
+)
+from litellm.litellm_core_utils.safe_json_dumps import safe_dumps  # noqa: E402
 
 # Mirrors webhook's own Redis stream MAXLEN~5000 bound (see agent_docs/services/webhook.md "Why a queue in front of ClickHouse") - a retry buffer needs the same kind of cap, or a sustained outage grows it unboundedly instead of just losing data, which is worse.
 _MAX_RETAINED_LOG_QUEUE = 2000

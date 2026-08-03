@@ -7,7 +7,6 @@ and the Prometheus counters are monkeypatched."""
 import json
 
 import pytest
-
 from src import worker
 
 

@@ -14,7 +14,6 @@ import asyncio
 import json
 
 import pytest
-
 from src import queue
 
 

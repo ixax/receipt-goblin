@@ -3,7 +3,8 @@
 # Otherwise self-contained, standalone service with its own dependency set -
 # deliberately not another APP_ROLE sharing services/webhook/Dockerfile's
 # image, see AGENTS.md.
-FROM python:3.12-slim
+ARG PYTHON_VERSION=3.12
+FROM python:${PYTHON_VERSION}-slim
 
 WORKDIR /app
 
