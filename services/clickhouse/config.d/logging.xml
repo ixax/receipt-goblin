@@ -13,6 +13,7 @@
     <crash_log>
         <database>system</database>
         <table>crash_log</table>
+        <partition_by>toYYYYMM(event_date)</partition_by>
         <flush_interval_milliseconds>60000</flush_interval_milliseconds>
     </crash_log>
     <asynchronous_metric_log>
@@ -24,6 +25,7 @@
     <metric_log>
         <database>system</database>
         <table>metric_log</table>
+        <partition_by>toYYYYMM(event_date)</partition_by>
         <flush_interval_milliseconds>60000</flush_interval_milliseconds>
     </metric_log>
 </clickhouse>

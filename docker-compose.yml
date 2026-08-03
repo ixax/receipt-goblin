@@ -47,10 +47,14 @@ x-clickhouse-bootstrap-password: &clickhouse-bootstrap-password ${CLICKHOUSE_BOO
 x-grafana-port: &grafana-port ${GRAFANA_PORT:-3000}
 x-mcp-stats-port: &mcp-stats-port ${MCP_STATS_PORT:-8002}
 
-# Host root dir backup/restore scripts read/write ($BACKUP_DIR, default
-# .backups - see README.md's "Backup & restore" section). Used directly as
-# ${BACKUP_DIR:-.backups} below, not via an anchor, since anchors can't be
-# concatenated into a bind mount's host-side path.
+# Host root dir backup/restore scripts read/write ($BACKUP_DIR, default .backups - see README.md's "Backup & restore" section).
+# Used directly as ${BACKUP_DIR:-.backups} below, not via an anchor, since anchors can't be concatenated into a bind mount's host-side path.
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
 
 x-redis-host: &redis-host ${REDIS_HOST:-redis}
 # Internal-only - `redis` has no `ports:`/`expose:` at all, never visible on
@@ -122,10 +126,8 @@ services:
     image: receipt-goblin-clickhouse:${CLICKHOUSE_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
     container_name: receipt-goblin-clickhouse
     environment:
-      # Bootstrap superuser only (see x-clickhouse-bootstrap-* above), not
-      # any of the app roles. ACCESS_MANAGEMENT=1 lets `make init`
-      # (services/init/) provision every role via SQL; the image drops the
-      # "default" account entirely in this mode.
+      # Bootstrap superuser only (see x-clickhouse-bootstrap-* above), not any of the app roles.
+      # ACCESS_MANAGEMENT=1 lets `make init` (services/init/) provision every role via SQL; the image drops the "default" account entirely in this mode.
       CLICKHOUSE_USER: *clickhouse-bootstrap-user
       CLICKHOUSE_PASSWORD: *clickhouse-bootstrap-password
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
@@ -151,11 +153,11 @@ services:
       # Metrics endpoint (config.d/prometheus.xml) - internal only, scraped
       # by Prometheus's `clickhouse` job.
       - "9363"
+    logging: *default-logging
     volumes:
       - clickhouse-data:/var/lib/clickhouse
-      # Backing disk for native BACKUP/RESTORE (backup_clickhouse.sh) - the
-      # server writes/reads here directly, bind-mounted so files land on the
-      # host. Data only; config.d/backups.xml pointing here is baked in.
+      # Backing disk for native BACKUP/RESTORE (backup_clickhouse.sh) - the server writes/reads here directly, bind-mounted so files land on the host.
+      # Data only; config.d/backups.xml pointing here is baked in.
       - ${BACKUP_DIR:-.backups}/clickhouse:/backups/clickhouse
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
@@ -180,6 +182,7 @@ services:
     profiles:
       - tools
     restart: "no"
+    logging: *default-logging
     environment:
       CLICKHOUSE_HOST: *clickhouse-host
       CLICKHOUSE_PORT: *clickhouse-port
@@ -214,6 +217,7 @@ services:
     restart: always
     labels:
       - autoheal=true
+    logging: *default-logging
     volumes:
       - grafana-data:/var/lib/grafana
     healthcheck:
@@ -228,11 +232,9 @@ services:
       - receipt-goblin
 
   mcp-stats:
-    # Prod-facing MCP server (fixed statistics tools, e.g. whatsup) - ships
-    # alongside litellm/grafana. Unlike mcp-dev (dev-only, arbitrary SQL, no
-    # auth), every request other than /health/`/metrics` must carry a valid
-    # LiteLLM virtual key - see services/mcp-stats/src/server.py's
-    # AuthMiddleware. depends_on litellm since auth calls its /key/info.
+    # Prod-facing MCP server (fixed statistics tools, e.g. whatsup) - ships alongside litellm/grafana.
+    # Unlike mcp-dev (dev-only, arbitrary SQL, no auth), every request other than /health/`/metrics` must carry a valid LiteLLM virtual key - see services/mcp-stats/src/server.py's AuthMiddleware.
+    # depends_on litellm since auth calls its /key/info.
     build:
       context: .
       dockerfile: services/mcp-stats/Dockerfile
@@ -251,6 +253,7 @@ services:
     restart: always
     labels:
       - autoheal=true
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=2)"]
       interval: 5s
@@ -282,6 +285,7 @@ services:
     restart: always
     labels:
       - autoheal=true
+    logging: *default-logging
     volumes:
       - redis-data:/data
     healthcheck:
@@ -316,6 +320,7 @@ services:
     restart: always
     labels:
       - autoheal=true
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
       interval: 5s
@@ -348,6 +353,7 @@ services:
     image: willfarrell/autoheal
     container_name: receipt-goblin-autoheal
     restart: always
+    logging: *default-logging
     environment:
       AUTOHEAL_CONTAINER_LABEL: autoheal
       AUTOHEAL_INTERVAL: 10
@@ -377,6 +383,7 @@ services:
       LANGFUSE_PORT: *langfuse-port
       ANTHROPIC_PROXY_PORT: *anthropic-proxy-port
       OPENAI_PROXY_PORT: *openai-proxy-port
+    logging: *default-logging
     ports:
       # Landing page (nginx.conf's `listen 80` block, index.html) - fixed at
       # 80, not a `${..._PORT:-default}` var like every port below, since
@@ -468,6 +475,7 @@ services:
     restart: always
     labels:
       - autoheal=true
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "python", "-c", "from src.queue import get_redis; get_redis().ping()"]
       interval: 5s
@@ -502,6 +510,7 @@ services:
     # reparse.py pages event_sources REPARSE_CHUNK_SIZE rows at a time instead of buffering the whole table client-side.
     # This doesn't need headroom for a full 300MB+ payload-text load.
     mem_limit: 256m
+    logging: *default-logging
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -509,14 +518,9 @@ services:
       - receipt-goblin
 
   loadtest-fixtures:
-    # Standalone service, own image/build context (services/loadtest-fixtures/,
-    # not services/webhook/Dockerfile) and its own minimal ClickHouse client -
-    # deliberately isolated from webhook's codebase, see AGENTS.md. Extracts
-    # real, already-ingested traffic straight out of ClickHouse (agent_events
-    # + ingest_raw) into JSON fixture files under loadtest-fixtures-data,
-    # sized by LOADTEST_FIXTURES_VOLUME - see src/build_fixtures.py. Not
-    # started by `docker compose up` (profiles: tools) - run via
-    # `make loadtest-fixtures`/`make loadtest-fixtures-status`.
+    # Standalone service, own image/build context (services/loadtest-fixtures/, not services/webhook/Dockerfile) and its own minimal ClickHouse client - deliberately isolated from webhook's codebase, see AGENTS.md.
+    # Extracts real, already-ingested traffic straight out of ClickHouse (agent_events + ingest_raw) into JSON fixture files under loadtest-fixtures-data, sized by LOADTEST_FIXTURES_VOLUME - see src/build_fixtures.py.
+    # Not started by `docker compose up` (profiles: tools) - run via `make loadtest-fixtures`/`make loadtest-fixtures-status`.
     build:
       context: .
       dockerfile: services/loadtest-fixtures/Dockerfile
@@ -542,6 +546,7 @@ services:
     # Bumped from 256m after real OOM confirmed on VOLUME=small (payloads
     # average ~276KB, up to 1.8MB - bigger than the original limit assumed).
     mem_limit: 1024m
+    logging: *default-logging
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -575,29 +580,16 @@ services:
       # Read-only - this is the replay corpus, no writes needed (unlike
       # loadtest-fixtures' own read-write mount for generating fixtures).
       - loadtest-fixtures-data:/app/loadtest_fixtures:ro
-    # Previously unbounded on both counts - loadtest.py's aiohttp.TCPConnector
-    # uses limit=0 (deliberately, its own docstring says so, to not become
-    # the bottleneck itself) and nothing here capped the container underneath
-    # it. At END_USERS=80+/SPEED=5 that pinned every core on the host VM hard
-    # enough to stall the Docker daemon itself, not just this stack - not a
-    # webhook/worker problem, a "this one tool had no ceiling" problem. Caps
-    # here, not in loadtest.py: the whole point of a load *generator* is to
-    # push as hard as it can up to some limit - the limit just needs to be
-    # "this container", not "the whole host".
-    # Actual process heap stays flat (~40-50MB, confirmed via
-    # resource.getrusage) regardless of END_USERS/corpus size - what used to
-    # climb straight to any mem_limit and trip the OOM killer was page cache
-    # from re-reading the (multi-GB, still growing) fixtures volume mount,
-    # charged to this cgroup and never dropped since _read_bytes() never
-    # revisits a file. Fixed at the source with posix_fadvise(DONTNEED) after
-    # each read (see _read_bytes) - this limit is now just a sane ceiling,
-    # not load-bearing the way it was before that fix.
-    # Real peak across several 100-user/SPEED=5 runs this session stayed
-    # 27-90MB (heap ~40-50MB) and well under 1 core - 768m/6.0 was sized for
-    # a pre-fix incident (see comment above), not actual usage. Still a
-    # multiple of observed peak, not tight to it.
+    # Previously unbounded on both counts - loadtest.py's aiohttp.TCPConnector uses limit=0 (deliberately, its own docstring says so, to not become the bottleneck itself) and nothing here capped the container underneath it.
+    # At END_USERS=80+/SPEED=5 that pinned every core on the host VM hard enough to stall the Docker daemon itself, not just this stack - not a webhook/worker problem, a "this one tool had no ceiling" problem.
+    # Caps here, not in loadtest.py: the whole point of a load *generator* is to push as hard as it can up to some limit - the limit just needs to be "this container", not "the whole host".
+    # Actual process heap stays flat (~40-50MB, confirmed via resource.getrusage) regardless of END_USERS/corpus size - what used to climb straight to any mem_limit and trip the OOM killer was page cache from re-reading the (multi-GB, still growing) fixtures volume mount, charged to this cgroup and never dropped since _read_bytes() never revisits a file.
+    # Fixed at the source with posix_fadvise(DONTNEED) after each read (see _read_bytes) - this limit is now just a sane ceiling, not load-bearing the way it was before that fix.
+    # Real peak across several 100-user/SPEED=5 runs this session stayed 27-90MB (heap ~40-50MB) and well under 1 core - 768m/6.0 was sized for a pre-fix incident (see comment above), not actual usage.
+    # Still a multiple of observed peak, not tight to it.
     mem_limit: 256m
     cpus: 2.0
+    logging: *default-logging
     depends_on:
       load-balancer:
         condition: service_healthy
@@ -609,11 +601,9 @@ services:
       - receipt-goblin
 
   backup:
-    # Backup/restore for clickhouse, litellm-db, grafana-data - see
-    # README.md's "Backup & restore" section. Not started by `docker compose up`
-    # (profiles: tools) - run via `make backup-*`/`restore-*` or cron.
-    # No docker exec/socket: clickhouse/litellm-db go over the network,
-    # grafana-data is the same named volume the `grafana` service uses.
+    # Backup/restore for clickhouse, litellm-db, grafana-data - see README.md's "Backup & restore" section.
+    # Not started by `docker compose up` (profiles: tools) - run via `make backup-*`/`restore-*` or cron.
+    # No docker exec/socket: clickhouse/litellm-db go over the network, grafana-data is the same named volume the `grafana` service uses.
     build:
       context: ./services/backup
       args:
@@ -622,6 +612,7 @@ services:
     container_name: receipt-goblin-backup
     profiles:
       - tools
+    logging: *default-logging
     volumes:
       - ${BACKUP_DIR:-.backups}:/backups
       - grafana-data:/var/lib/grafana
@@ -677,6 +668,7 @@ services:
     cpus: 2.0
     labels:
       - autoheal=true
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=3)"]
       interval: 10s
@@ -713,6 +705,7 @@ services:
     restart: always
     labels:
       - autoheal=true
+    logging: *default-logging
     networks:
       - receipt-goblin
 

@@ -17,6 +17,13 @@
 # mcp-stats is the prod-facing sibling (see docker-compose.yml) - it receives
 # a minimal override below to mount the shared ./services/_common/src only
 # (no src bind-mount/--reload for mcp-stats itself yet).
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 x-clickhouse-mcp-user: &clickhouse-mcp-user ${CLICKHOUSE_MCP_USER:?set CLICKHOUSE_MCP_USER, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-mcp-password: &clickhouse-mcp-password ${CLICKHOUSE_MCP_PASSWORD:?set CLICKHOUSE_MCP_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 x-mcp-dev-port: &mcp-dev-port ${MCP_DEV_PORT:-8001}
@@ -52,11 +59,8 @@ services:
       - ./services/_common/src:/app/common:ro
 
   mcp-dev:
-    # Dev-only service - no definition in docker-compose.yml at all, so this
-    # is the full definition, not an overlay. Prod image is self-contained
-    # (config.yml baked in); the volumes/command below bind-mount ./src over
-    # /app/src and add --reload for live editing; requirements.txt changes
-    # still need a rebuild either way.
+    # Dev-only service - no definition in docker-compose.yml at all, so this is the full definition, not an overlay.
+    # Prod image is self-contained (config.yml baked in); the volumes/command below bind-mount ./src over /app/src and add --reload for live editing; requirements.txt changes still need a rebuild either way.
     build:
       context: .
       dockerfile: services/mcp-dev/Dockerfile
@@ -71,6 +75,7 @@ services:
       MCP_DEV_PORT: *mcp-dev-port
     mem_limit: 256m
     restart: always
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=2)"]
       interval: 5s

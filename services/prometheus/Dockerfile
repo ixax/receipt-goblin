@@ -4,5 +4,6 @@
 FROM prom/prometheus:v3.0.1
 
 COPY prometheus.yml /etc/prometheus/prometheus.yml
+COPY scripts/archive_old_blocks.sh /scripts/archive_old_blocks.sh
 
 EXPOSE 9090

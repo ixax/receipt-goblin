@@ -76,6 +76,7 @@ include .image-tags.mk
 .PHONY: check-env init start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit harness-index langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
+	archive-prometheus archive-clickhouse-logs \
 	observability-up observability-down observability-logs observability-status loadtest \
 	loadtest-fixtures loadtest-fixtures-status
 
@@ -398,3 +399,17 @@ restore-litellm: check-env
 restore-grafana: check-env
 	@if [ -z "$(FILE)" ]; then echo "usage: make restore-grafana FILE=<file under .backups/grafana/> (stop grafana first)"; exit 1; fi
 	docker compose $(COMPOSE_FILES) run --rm backup ./scripts/restore_grafana.sh "$(FILE)" --yes
+
+# Archive old Prometheus block files to conserve disk space.
+# Optional env vars (omit to use script defaults):
+#   PROMETHEUS_ARCHIVE_AFTER_DAYS - archive blocks older than this many days (default: 14)
+#   PROMETHEUS_ARCHIVE_RETENTION_DAYS - keep archived blocks for this many days (default: 90)
+archive-prometheus: check-env
+	docker compose $(OBSERVABILITY_COMPOSE_FILES) exec -e PROMETHEUS_ARCHIVE_AFTER_DAYS -e PROMETHEUS_ARCHIVE_RETENTION_DAYS prometheus /scripts/archive_old_blocks.sh
+
+# Archive old ClickHouse system logs to conserve disk space.
+# Optional env vars (omit to use script defaults):
+#   CLICKHOUSE_LOG_RETENTION_MONTHS - keep logs for this many months (default: 3)
+#   CLICKHOUSE_LOG_ARCHIVE_RETENTION_DAYS - keep archived logs for this many days (default: 180)
+archive-clickhouse-logs: check-env
+	docker compose $(COMPOSE_FILES) run --rm -e CLICKHOUSE_LOG_RETENTION_MONTHS -e CLICKHOUSE_LOG_ARCHIVE_RETENTION_DAYS backup ./scripts/archive_clickhouse_system_logs.sh

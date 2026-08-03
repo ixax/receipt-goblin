@@ -5,6 +5,12 @@
 # LANGFUSE_HOST/LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY as optional env vars.
 # Tracing works regardless of whether this file is loaded.
 
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 x-langfuse-clickhouse-http-port: &langfuse-clickhouse-http-port ${LANGFUSE_CLICKHOUSE_HTTP_PORT:-8124}
 x-langfuse-clickhouse-native-port: &langfuse-clickhouse-native-port ${LANGFUSE_CLICKHOUSE_NATIVE_PORT:-9001}
 x-langfuse-clickhouse-user: &langfuse-clickhouse-user ${LANGFUSE_CLICKHOUSE_USER:-langfuse}
@@ -39,6 +45,7 @@ services:
       retries: 20
     mem_limit: 256m
     restart: always
+    logging: *default-logging
     networks:
       - receipt-goblin
 
@@ -60,6 +67,7 @@ services:
         published: *langfuse-clickhouse-http-port
       - target: 9000
         published: *langfuse-clickhouse-native-port
+    logging: *default-logging
     volumes:
       - langfuse-clickhouse-data:/var/lib/clickhouse
       - langfuse-clickhouse-logs:/var/log/clickhouse-server
@@ -85,6 +93,7 @@ services:
       MINIO_ROOT_USER: *langfuse-minio-user
       MINIO_ROOT_PASSWORD: *langfuse-minio-password
     mem_limit: 256m
+    logging: *default-logging
     volumes:
       - langfuse-minio-data:/data
     healthcheck:
@@ -109,6 +118,7 @@ services:
       REDIS_PASSWORD: *langfuse-redis-password
     mem_limit: 256m
     restart: always
+    logging: *default-logging
     volumes:
       - langfuse-redis-data:/data
     healthcheck:
@@ -128,6 +138,7 @@ services:
     container_name: receipt-goblin-langfuse-worker
     profiles:
       - langfuse
+    logging: *default-logging
     environment: &langfuse-env
       DATABASE_URL: *langfuse-db-url
       SALT: *langfuse-salt
@@ -174,6 +185,7 @@ services:
     container_name: receipt-goblin-langfuse-web
     profiles:
       - langfuse
+    logging: *default-logging
     environment:
       <<: *langfuse-env
       # Next.js binds to $HOSTNAME if set; Docker auto-sets it to the
