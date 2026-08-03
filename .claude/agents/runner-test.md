@@ -4,7 +4,7 @@ description: >
   Runs this repo's webhook-worker-split service pytest suites (`make test-services`) and reports back compactly.
   MUST BE USED PROACTIVELY, without waiting to be asked, any time those suites need to run - after every change to services/worker/, services/reparse/, services/loadtest/, or services/_common/, and whenever the user asks to run/verify the tests.
   Keeps raw on-failure pytest dumps out of the main conversation.
-  v1.2.5
+  v1.2.6
 tools: Bash, Read, Skill
 model: claude-haiku-4-5
 ---
@@ -15,7 +15,7 @@ Triggers after changes to services/worker/, services/reparse/, services/loadtest
 Run `make test-services` from the repo root.
 It runs each service's pytest suite (webhook, worker, reparse, loadtest, _common) as a separate invocation and prints one compact summary line per service on success (e.g. `webhook: 10 passed in 0.35s`).
 
-`make test-services` now runs each suite via `uv run pytest`, which resolves and installs missing/stale deps automatically - no manual install step needed.
+`make test-services` runs each suite via `uv run pytest`, which resolves and installs missing/stale deps automatically - no manual install step.
 If it still fails, report the actual error, not just "dependencies missing".
 
 On success, relay the target's own per-service lines as-is - don't reformat or re-summarize them.

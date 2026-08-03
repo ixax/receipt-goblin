@@ -30,12 +30,9 @@ Keep each entry a few lines max, no essays.
 ## Same-SELECT alias chains don't memoize - "Query tree is too big"
 
 - Referencing a same-SELECT alias more than once does NOT create a shared node - each reference re-expands the alias's full defining expression at parse time.
-  Chaining N levels of aliases where each level's expression references the previous level's alias twice (e.g. `idx1 -> parent1` used by `idx2`'s definition, `idx2 -> parent2` used by `idx3`'s, ...) blows up combinatorially (~2^N nodes).
-  This hits ClickHouse's internal `500000`-node limit (`Code: 36`, `BAD_ARGUMENTS`, "Query tree is too big") even when the underlying data is tiny.
-  Hit this trying to replace panel-99's 7-level self-join with a `groupArray()`+`indexOf()` ancestor-walk - both embedding the window function directly in one CTE's SELECT list and splitting it into its own upstream CTE failed identically, because the blowup came from the alias chain itself, not from re-scanning a base table.
-  Fix: force real materialization boundaries.
-  Turn the alias chain into a strictly linear pipeline of separate, single-reference CTEs - each new CTE selects only from the immediately preceding CTE, so a later step's inputs are genuine upstream *columns* (cheap to re-project) rather than re-expandable in-SELECT alias expressions.
-  Confirmed fix on panel-99 ("Fork tree"): 15 chained single-purpose CTEs replaced the failing alias-chain design, ran clean, and matched the original 7-level self-join's output byte-for-byte while cutting the biggest real session's wall-clock from ~35.7s to ~9.2s and read_rows from ~774k to ~236k.
+  N levels of aliases, each referencing the previous level's alias twice, blows up combinatorially (~2^N nodes) into the internal `500000`-node limit (`Code: 36`, `BAD_ARGUMENTS`, "Query tree is too big") even on tiny data - the blowup is the alias chain itself, not base-table re-scans, so moving the expression into its own upstream CTE doesn't help.
+  Fix: force real materialization boundaries - a strictly linear pipeline of separate, single-reference CTEs, each selecting only from the immediately preceding one, so later steps consume genuine upstream columns (cheap to re-project) instead of re-expandable alias expressions.
+  Reference case: panel-99 ("Fork tree") - 15 chained single-purpose CTEs replaced a failing `groupArray()`+`indexOf()` alias chain, matched the 7-level self-join's output byte-for-byte, wall-clock ~35.7s -> ~9.2s, read_rows ~774k -> ~236k on the biggest real session.
 
 ## `query_perf.py` bare-brace `${var}` bug
 
@@ -46,27 +43,18 @@ Keep each entry a few lines max, no essays.
 
 ## `column_type_names` bypasses schema verification (`clickhouse_connect`)
 
-- `services/_common/src/ingest_db.py` and `services/_common/src/side_ingest.py` pass `column_type_names=...` on every `client.insert(...)` call (e.g. `_INVOCATION_COLUMN_TYPES`, `_EVENT_COLUMN_TYPES`, `_USAGE_COLUMN_TYPES`, `_MESSAGE_COLUMN_TYPES`, `_SOURCE_COLUMN_TYPES`, `_GROUP_COLUMN_TYPES`, `_USER_COLUMN_TYPES`, `_CLIENT_COLUMN_TYPES`, `_FAILURE_COLUMN_TYPES` in `ingest_db.py`; `_GIT_BRANCH_COLUMN_TYPES`/`_PLAN_PROPOSAL_COLUMN_TYPES`/`_LITELLM_ALERT_COLUMN_TYPES` in `side_ingest.py`) so `clickhouse_connect` skips its per-insert `DESCRIBE TABLE` round trip (this was ~half of all queries from the `ingest` ClickHouse user - 828 `DESCRIBE` calls/10min before the fix, 0 after, confirmed via `system.query_log`).
-- This is a hint, not a re-verified fact: `clickhouse_connect` trusts and encodes by whatever type the Python list says, and does NOT check it against the live schema.
-  These lists are hand-copied from `services/clickhouse/schema.sql` at write time, so they can drift silently if the schema changes later without the matching constant being updated.
-- Consequences of schema.sql changing a column's type without the Python constant following it in the same change:
-  - Type narrowed/changed incompatibly -> insert can fail loudly, or in subtler cases silently truncate/corrupt data instead of erroring.
-  - Column added to the table -> harmless, just unpopulated (existing lists stay valid, new column gets its `DEFAULT`) until code is updated to include it.
-  - Column renamed/removed -> insert fails loudly with a clear "column doesn't exist" error, easy to catch.
-- Fix/rule: whenever a column used by one of these `column_type_names` lists changes type in `schema.sql`, update the matching Python constant in the same change - `column_type_names` bypasses ClickHouse's own schema check, so nothing else will catch the mismatch.
+- `services/_common/src/ingest_db.py`/`side_ingest.py` pass `column_type_names=...` on every `client.insert(...)` (`_INVOCATION_COLUMN_TYPES`, `_EVENT_COLUMN_TYPES`, `_USAGE_COLUMN_TYPES`, `_MESSAGE_COLUMN_TYPES`, `_SOURCE_COLUMN_TYPES`, `_GROUP_COLUMN_TYPES`, `_USER_COLUMN_TYPES`, `_CLIENT_COLUMN_TYPES`, `_FAILURE_COLUMN_TYPES` in `ingest_db.py`; `_GIT_BRANCH_COLUMN_TYPES`/`_PLAN_PROPOSAL_COLUMN_TYPES`/`_LITELLM_ALERT_COLUMN_TYPES` in `side_ingest.py`), skipping `clickhouse_connect`'s per-insert `DESCRIBE TABLE` round trip (was ~half of all `ingest`-user queries: 828 `DESCRIBE`/10min -> 0, per `system.query_log`).
+- The list is a hint, not verified: `clickhouse_connect` encodes by whatever type the Python list says, never checking the live schema - hand-copied from `services/clickhouse/schema.sql`, so it drifts silently.
+  Drift consequences: type changed incompatibly -> loud failure or silent truncation/corruption; column added -> harmless (gets its `DEFAULT`); column renamed/removed -> loud "column doesn't exist".
+- Rule: a `schema.sql` type change on any column these lists cover updates the matching Python constant in the same change - nothing else catches the mismatch.
 
 ## Inline `SETTINGS` clause silently ignored when not on the truly outermost statement
 
-- A `SETTINGS key = value` clause attached to a subquery (anything inside a `FROM (...)`) parses without error but has zero effect on that setting for the query's actual execution.
-  ClickHouse only honors `SETTINGS` from the genuinely outermost statement as sent to the server.
-  Confirmed on 24.8.14.39 for `max_memory_usage`: a query with `SETTINGS max_memory_usage = 100000000` on an inner subquery ran past ~400MB with no error; the identical clause on the true top-level statement failed immediately with `maximum: 95.37 MiB` (exactly the requested value), and raising it on the true top-level statement let a query that normally hits the profile's 2.4 GiB default run right past that ceiling.
-- `mcp__dev__query`'s own `_do_query` always wraps whatever SQL you pass it as `SELECT * FROM (<your sql>) AS _query_result LIMIT n` (`services/mcp-dev/src/server.py`).
-  This demotes any `SETTINGS` clause inside your submitted SQL to non-top-level, so testing a `SETTINGS max_memory_usage = ...` override via `query()` will always look like it's being ignored/clamped back to the profile default, even though nothing is actually blocking it.
-- `mcp__dev__profile_query`'s `_do_profile` does NOT wrap (`client.command(f"{sql} FORMAT Null", ...)`).
-  Use `profile_query`, not `query`, to test whether an inline `SETTINGS` override actually takes effect.
-- Practical implication for dashboard panels: a panel's `rawSql` is sent to ClickHouse by Grafana's datasource plugin directly, with no wrapping.
-  A `SETTINGS` clause on the panel query's own final/outermost `SELECT` (e.g. right after its terminal `GROUP BY`/`ORDER BY`, as `agents_overview.json` panel 76 already does) is genuinely top-level and is respected.
-  Don't conclude an override is infeasible just because it appeared to fail when re-tested through `mcp__dev__query`.
+- A `SETTINGS key = value` clause inside a subquery (anything in a `FROM (...)`) parses fine but has zero effect - ClickHouse honors `SETTINGS` only on the genuinely outermost statement as sent.
+  Confirmed on 24.8.14.39 with `max_memory_usage`: `SETTINGS max_memory_usage = 100000000` on an inner subquery ran past ~400MB; the same clause top-level failed at exactly `maximum: 95.37 MiB`, and raising it top-level ran past the profile's 2.4 GiB default.
+- `mcp__dev__query`'s `_do_query` wraps every submitted SQL as `SELECT * FROM (<your sql>) AS _query_result LIMIT n` (`services/mcp-dev/src/server.py`) - demoting any inline `SETTINGS` to non-top-level, so an override tested via `query()` always looks ignored/clamped even though nothing blocks it.
+  `mcp__dev__profile_query`'s `_do_profile` does NOT wrap (`client.command(f"{sql} FORMAT Null", ...)`) - use `profile_query` to test whether an inline `SETTINGS` override takes effect.
+- Panels: Grafana's datasource plugin sends `rawSql` unwrapped, so a `SETTINGS` clause on the panel query's own outermost `SELECT` (after its terminal `GROUP BY`/`ORDER BY`, as `agents_overview.json` panel 76 does) is genuinely top-level and respected - don't conclude infeasibility from a `query()` re-test.
 
 ## `mcp-dev` SQL validator (`services/mcp-dev/src/server.py`)
 

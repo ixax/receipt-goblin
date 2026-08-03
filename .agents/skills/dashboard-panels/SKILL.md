@@ -11,14 +11,14 @@ description: >
   TRIGGER - read BEFORE creating/editing a panel's query/options, or reviewing a panel edit, in any of
   those files.
   SKIP for non-panel dashboard edits (annotations, variables, dashboard-level settings).
-  v1.6.1
+  v1.6.2
 ---
 
-Conventions for building or editing a panel/graph/widget in any dashboard JSON in this repo (`services/grafana/dashboards/*.json`, `services/grafana/dashboards-health/*.json`).
-Two tiers: universal conventions apply to every dashboard file; agents_overview.json-specific conventions apply only to `services/grafana/dashboards/agents_overview.json` and must never be copied onto another dashboard's panels - e.g. `docker_containers.json` has no session_id/user_id/issue_id to build a width table or dataLink around, and no tokens/cost schema to derive units from.
-`services/grafana/dashboards-health/query_performance.json` is `dashboards-expert`'s generated companion mirror of `agents_overview.json` (per-panel ClickHouse query cost from `system.query_log`); `tag_panel_queries.py`/`build_query_perf_dashboard.py` (`services/grafana/scripts/`) keep it in sync (see `dashboards-expert` for when to run them) - universal conventions still apply to it since it's a real table panel.
-Its "Recent executions" tables link `query_id` to this dashboard's own Query Detail tab (`dtab=Query-Detail`), modeled on `agents_overview.json`'s `session_id` -> Trace-tab convention below, but deliberately sets `targetBlank: False` since a same-dashboard `dtab=` navigation always opens in the same tab regardless of that flag - don't "correct" it to match the new-tab `session_id` pattern.
-Two repo-wide guardrails live in AGENTS.md's "Rules to not violate" instead of here, since they must fire even when an edit isn't recognized as panel work: reading `agents_overview.json` always goes through the `dashboard-parser` agent (other dashboard files use `RowsLayout`/nested-`TabsLayout` shapes, not the `TabsLayout` -> `GridLayout` shape `parse_dashboard.py` understands - read those with plain Read/Bash-python), and no dashboard is ever changed as a side effect of unrelated work.
+Conventions for building or editing a panel/graph/widget in any dashboard JSON here (`services/grafana/dashboards/*.json`, `services/grafana/dashboards-health/*.json`).
+Two tiers: universal conventions apply to every dashboard file; agents_overview.json-specific ones apply only to `services/grafana/dashboards/agents_overview.json` and never copy onto another dashboard's panels - e.g. `docker_containers.json` has no session_id/user_id/issue_id for a width table or dataLink, and no tokens/cost schema for units.
+`services/grafana/dashboards-health/query_performance.json` is `dashboards-expert`'s generated mirror of `agents_overview.json` (per-panel query cost from `system.query_log`; kept in sync by `tag_panel_queries.py`/`build_query_perf_dashboard.py` under `services/grafana/scripts/` - `dashboards-expert` knows when).
+Universal conventions still apply to it; its "Recent executions" tables link `query_id` to its own Query Detail tab (`dtab=Query-Detail`) with `targetBlank: False` deliberately - a same-dashboard `dtab=` navigation opens in the same tab regardless of the flag, don't "correct" it to the new-tab `session_id` pattern.
+Two repo-wide guardrails live in AGENTS.md's "Rules to not violate", not here, because they must fire even when an edit isn't recognized as panel work: `agents_overview.json` reads go through `dashboard-parser` (other files use `RowsLayout`/nested-`TabsLayout` shapes `parse_dashboard.py` doesn't walk - plain Read/Bash-python for those), and no dashboard is ever changed as a side effect of unrelated work.
 
 ## Universal conventions (any dashboard)
 

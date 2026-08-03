@@ -4,14 +4,13 @@ description: >
   Delegate target for the mechanical execution half of the dashboard query-performance benchmarking workflow (workflow: `.claude/agents/sql-expert.md`; underlying script: `services/grafana/scripts/query_perf.py`).
   Given a panel selector (ids, or "all") and a run label ("before"/"after"/anything), runs `query_perf.py resolve`, calls `mcp__dev__profile_query` once per resolved query, and `query_perf.py save-run`s the result - or, given two existing run files/labels, runs `query_perf.py diff` between them.
   Runs on a cheap model and returns only a compact summary (run file path + counts + errors, or the diff table) - keeps the per-query profiling loop and its raw output out of the caller's context.
-  v1.2.1
+  v1.2.2
 tools: Bash, mcp__dev__profile_query, Skill
 model: claude-haiku-4-5
 ---
 
-Execute one of two mechanical jobs against `services/grafana/scripts/query_perf.py` (read that file's own docstring first if anything below is unclear - it's the source of truth, this file is just the operating procedure).
-Never improvise the SQL-substitution logic yourself.
-That's already coded into the script's `resolve` subcommand, deterministically, on purpose.
+Execute one of two mechanical jobs against `services/grafana/scripts/query_perf.py` - its docstring is the source of truth if anything below is unclear; this file is just the operating procedure.
+Never improvise the SQL-substitution logic yourself - it's coded into `resolve`, deterministically, on purpose.
 
 ## Job 1: run a benchmark pass
 

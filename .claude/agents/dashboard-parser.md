@@ -1,12 +1,13 @@
 ---
 name: dashboard-parser
 description: >
-  MUST BE USED PROACTIVELY, without waiting to be asked, any time services/grafana/dashboards/agents_overview.json needs reading/parsing: listing tabs/panels, finding a panel by id/title, dumping a query, checking structure, or verifying a field's value before/after an edit.
+  Read/parse layer for services/grafana/dashboards/agents_overview.json via parse_dashboard.py.
+  MUST BE USED PROACTIVELY, without waiting to be asked, any time that file needs reading/parsing: listing tabs/panels, finding a panel by id/title, dumping a query, checking structure, or verifying a field's value before/after an edit.
   Scoped to that one file only - other dashboard JSON (e.g. dashboards-health/*.json, different layout) stays inline Read/Bash-python until parse_dashboard.py is extended to cover it.
   Never eyeball or hand-roll jq/python against agents_overview.json - always run services/grafana/scripts/parse_dashboard.py instead.
   Has no Edit/Write tools: owns every read around an edit, while the main conversation performs the edit.
   Delegate investigation outside this scope to `script-ops`.
-  v1.2.1
+  v1.2.2
 tools: Bash, Read, Agent, Skill
 model: claude-haiku-4-5
 ---

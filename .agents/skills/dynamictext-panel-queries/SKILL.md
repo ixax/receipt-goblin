@@ -5,7 +5,7 @@ description: >
   Current examples: panel-76 ("Trace"), companion panel-77, and panel-99 ("Fork tree").
   TRIGGER - read only when the current dashboards-expert task is actually to write or fix a Dynamic Text panel's query, `rawSql`, or SQL-side logic.
   SKIP for styling-only work (use `dynamictext-panel-design-system` instead) or any non-Dynamic-Text panel.
-  v1.2.0
+  v1.2.1
 ---
 
 Query/data reference for `dashboards-expert`, read on demand - see description for the trigger condition.
@@ -99,8 +99,8 @@ Currently implemented for `AskUserQuestion`; the same pattern applies to any fut
 
 ## Safe JSON-editing procedure: brace-matching splice
 
-Never `Read` the whole dashboard file into context, and never hand-edit it with the `Edit` tool directly against the raw JSON text - it's a large v2beta1-schema file, and a naive text edit risks corrupting sibling panels.
-Instead, do targeted brace-matching text surgery with a small Python script (`Write` it to your scratch area, run via `Bash`):
+Never `Read` the whole dashboard file into context, and never hand-edit the raw JSON with `Edit` - a naive text edit against the large v2beta1 file risks corrupting sibling panels.
+Do targeted brace-matching text surgery with a small Python script (`Write` to scratch, run via `Bash`):
 
 1. Read the file as plain text, not a `json.load` + `json.dump` round-trip - the file's key order is insertion-order, not sorted, so a full reserialize produces a huge unrelated diff even with `indent=2`.
 2. Find the unique anchor `'"panel-76": {'`, then walk forward doing brace-depth counting (tracking whether you're inside a JSON string, so braces inside string values don't confuse the depth count) to find the matching closing `}` for that one element.
