@@ -518,7 +518,7 @@ Same live-reload mechanism as `webhook` below, just entirely in `docker-compose.
 
 **`mcp-stats`** - prod: fully defined in `docker-compose.yml`, ships alongside `litellm`/`grafana`/etc. in every environment. Unlike `mcp-dev`, every request other than `/health`/`/metrics` requires a valid LiteLLM virtual key (`Authorization: Bearer <key>`, checked against LiteLLM's own `/key/info` - the same pattern `webhook`'s `/api/v1/session-git-branch` uses, see "Git branch/repo" above) since it's reachable on all interfaces, not gated behind a `127.0.0.1` bind. Listens on `:8002/mcp`. One tool today:
 
-- `me(session_id: str)` - reports `{cost, input_tokens, output_tokens}` for the given session (the whole session so far, matched by exact `session_id`), the same three fields summed across all usage in the last 30 days, and up to 5 of that session's most expensive individual `agent_usage` rows (one LiteLLM call each). Each is labeled by whichever of command/skill/agent/mcp-tool triggered it, or - joined in from `agent_events` by `litellm_call_id` - what the call itself did (`spawn:<subagent_type>`, `tool:<name>`, `conversation reply`, etc.), falling back to `llm:<model>` only when neither is available; a bare model name repeated for every row turned out to be nearly useless on its own. Read-only by construction, three fixed queries - never runs arbitrary SQL from the model. Its ClickHouse identity (`mcp_stats` role) is scoped to `agent_usage`/`agent_events` only, unlike `mcp-dev`'s broad `mcp` role. `session_id` must be the caller's own `CLAUDE_CODE_SESSION_ID` env var - the tool has no other way to know which session is "current" (see `.claude/commands/me.md`, which reads that var via a shell command before calling this tool).
+- `me(session_id: str)` - reports `{cost, input_tokens, output_tokens}` for the given session (the whole session so far, matched by exact `session_id`), the same three fields summed across all usage in the last 30 days, and up to 5 of that session's most expensive individual `agent_usage` rows (one LiteLLM call each). Each is labeled by whichever of skill/agent/mcp-tool triggered it, or - joined in from `agent_events` by `litellm_call_id` - what the call itself did (`spawn:<subagent_type>`, `tool:<name>`, `conversation reply`, etc.), falling back to `llm:<model>` only when neither is available; a bare model name repeated for every row turned out to be nearly useless on its own. Read-only by construction, three fixed queries - never runs arbitrary SQL from the model. Its ClickHouse identity (`mcp_stats` role) is scoped to `agent_usage`/`agent_events` only, unlike `mcp-dev`'s broad `mcp` role. `session_id` must be the caller's own `CLAUDE_CODE_SESSION_ID` env var - the tool has no other way to know which session is "current" (see `.agents/skills/me/SKILL.md`, which reads that var via a shell command before calling this tool).
 
 More statistics tools are expected here over time - this is intentionally the "add new prod-facing tools" side of the split, `mcp-dev` is not.
 Built and run standalone (no compose, no `--reload`), it's the same self-contained image `Dockerfile` describes.
@@ -552,8 +552,6 @@ description: >
   v2.0.0
 ---
 ```
-
-Commands (`.claude/commands/*.md`) are being retired as an entity type, so they carry no documented version-marker convention here.
 
 A newly-created Subagent/Skill starts with no version marker at all - only added once it has shipped and is being edited again.
 A self-named/ad-hoc agent (`general-purpose`, `Explore`, `Plan`, ...) has no backing file and no marker either; version comes back blank in both cases.
@@ -604,7 +602,7 @@ Grafana bumped from `11.2.0` to `13.1.0` in `docker-compose.yml` to get native d
 The dashboard's former row-based grouping was converted into tabs via the Grafana UI (open the dashboard, the new editor migrates v1→v2 on load, then drag/convert rows into tabs) rather than by hand-authoring the v2 JSON schema directly, since it was new enough that hand-rolling it blind would have been error-prone.
 Known risk to watch: see the "Dashboard edits stop saving after a Grafana upgrade" row under "Troubleshooting" above.
 
-Seven template variables in order: `$agent_name`, `$skill_name`, `$command_name`, `$mcp_tool`, `$model`, `$user_id`, `$session_id` (the session picker's own query is scoped by selected user(s), so `$user_id` must precede it).
+Six template variables in order: `$agent_name`, `$skill_name`, `$mcp_tool`, `$model`, `$user_id`, `$session_id` (the session picker's own query is scoped by selected user(s), so `$user_id` must precede it).
 `$model` needs no `= ''` escape hatch since `agent_usage` rows are always real model calls; same for `$user_id`/`$session_id` against `agent_events`.
 `$mcp_tool`'s dropdown label strips the `mcp__` prefix but filters on the real full `tool_name`.
 

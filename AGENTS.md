@@ -53,7 +53,7 @@ Root-level:
 - `docker-compose.yml`/`.dev.yml` - prod/dev split - `agent_docs/architecture.md`
 - `.env.example`/`.env` - gitignored
 - `hooks/`, `scripts/`
-- `.claude/` - agents/commands/rules
+- `.claude/` - agents/rules
 - `.agents/skills/` - canonical skill content; `.claude/skills` is a symlink to it
 - `.claude/data/` - gitignored scratch, one subdir per purpose
 - `plans/` - approved `/plan` outputs, one file per plan
@@ -77,7 +77,7 @@ Proactive (dispatch without being asked):
 
 Explicit-dispatch: `clickhouse-analyst`, `sql-expert`, `query-perf-runner`, `loadtest-sql`, `litellm-tester`, `litellm-test-alerting`.
 
-Skills: `md-format`, `clickhouse-sql`, `clickhouse-migration`, `dashboard-panels`, `dynamictext-panel-queries`, `dynamictext-panel-design-system`, `trace-debugging`, `harness-guardian`.
+Skills: `md-format`, `clickhouse-sql`, `clickhouse-migration`, `dashboard-panels`, `dynamictext-panel-queries`, `dynamictext-panel-design-system`, `trace-debugging`, `harness-guardian`, `me`, `min`.
 
 ## Code
 

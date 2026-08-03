@@ -155,37 +155,20 @@ def test_codex_collaboration_mode_change_unsuccess_claude_code_payload_returns_e
 
 
 # ---------------------------------------------------------------------------
-# _active_command_name_and_version
+# _active_command_name
 # ---------------------------------------------------------------------------
 
-def test_active_command_name_and_version_success_recovers_slash_command():
+def test_active_command_name_success_recovers_slash_command():
     payload = load_capture("success_with_command", index=1)
-    # predates the <version> marker convention - version comes back blank.
-    assert ip._active_command_name_and_version(payload["messages"]) == ("mcp", "")
+    assert ip._active_command_name(payload["messages"]) == "mcp"
 
 
-def test_active_command_name_and_version_success_recovers_version_marker():
-    messages = [
-        {"role": "user", "content": "<command-name>whatsup</command-name>\n<version>1.2.3</version>\n# whatsup\n..."},
-    ]
-    assert ip._active_command_name_and_version(messages) == ("whatsup", "1.2.3")
-
-
-def test_active_command_name_and_version_success_recovers_version_marker_at_end():
-    # Convention puts <version> at the end of the body, not right after
-    # <command-name> - regex must not assume a fixed position.
-    messages = [
-        {"role": "user", "content": "<command-name>whatsup</command-name>\n# whatsup\n...\n<version>1.2.3</version>"},
-    ]
-    assert ip._active_command_name_and_version(messages) == ("whatsup", "1.2.3")
-
-
-def test_active_command_name_and_version_unsuccess_freeform_prompt_returns_empty():
+def test_active_command_name_unsuccess_freeform_prompt_returns_empty():
     payload = load_capture("success_with_command", index=0)
-    assert ip._active_command_name_and_version(payload["messages"]) == ("", "")
+    assert ip._active_command_name(payload["messages"]) == ""
 
 
-def test_active_command_name_and_version_success_recovers_codex_internal_context():
+def test_active_command_name_success_recovers_codex_internal_context():
     # Codex CLI's persistent-goal continuation wrapper - real capture shape.
     text = (
         '<codex_internal_context source="goal">\n'
@@ -194,14 +177,14 @@ def test_active_command_name_and_version_success_recovers_codex_internal_context
         "</codex_internal_context>"
     )
     messages = [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}]
-    assert ip._active_command_name_and_version(messages) == ("goal", "")
+    assert ip._active_command_name(messages) == "goal"
 
 
-def test_active_command_name_and_version_success_recovers_arbitrary_codex_context_source():
+def test_active_command_name_success_recovers_arbitrary_codex_context_source():
     # Not hardcoded to "goal" - any future context name is picked up as-is.
     text = '<codex_internal_context source="plan">\n<objective>\ndo the thing\n</objective>\n</codex_internal_context>'
     messages = [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}]
-    assert ip._active_command_name_and_version(messages) == ("plan", "")
+    assert ip._active_command_name(messages) == "plan"
 
 
 def test_prompt_kind_and_display_success_renders_codex_goal_context_as_command():

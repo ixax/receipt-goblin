@@ -15,12 +15,11 @@ from common import fastjson as json
 
 _AGENT_ID_RE = re.compile(r"agentId:\s*([0-9a-f]+)")
 _COMMAND_NAME_RE = re.compile(r"<command-name>/?(.*?)</command-name>")
-_COMMAND_VERSION_RE = re.compile(r"<version>(.*?)</version>")
 # Codex CLI's own persistent-context continuation wrapper - its equivalent
 # of this repo's Claude Code /goal Stop hook, re-injected as the "prompt" on
 # every turn the underlying context (goal, plan, ...) stays active.
 # Its "source" attribute names which one (e.g. "goal") - treated as a
-# synthetic command by that name (see _active_command_name_and_version/
+# synthetic command by that name (see _active_command_name/
 # _prompt_kind_and_display) so it rolls up into the same command_name
 # accounting as a real Claude Code slash command, with the <objective> text
 # standing in for <command-args>.
@@ -187,24 +186,24 @@ def _codex_collaboration_mode_change(messages: Any) -> str:
     return match.group(1) if match else ""
 
 
-def _active_command_name_and_version(messages: Any) -> tuple[str, str]:
+def _active_command_name(messages: Any) -> str:
     """Walks back to the human-originated turn that started this chain of
     calls, looking for Claude Code's "<command-name>/foo</command-name>" tag
-    (slash-command invocation) and an optional "<version>" marker in
-    the same expanded body.
-    Returns ("", "") for a freeform prompt.
+    (slash-command invocation).
+    Returns "" for a freeform prompt.
 
     Also recognizes Codex CLI's "<codex_internal_context source=\"...\">"
     continuation wrapper (see _CODEX_INTERNAL_CONTEXT_RE) as a synthetic
-    command named after its "source" attribute (e.g. "goal"), version
-    always "" - Codex's own equivalent of this repo's Claude Code /goal
-    Stop hook, re-injected as the prompt on every turn that context stays
-    active.
+    command named after its "source" attribute (e.g. "goal") - Codex's own
+    equivalent of this repo's Claude Code /goal Stop hook, re-injected as
+    the prompt on every turn that context stays active.
     Everything else here (a real Claude Code command, or no command
     at all) still applies to Codex payloads exactly as documented - only
-    this one wrapper is Codex-specific."""
+    this one wrapper is Codex-specific.
+    No version: only custom-authored .claude/commands/*.md files ever
+    carried a version marker, and this repo no longer defines any."""
     if not isinstance(messages, list):
-        return "", ""
+        return ""
     for message in reversed(messages):
         if not isinstance(message, dict) or message.get("role") != "user":
             continue
@@ -217,11 +216,10 @@ def _active_command_name_and_version(messages: Any) -> tuple[str, str]:
         if not match:
             codex_context_match = _CODEX_INTERNAL_CONTEXT_RE.search(text)
             if codex_context_match:
-                return codex_context_match.group(1), ""
-            return "", ""
-        version_match = _COMMAND_VERSION_RE.search(text)
-        return match.group(1), (version_match.group(1) if version_match else "")
-    return "", ""
+                return codex_context_match.group(1)
+            return ""
+        return match.group(1)
+    return ""
 
 
 def _failed_tool_call(messages: Any) -> tuple[str, str, str]:
@@ -316,7 +314,6 @@ class EventContext:
     skill_name: str = ""
     skill_version: str = ""
     command_name: str = ""
-    command_version: str = ""
     agent_invocation_id: str = ""
 
 
@@ -337,7 +334,7 @@ def _derive_context(payload: dict, messages: Any, client=None) -> EventContext:
     else:
         agent_name, agent_version = "", ""
     skill_name, skill_version = _active_skill_name_and_version(payload, messages)
-    command_name, command_version = _active_command_name_and_version(messages)
+    command_name = _active_command_name(messages)
     return EventContext(
         session_id=session_id,
         trace_id=trace_id,
@@ -346,7 +343,6 @@ def _derive_context(payload: dict, messages: Any, client=None) -> EventContext:
         skill_name=skill_name,
         skill_version=skill_version,
         command_name=command_name,
-        command_version=command_version,
         agent_invocation_id=agent_invocation_id,
     )
 
@@ -577,7 +573,7 @@ def _active_skill_name_and_version(payload: dict, messages: Any) -> tuple[str, s
     Priority 1: this call's own response invoked "Skill" - return it
     immediately (via _response_tool_calls).
     Priority 2: mirrors
-    _active_command_name_and_version's continuation-skip walk, but scans
+    _active_command_name's continuation-skip walk, but scans
     assistant-role messages for a "Skill" tool_use block instead of
     user-role messages for a command tag.
     This propagates a skill
@@ -620,7 +616,7 @@ def _active_skill_name_and_version(payload: dict, messages: Any) -> tuple[str, s
             # a plain tool continuation, which is tool_result-only) - so the
             # continuation check here is "at least one tool_result block",
             # not "every block is a tool_result" like
-            # _active_command_name_and_version's check.
+            # _active_command_name's check.
             if any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content):
                 continue  # automatic continuation - keep walking back
         return "", ""  # genuine fresh user turn - skill context ended here
@@ -919,7 +915,7 @@ _EVENT_COLUMNS = [
     "timestamp", "user_id", "group_id", "user_key_hash", "session_id", "trace_id",
     "turn_id", "event_type", "tool_name", "agent_name",
     "agent_version", "skill_name", "skill_version", "command_name",
-    "command_version", "agent_invocation_id", "status", "latency_ms",
+    "agent_invocation_id", "status", "latency_ms",
     "failed_tool_name", "failed_tool_args", "failed_tool_error",
     "litellm_call_id", "event_client_id", "calculated_type", "calculated_payload", "ingested_at",
 ]
@@ -928,7 +924,7 @@ _USER_COLUMNS = ["user_id", "group_id", "user_name", "updated_at"]
 _USAGE_COLUMNS = [
     "timestamp", "user_id", "group_id", "user_key_hash", "session_id", "trace_id", "turn_id", "model",
     "agent_name", "agent_version", "skill_name", "skill_version",
-    "command_name", "command_version", "agent_invocation_id", "mcp_tool_name",
+    "command_name", "agent_invocation_id", "mcp_tool_name",
     "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens",
     "stop_reason",
     "cache_creation_1h_tokens", "cache_creation_5m_tokens",
@@ -938,7 +934,7 @@ _USAGE_COLUMNS = [
 _MESSAGE_COLUMNS = [
     "timestamp", "user_id", "group_id", "user_key_hash", "session_id", "trace_id", "turn_id",
     "agent_name", "agent_version", "skill_name", "skill_version",
-    "command_name", "command_version", "agent_invocation_id", "prompt_text", "response_text",
+    "command_name", "agent_invocation_id", "prompt_text", "response_text",
     "litellm_call_id", "ingested_at",
 ]
 _SOURCE_COLUMNS = ["litellm_call_id", "session_id", "ingested_at", "raw_payload_full"]
@@ -1122,7 +1118,6 @@ def _event_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
         ctx.skill_name,
         ctx.skill_version,
         ctx.command_name,
-        ctx.command_version,
         ctx.agent_invocation_id,
         payload.get("status", ""),
         latency_ms,
@@ -1200,7 +1195,6 @@ def _usage_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
         ctx.skill_name,
         ctx.skill_version,
         ctx.command_name,
-        ctx.command_version,
         ctx.agent_invocation_id,
         mcp_tool_name,
         prompt_tokens,
@@ -1240,7 +1234,6 @@ def _message_row(payload: dict, ctx: EventContext, now: Optional[datetime] = Non
         ctx.skill_name,
         ctx.skill_version,
         ctx.command_name,
-        ctx.command_version,
         ctx.agent_invocation_id,
         prompt_text,
         response_text,

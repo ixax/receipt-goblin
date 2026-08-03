@@ -36,7 +36,7 @@ Route a noisy agent to a cheaper model via a LiteLLM alias/virtual key, never fr
 
 ## Agent/skill/command attribution
 
-`agent_name`/`skill_name`/`command_name` on `agent_events`/`agent_usage` rows are Claude Code-only concepts (see `_agent_invocations_from_messages`/`_active_skill_name_and_version`/`_active_command_name_and_version` in `services/_common/src/ingest_parsing.py`).
+`agent_name`/`skill_name`/`command_name` on `agent_events`/`agent_usage` rows are Claude Code-only concepts (see `_agent_invocations_from_messages`/`_active_skill_name_and_version`/`_active_command_name` in `services/_common/src/ingest_parsing.py`).
 Codex CLI traffic has no equivalent and always lands with all three blank - not a gap to fix.
 
 `agent_name` is joined from `agent_invocations` via a per-request `x-claude-code-agent-id` header, which has a known race: a spawned subagent's first call can outrun the orchestrator's own ingest.

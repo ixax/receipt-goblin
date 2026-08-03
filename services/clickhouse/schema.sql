@@ -246,18 +246,16 @@ CREATE TABLE IF NOT EXISTS agent_events
     skill_name        LowCardinality(String),
     skill_version     LowCardinality(String),
     -- Slash command that kicked off the current chain of calls (e.g.
-    -- "whatsup"), recovered from the "<command-name>" tag Claude Code
-    -- injects into the triggering user message - see
-    -- services/_common/src/ingest_parsing.py:_active_command_name_and_version.
-    -- The command's filename itself never changes (no "_v<version>"
-    -- suffix, no rename) - command_version below instead comes from a
-    -- "<command_version>...</command_version>" marker placed in the
-    -- command file's own body, which gets expanded into that same
-    -- triggering message.
+    -- "whatsup", or a synthetic name like "goal"/"plan" for Codex's own
+    -- persistent-context wrapper), recovered from the "<command-name>" tag
+    -- Claude Code injects into the triggering user message - see
+    -- services/_common/src/ingest_parsing.py:_active_command_name.
+    -- No command_version column: only custom-authored .claude/commands/*.md
+    -- files ever carried a version marker, and this repo no longer defines
+    -- any (the two that did, /min and /me, are Skills now) - every command
+    -- this column can hold is a harness-builtin/synthetic one with no
+    -- version concept.
     command_name      LowCardinality(String) DEFAULT '',
-    -- Blank for a command never edited since creation - same graceful
-    -- fallback as agent_version/skill_version.
-    command_version   LowCardinality(String) DEFAULT '',
     -- x-claude-code-agent-id when this row is a subagent's own call, blank
     -- for the orchestrator's own turns. See agent_invocations above.
     agent_invocation_id String DEFAULT '',
@@ -350,7 +348,6 @@ CREATE TABLE IF NOT EXISTS agent_usage
     skill_name           LowCardinality(String),
     skill_version        LowCardinality(String),
     command_name         LowCardinality(String) DEFAULT '',
-    command_version      LowCardinality(String) DEFAULT '',
     agent_invocation_id  String DEFAULT '',
     mcp_tool_name        LowCardinality(String),
     input_tokens         UInt32,
@@ -421,7 +418,6 @@ CREATE TABLE IF NOT EXISTS agent_messages
     skill_name    LowCardinality(String),
     skill_version LowCardinality(String),
     command_name  LowCardinality(String) DEFAULT '',
-    command_version LowCardinality(String) DEFAULT '',
     agent_invocation_id String DEFAULT '',
     prompt_text   String CODEC(ZSTD(3)),
     response_text String CODEC(ZSTD(3)),
