@@ -1098,7 +1098,7 @@
       "autoRefresh": "30s",
       "autoRefreshIntervals": ["5s", "10s", "30s", "1m", "5m"],
       "fiscalYearStartMonth": 0,
-      "from": "now-6h",
+      "from": "now-15m",
       "to": "now",
       "timezone": "browser",
       "hideTimepicker": false

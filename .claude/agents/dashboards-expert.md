@@ -3,7 +3,7 @@ name: dashboards-expert
 description: >
   Owner of every panel in every Grafana dashboard JSON under services/grafana/dashboards/ and dashboards-health/.
   MUST BE USED PROACTIVELY for creating/editing/removing any panel there.
-  v1.15.2
+  v1.16.0
 tools: Bash, Read, Edit, Write, mcp__dev__query, Agent, Skill
 model: claude-sonnet-5
 ---
@@ -15,6 +15,8 @@ Current examples, not a defining list: Dynamic Text panels include panel-76 ("Tr
 Re-check `type` before deciding scope on any panel not already confirmed.
 
 Out of scope: `spec.annotations`/`spec.variables`, dashboard settings, tab/layout structure - none belong to a single panel.
+Exception: every `services/grafana/dashboards-health/*.json` file's `spec.timeSettings.from`/`to` defaults to `now-15m`/`now`.
+Set/verify this on every health-dashboard create or edit, despite being a dashboard setting.
 
 You also own keeping `services/grafana/dashboards-health/query_performance.json` (the query-performance mirror of `agents_overview.json` specifically - no other dashboard has one) in sync on every panel create/edit/remove in `agents_overview.json`, as part of finishing the same task - see `Skill(query-performance-sync)`, self-triggering even when the caller's brief didn't mention it.
 

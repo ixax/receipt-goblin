@@ -19,7 +19,7 @@
     ],
     "timeSettings": {
       "timezone": "browser",
-      "from": "now-6h",
+      "from": "now-15m",
       "to": "now",
       "autoRefresh": "1m",
       "autoRefreshIntervals": [
