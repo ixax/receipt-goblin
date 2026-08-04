@@ -33,6 +33,32 @@ Fix: fold everything into `clickhouse-migration` - one skill, one trigger, one a
   `sql-expert` proposes changes and documents gotchas but never applies DDL.
   `clickhouse-analyst` is a pure cheap consumer, not a documentation owner - its cheat-sheet is a derived copy like the others.
 
+## Open question: does schema.sql need a dedicated owning agent?
+
+A follow-up discussion surfaced a category distinction worth recording before implementation starts.
+A skill cannot read, write, or answer questions on its own - it's passive reference text that an actor (an agent, or the main conversation) reads and then acts on with its own tools.
+What the user described wanting (something that reads schema.sql efficiently, writes it, and answers "what is this table for" questions) is agent behavior, not skill behavior.
+
+The repo already has a matching pattern for this shape: `dashboards-expert` (an agent, with `Edit`) owns panel JSON, and reads `dashboard-panels` (a skill, a checklist) before touching it.
+Applied here, the artifact-owning direction would be: a new agent owns `schema.sql`/`migrations/*.sql` and reads `clickhouse-migration` (the existing skill) as its checklist - the reverse of the user's first framing, where the skill was going to do the owning.
+
+One boundary clarifies what's actually safe to delegate: editing the `.sql` file's *text* is not the same as executing DDL against live ClickHouse.
+`sql-expert`'s "never runs DDL" restriction, and `mcp-dev`'s read-only enforcement, are both about live execution - not about editing a file.
+So a new agent could safely own the file text (DDL + comments) without loosening that boundary.
+Actually applying a migration (`make migrate`) is a live-data mutation and should stay a manual, human-gated step in the main conversation either way, matching how `clickhouse-migration` already describes it today.
+
+Two options, not yet decided:
+
+- **A - No new agent (this plan's current baseline, below).**
+  Strengthen the existing `clickhouse-migration` skill and `sql-expert`'s advisory role.
+  Cheaper (no new harness entity), and matches this project's existing philosophy of keeping rare, high-stakes schema changes human-gated (the same reasoning that kept `sql-expert` read-only in the first place).
+- **B - New dedicated agent** (e.g. `clickhouse-schema`), `Read`+`Edit` only, no `Bash`/live-DDL access.
+  Owns `schema.sql`/`migrations/*.sql` text, reads `clickhouse-migration` as its checklist, answers "what does column X mean" questions directly.
+  Gives one clean, always-available owner, but is a new standing entity for a task that has happened 11 times in the project's history so far.
+
+This plan implements Option A below.
+Revisit Option B if the user decides the dedicated-agent shape is worth it before or after this lands - it's an additive change, not a rework, since `clickhouse-migration` stays the checklist either way.
+
 ## Recommended approach
 
 1. **Keep `schema.sql`'s prose `--` comments as the single content source.**
