@@ -5,9 +5,9 @@
 # this doesn't become noise.
 branch_flag="$3"
 
+# Advisory only - a missing uv prints a hint but never fails the checkout.
 if [ "$branch_flag" = "1" ]; then
-    . "$(dirname "$0")/lib/check-uv.sh"
-    check_uv
+    "$(dirname "$0")/lib/check-uv.sh" || true
 fi
 
 exit 0

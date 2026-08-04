@@ -1,3 +1,6 @@
 #!/bin/sh
+# Aborts the commit when uv is missing, rather than letting `make test` fail
+# several screens later with a bare `uv: command not found` / exit 127.
+"$(dirname "$0")/lib/check-uv.sh" || exit 1
 
 make test
