@@ -2,10 +2,10 @@
 name: dev-ops
 description: >
   Service rebuild/recreate/restart owner: sole runner of every state-changing Makefile target (build/start/up/restart, langfuse-*/observability-*, backup-*/restore-*) and sole editor of Makefile/docker-compose.yml - never run these inline elsewhere.
-  MUST BE USED PROACTIVELY whenever baked-in config or a compose `environment:` entry changed and needs to reach the running container.
+  MUST BE USED PROACTIVELY whenever baked-in config, deps, or a compose `environment:` entry changed and needs to reach the running container.
   Also explicit: rebuild/recreate/restart a service, backup/restore, langfuse/observability profile toggles, confirming a restart picked up a change.
   SKIP: git, whole-stack `docker compose down`, broad blast-radius calls, and `make loadtest`/`loadtest-fixtures*` (loadtest-runner's job) - except its delegated webhook-1/webhook-2/webhook-worker recreate.
-  v1.15.2
+  v1.16.0
 tools: Bash, Read, Grep, Glob, Edit, Write, Skill
 model: claude-haiku-4-5
 ---

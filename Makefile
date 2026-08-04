@@ -79,7 +79,7 @@ include .image-tags.mk
 PYTHON_VERSION := $(shell cat .python-version)
 export PYTHON_VERSION
 
-.PHONY: check-env git-hooks-install install-uv init start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit harness-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
+.PHONY: check-env git-hooks-install install-uv init start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit lock harness-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	archive-prometheus archive-clickhouse-logs \
@@ -113,6 +113,7 @@ install-uv:
 
 init: check-env git-hooks-install
 	python3 services/init/init_clickhouse_users.py $(COMPOSE_FILES)
+	$(MAKE) migrate
 
 # `start`: Brings up containers with existing images (no rebuild/recreate).
 # `up`: Rebuilds and recreates containers - the fix for baked-in config/env/file changes.
@@ -128,7 +129,7 @@ up: check-env
 # Restarts running containers in place (not a rebuild) - picks up edits to
 # bind-mounted source (services/webhook/src, etc.) for services without
 # --reload, like worker. Run `make up` instead if
-# requirements.txt/Dockerfile changed. SERVICE is optional (default: whole
+# requirements.lock/Dockerfile changed. SERVICE is optional (default: whole
 # stack), same as start/up/logs.
 restart: check-env
 	docker compose $(COMPOSE_FILES) restart $(SERVICE)
@@ -157,12 +158,10 @@ build: check-env
 status: check-env
 	python3 scripts/wait_for_stack_healthy.py $(COMPOSE_FILES)
 
-# The only way to apply ClickHouse migrations (services/clickhouse/migrations/*.sql
-# + one-time dashboard Dictionaries) - no longer runs automatically as part of
-# `make up`/`make start`. Operators must run `make migrate` explicitly, e.g.
-# right after `make init` on a fresh clone, or after adding a new migration file,
-# or before first `make start` on a fresh `make init`. Never touches ClickHouse
-# users/roles/grants - that's `make init` alone, see services/init/.
+# Applies ClickHouse migrations (services/clickhouse/migrations/*.sql
+# + one-time dashboard Dictionaries). Runs automatically at the end of `make init`
+# on a fresh setup; can also be run standalone after adding a new migration file.
+# Never touches ClickHouse users/roles/grants - that's `make init` alone, see services/init/.
 migrate: check-env
 	docker compose $(COMPOSE_FILES) run --rm clickhouse-migrate
 
@@ -260,6 +259,24 @@ test-harness-audit: test-hooks
 # uv runs against the pinned .python-version/.pyproject.toml environment.
 lint: check-env
 	uv run ruff check .
+
+# Regenerates every services/*/requirements.lock from its requirements.txt.
+# The lock pins the full transitive tree, so the in-image `pip install` has
+# nothing left to resolve - that resolver pass, not the downloads, is what
+# made a cold build slow (9 of 15 minutes on one measured `make up`).
+# uv only ever runs here, on the host; the images still install with pip.
+# --universal keeps one lock valid for every build platform (markers, not
+# host-specific pins), and the interpreter comes from .python-version so
+# this and the images can't drift apart.
+# Explicit-only, like `migrate` - a lock is a reviewable artifact, so it's
+# never regenerated as a side effect of `make build`/`up`.
+lock:
+	@for req in services/*/requirements.txt; do \
+	  uv pip compile --universal --quiet \
+	    --python-version "$$(cat .python-version)" \
+	    --output-file "$${req%.txt}.lock" "$$req" || exit 1; \
+	  echo "locked: $${req%.txt}.lock"; \
+	done
 
 # Generates/refreshes agent_docs/harness-index.md (a table of every
 # skill/agent's name+description+path, derived from frontmatter, for

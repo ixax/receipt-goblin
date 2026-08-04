@@ -60,7 +60,7 @@ services:
 
   mcp-dev:
     # Dev-only service - no definition in docker-compose.yml at all, so this is the full definition, not an overlay.
-    # Prod image is self-contained (config.yml baked in); the volumes/command below bind-mount ./src over /app/src and add --reload for live editing; requirements.txt changes still need a rebuild either way.
+    # Prod image is self-contained (config.yml baked in); the volumes/command below bind-mount ./src over /app/src and add --reload for live editing; dependency changes still need `make lock` plus a rebuild either way.
     build:
       context: .
       dockerfile: services/mcp-dev/Dockerfile

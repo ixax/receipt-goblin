@@ -307,7 +307,7 @@ services:
     # Prod image is self-contained (config.yml baked in; build context is
     # the repo root - see services/webhook/Dockerfile). docker-compose.dev.yml
     # bind-mounts ./src over /app/src and adds `command: --reload` for live
-    # editing; requirements.txt changes still need a rebuild either way.
+    # editing; dependency changes still need `make lock` plus a rebuild either way.
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
