@@ -280,10 +280,15 @@ harness-index:
 # no config.toml equivalent of Claude's "env" block for that. `<virtual key>`
 # is a placeholder unless LITELLM_VIRTUAL_KEY is already set in .env, in
 # which case it's substituted everywhere below.
+# LITELLM_AUTH_HEADER derives from $$LITELLM_VIRTUAL_KEY rather than repeating
+# the substituted value, so a hand-edited placeholder only needs replacing in
+# one line. The settings.json block below can't do the same - Claude Code
+# never expands $$VAR in an "env" value (README "Configuring via config files
+# instead of shell exports"), so those stay literal.
 setup-client:
 	@echo '# --- ~/.zshrc / ~/.bashrc (paste as-is, or use the config blocks below instead) ---'
 	@echo 'export LITELLM_VIRTUAL_KEY="$(VKEY)"'
-	@echo 'export LITELLM_AUTH_HEADER="Bearer $(VKEY)"'
+	@echo 'export LITELLM_AUTH_HEADER="Bearer $$LITELLM_VIRTUAL_KEY"'
 	@echo '# Anthropic/OpenAI-wire fallback ports, not plain litellm - see'
 	@echo '# agent_docs/services/load-balancer.md. Auth headers below are NOT'
 	@echo '# translated once fallen back to the real provider.'
