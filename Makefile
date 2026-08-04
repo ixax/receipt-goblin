@@ -27,8 +27,14 @@ else
 COMPOSE_FILES := -f docker-compose.yml -f docker-compose.dev.yml
 endif
 
-OBSERVABILITY_COMPOSE_FILES := $(COMPOSE_FILES) -f docker-compose.observability.yml
-LANGFUSE_COMPOSE_FILES := $(COMPOSE_FILES) -f docker-compose.langfuse.yml
+OVERRIDE_COMPOSE_FILE := $(if $(wildcard docker-compose.override.yml),-f docker-compose.override.yml,)
+
+# Base files without override (for use in the profile stacks below)
+COMPOSE_FILES_BASE := $(COMPOSE_FILES)
+
+COMPOSE_FILES += $(OVERRIDE_COMPOSE_FILE)
+OBSERVABILITY_COMPOSE_FILES := $(COMPOSE_FILES_BASE) -f docker-compose.observability.yml $(OVERRIDE_COMPOSE_FILE)
+LANGFUSE_COMPOSE_FILES := $(COMPOSE_FILES_BASE) -f docker-compose.langfuse.yml $(OVERRIDE_COMPOSE_FILE)
 
 PORT := $(if $(strip $(LITELLM_PORT)),$(LITELLM_PORT),4000)
 # Full proxy URI, in case LiteLLM isn't on localhost (a shared/remote host) -
@@ -79,7 +85,7 @@ include .image-tags.mk
 PYTHON_VERSION := $(shell cat .python-version)
 export PYTHON_VERSION
 
-.PHONY: check-env git-hooks-install install-uv init start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit lock harness-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all print-reparse-final-hint \
+.PHONY: check-env git-hooks-install install-uv init start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit lock harness-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all reparse-dlq print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	archive-prometheus archive-clickhouse-logs \
@@ -353,6 +359,10 @@ reparse: check-env
 
 reparse-all: check-env
 	docker compose $(COMPOSE_FILES) run --rm metrics-reparse
+	@$(MAKE) print-reparse-final-hint
+
+reparse-dlq: check-env
+	docker compose $(COMPOSE_FILES) run --rm metrics-reparse python -m src.reparse_dlq $(if $(STAGE),--stage $(STAGE),)
 	@$(MAKE) print-reparse-final-hint
 
 print-reparse-final-hint:

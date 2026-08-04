@@ -154,6 +154,20 @@ Your personal LiteLLM key does **not** go in `.env` at all - see the next step.
 - **`development`** (default) layers `docker-compose.dev.yml` on top of `docker-compose.yml`, bind-mounting live source/config into the containers and enabling `--reload` for `webhook`/`mcp-dev` - editing `services/webhook/src/*.py` or a Grafana dashboard JSON takes effect without a rebuild. `mcp-dev` itself is defined *only* in `docker-compose.dev.yml` - it doesn't exist at all in production (see "MCP servers" under "Reference" below), and `load-balancer` only publishes its port bound to `127.0.0.1` even in dev, never on all interfaces. `mcp-stats` runs in both environments unchanged - it's a normal prod-defined service, not part of this dev/prod split.
 - **`production`** (`ENVIRONMENT=production make up`, or set `ENVIRONMENT=production` in `.env`) uses `docker-compose.yml` alone - every service then runs the image built entirely from its own `Dockerfile`, with no source/config bind mounts and no `command:`/`entrypoint:` overrides; picking up a code change requires rebuilding (`ENVIRONMENT=production make up` again). `mcp-dev` is absent entirely in this mode; `mcp-stats` runs as normal.
 
+If a `docker-compose.override.yml` file is present at the repo root, it is automatically layered as the final `-f` flag in all compose invocations.
+This is how local resource-limit tuning (e.g., `mem_limit`/`cpus` overrides) can be applied for a specific host without modifying the base compose files.
+The `Makefile` detects the file at parse time using `$(wildcard ...)`; if it doesn't exist, behavior is unchanged.
+
+### Compose files
+
+This stack is assembled from multiple docker-compose files, layered by the `Makefile`:
+
+- `docker-compose.yml` — base services for production.
+- `docker-compose.dev.yml` — dev-only overrides (bind mounts for live source/config, `--reload` for select services), layered in `ENVIRONMENT=development` (default).
+- `docker-compose.observability.yml` — optional observability profile (Prometheus, Loki, node exporter, cadvisor, etc.), activated via `make observability-up` (see "Observability" below).
+- `docker-compose.langfuse.yml` — optional Langfuse profile (separate LLM tracing stack), activated via `make langfuse-up` (see "Langfuse" below).
+- `docker-compose.override.yml` — optional, not committed by default, for local resource-limit tuning (mem_limit/cpus, etc.). Automatically layered last when present, so it takes precedence over all other files.
+
 ### Start the stack
 
 ```bash
