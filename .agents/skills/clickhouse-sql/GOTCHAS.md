@@ -56,6 +56,11 @@ Keep each entry a few lines max, no essays.
   `mcp__dev__profile_query`'s `_do_profile` does NOT wrap (`client.command(f"{sql} FORMAT Null", ...)`) - use `profile_query` to test whether an inline `SETTINGS` override takes effect.
 - Panels: Grafana's datasource plugin sends `rawSql` unwrapped, so a `SETTINGS` clause on the panel query's own outermost `SELECT` (after its terminal `GROUP BY`/`ORDER BY`, as `agents_overview.json` panel 76 does) is genuinely top-level and respected - don't conclude infeasibility from a `query()` re-test.
 
+## Bare `NULL` in a `Tuple(...)`-typed `UNION ALL` branch
+
+- Each `UNION ALL` branch producing a `CAST((...) AS Tuple(f1 T1, f2 Nullable(T2), ...))` row (one tuple-typed "kind" per branch, e.g. `agents_overview.json` panel-100's `lines_raw`) needs every field that doesn't apply to that branch filled in - a bare `NULL` literal there infers as `Nullable(Nothing)`, not the tuple's declared field type, and ClickHouse can reject the `CAST` or silently disagree on the tuple's real per-branch type, breaking `UNION ALL`'s requirement that every branch produce the identical type.
+  Fix: cast every not-applicable field explicitly to match the tuple's declared type for that field, e.g. `CAST(NULL AS Nullable(String))`/`CAST(NULL AS Nullable(Int64))` - never a bare `NULL`, and never a `Nullable(T)` that doesn't match the field's own declared `T`.
+
 ## `mcp-dev` SQL validator (`services/mcp-dev/src/server.py`)
 
 - The `;`/keyword/`SYSTEM`/table-function checks scan SQL text with string literals masked out first, via quote-aware `_mask_string_literals` - unmasked, a literal containing `;` (e.g. HTML entities like `&amp;`) or a forbidden-looking word as plain text would false-reject.

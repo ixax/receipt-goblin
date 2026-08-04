@@ -4,3 +4,7 @@
 install_plugins: grafana-clickhouse-datasource,marcusolsson-dynamictext-panel
 auth_anonymous_enabled: "true"
 auth_anonymous_org_role: Viewer
+# Instance-wide: lets the "Trace (iframe)" experiment panel's <iframe>/onload wrapper render at all.
+# Grafana strips these from panel HTML by default.
+# Every panel that echoes untrusted DB text into HTML must escape it itself now that this net is off - see plans/polymorphic-crunching-sutherland.md.
+panels_disable_sanitize_html: "true"

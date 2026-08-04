@@ -4,7 +4,7 @@ description: >
   TRIGGER - read/apply whenever any panel in services/grafana/dashboards/agents_overview.json is created, edited, or removed - regardless of whether the calling task mentions it.
   Keeps services/grafana/dashboards-health/query_performance.json (its query-performance mirror) from drifting, via the tag/extract/render scripts under services/grafana/scripts/.
   SKIP for any other dashboard file, and for a Dynamic Text panel's query-content-only edit (same id, same tab).
-  v1.0.1
+  v1.0.2
 ---
 
 Applies only to `services/grafana/dashboards/agents_overview.json` - no other dashboard has a `query_performance.json`-style mirror.
@@ -47,7 +47,7 @@ Finishing a panel edit without running the matching step(s) is exactly how that 
 Never hand-write ad-hoc Python to discover untagged panels or validate rendered output - use the sanctioned scripts, in this order:
 
 1. Run `extract_panel_tree.py` fresh, before any tagging - its tree JSON already records each panel's `"tagged": true/false`.
-2. For every id marked `"tagged": false` (excluding any Dynamic Text panel - check `type` via the tree/`dashboard-parser`, don't assume from an id list; stays untagged on purpose, see the open question in `Skill(dynamictext-panel-queries)`), run `tag_panel_queries.py <agents_overview.json> --id <id> [--id <id2> ...]`.
+2. For every id marked `"tagged": false`, run `tag_panel_queries.py <agents_overview.json> --id <id> [--id <id2> ...]`.
 3. Re-run `extract_panel_tree.py` again - the step-1 tree is now stale re: tagged state.
    Still required even if step 1 found nothing untagged (fresh tree per rebuild).
 4. Run `build_query_perf_dashboard.py --tree <path> --out <path>` once, no `--tab` - covers every tab in one call.

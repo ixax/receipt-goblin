@@ -5,7 +5,7 @@ description: >
   Current examples: panel-76 ("Trace"), companion panel-77, and panel-99 ("Fork tree").
   TRIGGER - read only when the current dashboards-expert task is actually to write or fix a Dynamic Text panel's query, `rawSql`, or SQL-side logic.
   SKIP for styling-only work (use `dynamictext-panel-design-system` instead) or any non-Dynamic-Text panel.
-  v1.2.1
+  v1.2.2
 ---
 
 Query/data reference for `dashboards-expert`, read on demand - see description for the trigger condition.
@@ -129,8 +129,6 @@ The deployed SQL should use the real, unobfuscated literals - the obfuscation is
 - `references/concurrent-ordering.md` - `sort_ts` vs `ts` mechanics for interleaving a background subagent's rows - open when touching ordering/CTE logic.
 - `references/data-model.md` - schema-specific lookup facts (`turn_id`, `agent_name` blankness, tool-argument extraction, `prompt_text` injected-boilerplate stripping, the two failure signals, pre-conversation artifact rows) - open when a query needs one of these fields.
 
-## Open question: query_performance.json tagging
+## query_performance.json tagging
 
-Whether Dynamic Text panels should be profiled the same generic way as every other tagged panel (3 timeseries + 1 table) once tagged is still open - `panel-76` assembles a full session tree per row, an unusual shape for that template.
-This is why `dashboards-expert` excludes Dynamic Text panels from tagging in its `query_performance.json` sync workflow, on purpose, not as an oversight.
-Don't resolve this yourself; flag it to the caller/user the first time it comes up in practice.
+Dynamic Text panels are tagged and profiled the same as every other panel, no exception - `panel-76`/`panel-99` already carry a `log_comment` tag and a full mirror entry in `query_performance.json`, despite `panel-76` assembling a full session tree per row (an unusual shape for that template).
