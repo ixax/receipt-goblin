@@ -28,6 +28,81 @@ Core services also self-heal from a stuck-but-alive `unhealthy` state (not just 
 
 ## Getting started
 
+### Prerequisites: Docker via Colima
+
+The stack is plain Docker Compose.
+It needs a Docker daemon plus the `compose` and `buildx` CLI plugins - nothing else.
+On macOS that comes from [Colima](https://github.com/abiosoft/colima) rather than Docker Desktop.
+
+Homebrew's `docker` formula is the CLI alone.
+The daemon comes from Colima, and each CLI plugin is its own formula, so installing `docker` by itself leaves both `docker compose` and `docker buildx` missing.
+Install all four together:
+
+```bash
+brew install colima docker docker-compose docker-buildx
+```
+
+Homebrew puts both plugins in `/opt/homebrew/lib/docker/cli-plugins`, which the `docker` CLI doesn't search on its own.
+Point it there in `~/.docker/config.json`:
+
+```json
+{
+  "cliPluginsExtraDirs": [
+    "/opt/homebrew/lib/docker/cli-plugins"
+  ]
+}
+```
+
+Skipping that step doesn't produce a "plugin missing" error - it produces two misleading ones.
+Every `docker compose -f ...` call fails with:
+
+> unknown shorthand flag: 'f' in -f
+
+and `make up`'s image builds fail with:
+
+> the --chmod option requires BuildKit
+
+Now create the VM.
+`--edit` opens the config in `$EDITOR` before the first boot, so the VM is sized correctly from the start instead of needing a stop/recreate later:
+
+```bash
+colima start --edit
+```
+
+Recommended values - "Minimal resource requirements" at the top of this file is the floor, and these leave headroom for ClickHouse merges and `make loadtest`:
+
+| Setting              | Recommended | Why                                                                                   |
+| -------------------- | ----------- | ------------------------------------------------------------------------------------- |
+| `cpu`                | `5`         | One above the 4-CPU floor - ClickHouse merges and `make loadtest` both spike.         |
+| `memory`             | `12`        | GiB. The 8 GiB floor covers the stack idling; 12 leaves room for the opt-in profiles. |
+| `disk`               | `100`       | GiB. ClickHouse parts plus every service image - Colima's 60 GiB default fills up.    |
+| `vmType`             | `vz`        | Apple's Virtualization.framework - required for `virtiofs`, and faster than `qemu`.   |
+| `mountType`          | `virtiofs`  | Fastest host mount under `vz`; `sshfs`/`9p` add noticeable I/O latency.               |
+| `binfmt`             | `true`      | Runs and builds `linux/amd64` images on Apple Silicon.                                |
+| `kubernetes.enabled` | `false`     | Nothing in this stack uses k3s - leaving it on costs CPU and memory for nothing.      |
+
+Leave the storage driver alone while you're in there.
+Colima can switch Docker to the containerd snapshotter, which breaks `cadvisor` under the opt-in `observability` profile - see the "Containers" tab row under "Troubleshooting" below.
+
+Colima boots as soon as you save and close the editor.
+It also points `docker`'s active context at `colima`, so nothing else needs configuring.
+Verify all three pieces:
+
+```bash
+colima status
+docker compose version
+docker buildx version
+```
+
+To resize the VM later, stop it and edit the same config:
+
+```bash
+colima stop
+colima start --edit
+```
+
+With Docker running, continue to "Environment variables" below.
+
 ### Environment variables
 
 Recommended: run `make init` first - it interactively asks for the database name, a bootstrap superuser, and a username/password for each of the five ClickHouse roles (generating any password you leave blank), copies `.env.example` to `.env` if it doesn't exist yet, writes all of that in, then brings up just `clickhouse` long enough to create those users before stopping it again.
