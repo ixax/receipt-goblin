@@ -84,7 +84,7 @@ Check for an owning agent before inline Bash/Read/Grep.
 PROACTIVE (dispatch without being asked):
 
 - `harness-expert` - harness entities, `AGENTS.md`, `agent_docs/*.md`
-- `dev-ops` - services, compose, backups, opt-in stacks
+- `dev-ops` - every `make` target: services, compose, backups, opt-in stacks, one-off tool containers
 - `runner-test` - test runs
 - `runner-linter` - lint runs
 - `loadtest-runner` - load tests

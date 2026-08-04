@@ -4,10 +4,39 @@ read back off Redis and inserts them with one client.insert() per table).
 Uses a fake in-memory client throughout; no real ClickHouse connection."""
 
 import json
+from datetime import datetime, timezone
 
 from common import ingest_db as db
 from common.ingest_parsing import build_event
 from conftest import load_capture
+
+# table -> its real column list, keyed the same as ingest_db.py's own
+# _*_COLUMNS constants - fakes DESCRIBE TABLE without a real ClickHouse
+# connection, since _column_type_names() now issues one per table.
+_FAKE_TABLE_COLUMNS = {
+    "agent_invocations": db._INVOCATION_COLUMNS,
+    "agent_events": db._EVENT_COLUMNS,
+    "agent_usage": db._USAGE_COLUMNS,
+    "agent_messages": db._MESSAGE_COLUMNS,
+    "ingest_raw": db._SOURCE_COLUMNS,
+    "ai_gateway_groups": db._GROUP_COLUMNS,
+    "ai_gateway_users": db._USER_COLUMNS,
+    "clients": db._CLIENT_COLUMNS,
+    "ingest_dlq": db._FAILURE_COLUMNS,
+}
+
+
+def _describe_table_result(query):
+    # DESCRIBE TABLE `<table>` - quote_identifier wraps the name in backticks.
+    table = query.split("DESCRIBE TABLE")[1].strip().strip("`")
+    columns = _FAKE_TABLE_COLUMNS[table]
+
+    class _Result:
+        @staticmethod
+        def named_results():
+            return [{"name": c, "type": "String"} for c in columns]
+
+    return _Result()
 
 
 class _FakeClient:
@@ -19,6 +48,9 @@ class _FakeClient:
         self.inserts.append((table, rows, column_names))
 
     def query(self, query, parameters=None, **kwargs):
+        if query.startswith("DESCRIBE TABLE"):
+            return _describe_table_result(query)
+
         class _Result:
             result_rows = []
         # _resolve_client_id's "SELECT cityHash64({v:String})" lookup - a
@@ -183,6 +215,9 @@ class _EventuallyResolvingClient(_FakeClient):
         self.agent_version = agent_version
 
     def query(self, query, parameters=None, **kwargs):
+        if query.startswith("DESCRIBE TABLE"):
+            return _describe_table_result(query)
+
         class _Result:
             result_rows = []
         if parameters and "v" in parameters and "cityHash64" in query:
@@ -265,3 +300,36 @@ def test_ingest_events_batch_success_backfills_skill_version_from_sibling_event(
     call_id_idx = db._USAGE_CALL_ID_IDX
     versions = {row[call_id_idx]: row[db._USAGE_SKILL_VERSION_IDX] for row in usage_rows}
     assert versions == {"no-version-call": "1.2.3", "with-version-call": "1.2.3"}
+
+
+def test_replay_dlq_row_success_reinserts_into_the_named_stage(monkeypatch):
+    # raw_row round-trips through json.dumps(row, default=str) on the way
+    # into ingest_dlq, so the timestamp/ingested_at fields arrive here as
+    # isoformat strings, not datetime objects - replay_dlq_row must convert
+    # them back before insert.
+    fake_client = _FakeClient()
+    ts = datetime(2026, 8, 4, 20, 50, 4, 123456, tzinfo=timezone.utc)
+    row = ["call-1"] * len(db._EVENT_COLUMNS)
+    row[db._EVENT_TIMESTAMP_IDX] = ts.isoformat()
+    row[db._EVENT_INGESTED_AT_IDX] = ts.isoformat()
+
+    db.replay_dlq_row(fake_client, "agent_events", row)
+
+    table, rows, columns = fake_client.inserts[0]
+    assert table == "agent_events"
+    assert columns == db._EVENT_COLUMNS
+    inserted_row = rows[0]
+    assert inserted_row[db._EVENT_TIMESTAMP_IDX] == ts
+    assert inserted_row[db._EVENT_INGESTED_AT_IDX] == ts
+
+
+def test_replay_dlq_row_unsuccess_unknown_stage_raises(monkeypatch):
+    fake_client = _FakeClient()
+
+    try:
+        db.replay_dlq_row(fake_client, "not_a_real_table", [])
+        raise AssertionError("expected ValueError")
+    except ValueError:
+        pass
+
+    assert fake_client.inserts == []

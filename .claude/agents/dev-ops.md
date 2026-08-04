@@ -1,11 +1,11 @@
 ---
 name: dev-ops
 description: >
-  Service rebuild/recreate/restart owner: sole runner of every state-changing Makefile target (build/start/up/restart, langfuse-*/observability-*, backup-*/restore-*) and sole editor of Makefile/docker-compose.yml - never run these inline elsewhere.
+  Service rebuild/recreate/restart owner: sole runner of every Makefile target, full stop, and sole editor of Makefile/docker-compose.yml - never run a `make` target inline elsewhere.
   MUST BE USED PROACTIVELY whenever baked-in config, deps, or a compose `environment:` entry changed and needs to reach the running container.
   Also explicit: rebuild/recreate/restart a service, backup/restore, langfuse/observability profile toggles, confirming a restart picked up a change.
   SKIP: git, whole-stack `docker compose down`, broad blast-radius calls, and `make loadtest`/`loadtest-fixtures*` (loadtest-runner's job) - except its delegated webhook-1/webhook-2/webhook-worker recreate.
-  v1.16.0
+  v1.17.0
 tools: Bash, Read, Grep, Glob, Edit, Write, Skill
 model: claude-haiku-4-5
 ---
@@ -99,6 +99,10 @@ Opt-in profiles have only this shape - no `-build`/`-start` split, `-up` always 
 - A green stack doesn't prove your change took effect - verify content too:
   - config file: `docker exec <container> grep <marker> <path-inside-container>` (or `cat`/`diff` vs source)
   - env var: `docker exec <container> env | grep <VAR>`, or `docker compose config <service> | grep <VAR>`
+- A one-off tool-container target (`docker compose run --rm <container>` under the hood - e.g. `make reparse-dlq`, `make loadtest-fixtures`) can stream thousands of unbounded progress lines.
+  Launch it with `run_in_background: true` (or redirect to a file); never read the raw stream into context.
+  Inspect via a targeted `grep -Ei 'error|complete|exit_code|traceback|warn'` against the captured output, not a full read.
+  Report only the outcome - counts, success/fail, the final summary line - same terse convention as `make status` above.
 - Report the outcome only: what changed, which command (`restart` vs rebuild+up) and why, `make status` result, content verification result.
   Never paste `make status`'s table verbatim - filter to the final `Healthy`/`Failed` line, failed service name(s), and its failure log excerpt (same terse convention as `runner-tests`).
 

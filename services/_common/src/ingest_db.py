@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import clickhouse_connect
+from clickhouse_connect.driver.binding import quote_identifier
 from common import fastjson as json
 from common.config.clickhouse import (
     CLICKHOUSE_DATABASE,
@@ -71,53 +72,19 @@ from common.ingest_parsing import (
 
 logger = logging.getLogger("webhook.ingest_db")
 
-# Type-name strings for each _X_COLUMNS list above, same order.
-# Passed as client.insert()'s column_type_names so clickhouse_connect skips
-# its per-insert DESCRIBE TABLE (driver/client.py:create_insert_context).
-# Types taken from services/clickhouse/schema.sql.
-_INVOCATION_COLUMN_TYPES = [
-    "String", "String", "LowCardinality(String)", "LowCardinality(String)",
-    "String", "Nullable(String)", "DateTime64(3)",
-]
-_EVENT_COLUMN_TYPES = [
-    "DateTime64(3)", "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)",
-    "String", "String", "UInt32", "LowCardinality(String)", "LowCardinality(String)",
-    "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)",
-    "LowCardinality(String)", "LowCardinality(String)", "String", "LowCardinality(String)",
-    "Nullable(UInt32)", "LowCardinality(String)", "String", "String",
-    "String", "UInt64", "LowCardinality(String)", "String", "DateTime64(3)",
-]
-_USAGE_COLUMN_TYPES = [
-    "DateTime64(3)", "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)",
-    "String", "String", "UInt32", "LowCardinality(String)",
-    "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)",
-    "LowCardinality(String)", "LowCardinality(String)", "String", "LowCardinality(String)",
-    "UInt32", "UInt32", "UInt32", "UInt32",
-    "LowCardinality(String)",
-    "UInt32", "UInt32",
-    "Float64", "Float64", "Float64", "UInt8", "UInt32",
-    "String", "LowCardinality(String)", "DateTime64(3)",
-]
-_MESSAGE_COLUMN_TYPES = [
-    "DateTime64(3)", "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)",
-    "String", "String", "UInt32",
-    "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)",
-    "LowCardinality(String)", "LowCardinality(String)", "String", "String", "String",
-    "String", "DateTime64(3)",
-]
-_SOURCE_COLUMN_TYPES = ["String", "String", "DateTime64(3)", "String"]
-_GROUP_COLUMN_TYPES = ["LowCardinality(String)", "LowCardinality(String)", "DateTime64(3)"]
-_USER_COLUMN_TYPES = ["LowCardinality(String)", "LowCardinality(String)", "LowCardinality(String)", "DateTime64(3)"]
-_CLIENT_COLUMN_TYPES = ["UInt64", "String", "DateTime64(3)"]
-_FAILURE_COLUMN_TYPES = ["DateTime64(3)", "LowCardinality(String)", "String", "String", "String", "String"]
+# table -> {column: ClickHouse type}, filled in by _column_type_names on
+# first use per process - one DESCRIBE TABLE per table, not per insert.
+_column_types_by_table: dict[str, dict[str, str]] = {}
 
-# Keyed by table name - _BatchWriter.insert_with_dlq_fallback's generic
-# table/columns signature looks its column_type_names up here.
-_COLUMN_TYPES_BY_TABLE = {
-    "agent_events": _EVENT_COLUMN_TYPES,
-    "agent_usage": _USAGE_COLUMN_TYPES,
-    "agent_messages": _MESSAGE_COLUMN_TYPES,
-}
+
+def _column_type_names(client, table: str, columns: list[str]) -> list[str]:
+    types_by_name = _column_types_by_table.get(table)
+    if types_by_name is None:
+        result = client.query(f"DESCRIBE TABLE {quote_identifier(table)}")
+        types_by_name = {row["name"]: row["type"] for row in result.named_results()}
+        _column_types_by_table[table] = types_by_name
+    return [types_by_name[c] for c in columns]
+
 
 _client = None
 
@@ -150,41 +117,65 @@ _FAILURE_COLUMNS = ["occurred_at", "stage", "error", "litellm_call_id", "session
 def _insert_agent_invocations(client, rows: list[list]) -> None:
     if not rows:
         return
-    client.insert("agent_invocations", rows, column_names=_INVOCATION_COLUMNS, column_type_names=_INVOCATION_COLUMN_TYPES)
+    client.insert(
+        "agent_invocations", rows, column_names=_INVOCATION_COLUMNS,
+        column_type_names=_column_type_names(client, "agent_invocations", _INVOCATION_COLUMNS),
+    )
 
 
 def _insert_event(client, row: list) -> None:
-    client.insert("agent_events", [row], column_names=_EVENT_COLUMNS, column_type_names=_EVENT_COLUMN_TYPES)
+    client.insert(
+        "agent_events", [row], column_names=_EVENT_COLUMNS,
+        column_type_names=_column_type_names(client, "agent_events", _EVENT_COLUMNS),
+    )
 
 
 def _insert_usage(client, row: list) -> None:
-    client.insert("agent_usage", [row], column_names=_USAGE_COLUMNS, column_type_names=_USAGE_COLUMN_TYPES)
+    client.insert(
+        "agent_usage", [row], column_names=_USAGE_COLUMNS,
+        column_type_names=_column_type_names(client, "agent_usage", _USAGE_COLUMNS),
+    )
 
 
 def _insert_message(client, row: list) -> None:
-    client.insert("agent_messages", [row], column_names=_MESSAGE_COLUMNS, column_type_names=_MESSAGE_COLUMN_TYPES)
+    client.insert(
+        "agent_messages", [row], column_names=_MESSAGE_COLUMNS,
+        column_type_names=_column_type_names(client, "agent_messages", _MESSAGE_COLUMNS),
+    )
 
 
 def _insert_source(client, row: list) -> None:
-    client.insert("ingest_raw", [row], column_names=_SOURCE_COLUMNS, column_type_names=_SOURCE_COLUMN_TYPES)
+    client.insert(
+        "ingest_raw", [row], column_names=_SOURCE_COLUMNS,
+        column_type_names=_column_type_names(client, "ingest_raw", _SOURCE_COLUMNS),
+    )
 
 
 def _insert_ai_gateway_groups(client, rows: list[list]) -> None:
     if not rows:
         return
-    client.insert("ai_gateway_groups", rows, column_names=_GROUP_COLUMNS, column_type_names=_GROUP_COLUMN_TYPES)
+    client.insert(
+        "ai_gateway_groups", rows, column_names=_GROUP_COLUMNS,
+        column_type_names=_column_type_names(client, "ai_gateway_groups", _GROUP_COLUMNS),
+    )
 
 
 def _insert_ai_gateway_users(client, rows: list[list]) -> None:
     if not rows:
         return
-    client.insert("ai_gateway_users", rows, column_names=_USER_COLUMNS, column_type_names=_USER_COLUMN_TYPES)
+    client.insert(
+        "ai_gateway_users", rows, column_names=_USER_COLUMNS,
+        column_type_names=_column_type_names(client, "ai_gateway_users", _USER_COLUMNS),
+    )
 
 
 def _insert_clients(client, rows: list[list]) -> None:
     if not rows:
         return
-    client.insert("clients", rows, column_names=_CLIENT_COLUMNS, column_type_names=_CLIENT_COLUMN_TYPES)
+    client.insert(
+        "clients", rows, column_names=_CLIENT_COLUMNS,
+        column_type_names=_column_type_names(client, "clients", _CLIENT_COLUMNS),
+    )
 
 
 def _agent_name_and_version_for_invocation(client, agent_invocation_id: str) -> tuple[str, str]:
@@ -400,7 +391,10 @@ class _BatchWriter:
             if (row := _deserialize_row(event.get("source_row"), _SOURCE_INGESTED_AT_IDX)) is not None
         ]
         if source_rows:
-            client.insert("ingest_raw", source_rows, column_names=_SOURCE_COLUMNS, column_type_names=_SOURCE_COLUMN_TYPES)
+            client.insert(
+                "ingest_raw", source_rows, column_names=_SOURCE_COLUMNS,
+                column_type_names=_column_type_names(client, "ingest_raw", _SOURCE_COLUMNS),
+            )
 
         # Dedup by id within the batch (last wins); ReplacingMergeTree would
         # collapse duplicates on merge anyway, this just skips redundant inserts.
@@ -501,7 +495,7 @@ class _BatchWriter:
         drop another table's otherwise-good rows for this same set of
         events."""
         insert_rows_with_dlq_fallback(
-            self.client, table, rows, columns, _COLUMN_TYPES_BY_TABLE[table], call_id_idx, session_id_idx,
+            self.client, table, rows, columns, _column_type_names(self.client, table, columns), call_id_idx, session_id_idx,
         )
 
 
@@ -537,6 +531,38 @@ def insert_rows_with_dlq_fallback(
     if failure_rows:
         logger.error("dropped %d row(s) into ingest_dlq (stage=%s)", len(failure_rows), table)
         try:
-            client.insert("ingest_dlq", failure_rows, column_names=_FAILURE_COLUMNS, column_type_names=_FAILURE_COLUMN_TYPES)
+            client.insert(
+                "ingest_dlq", failure_rows, column_names=_FAILURE_COLUMNS,
+                column_type_names=_column_type_names(client, "ingest_dlq", _FAILURE_COLUMNS),
+            )
         except Exception:
             logger.exception("failed to record ingest_dlq (stage=%s, n=%d)", table, len(failure_rows))
+
+
+_DLQ_STAGE_COLUMNS = {
+    "agent_events": _EVENT_COLUMNS,
+    "agent_usage": _USAGE_COLUMNS,
+    "agent_messages": _MESSAGE_COLUMNS,
+}
+_DLQ_STAGE_TIMESTAMP_INDICES = {
+    "agent_events": (_EVENT_TIMESTAMP_IDX, _EVENT_INGESTED_AT_IDX),
+    "agent_usage": (_USAGE_TIMESTAMP_IDX, _USAGE_INGESTED_AT_IDX),
+    "agent_messages": (_MESSAGE_TIMESTAMP_IDX, _MESSAGE_INGESTED_AT_IDX),
+}
+
+
+def replay_dlq_row(client, stage: str, row: list) -> None:
+    """Re-inserts one ingest_dlq row's already-transformed raw_row back into
+    its original target table.
+    raw_row was JSON-serialized with `default=str` (insert_rows_with_dlq_fallback),
+    which stringifies that stage's timestamp/ingested_at datetime columns -
+    deserialize them back first, same as _deserialize_row_multi already does
+    for event_row/usage_row/message_row coming off Redis.
+    Raises ValueError for a stage insert_rows_with_dlq_fallback never
+    writes to - callers should log and skip, not crash the whole replay
+    loop."""
+    columns = _DLQ_STAGE_COLUMNS.get(stage)
+    if columns is None:
+        raise ValueError(f"unknown DLQ stage: {stage!r}")
+    row = _deserialize_row_multi(row, *_DLQ_STAGE_TIMESTAMP_INDICES[stage])
+    client.insert(stage, [row], column_names=columns, column_type_names=_column_type_names(client, stage, columns))

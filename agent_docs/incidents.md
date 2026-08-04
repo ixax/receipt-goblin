@@ -72,3 +72,10 @@ Rule: a pending sub-agent follow-up/audit at session end gets written into this 
 
 Symptom: three incidents (a dashboard reformat "fixed" via `git checkout -- <file>`, a misdiagnosed-corruption checkout, a bulk edit self-"restoring" via `git show :path`) each silently discarded concurrent uncommitted work, recovered only by luck.
 Fix: `hooks/guard_destructive.py` forces a confirmation prompt on `git checkout --`/`git restore`; full rule incl. the `git show :path` variant: `agent_docs/git-safety.md`.
+
+## `loadtest-runner` hand-back leaked the live ClickHouse password
+
+Symptom: during a `make loadtest` run (2026-08-04) interrupted and resumed several times mid-run, the subagent's final hand-back text printed the live `CLICKHOUSE_PASSWORD` in plaintext three times, landing it in the on-disk task-output/transcript file.
+Cause: verifying `webhook-1`/`webhook-2`/`worker` had switched to/from the isolated `loadtest` DB role included raw `docker inspect`/env-var output verbatim instead of a redacted form.
+Fix: env-var verification in agent output/reports checks presence/non-emptiness or a redacted form, never the literal value - `AGENTS.md`'s "Boundaries & safety" secrets rule, added the same day partly from this incident.
+Note: local-dev credential, not a real prod secret - user confirmed rotation isn't needed.

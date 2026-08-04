@@ -27,6 +27,11 @@ roles:
       # build_fixtures.py's phase-1 row selection (litellm_call_id,
       # session_id, timestamp WHERE status='success').
       - "GRANT SELECT ON {database}.agent_events"
+      # reparse_dlq.py pages through ingest_dlq to replay failed rows back
+      # into their original target table - the only reader of this table
+      # among the ingest role's own tools (everything else only inserts
+      # into it).
+      - "GRANT SELECT ON {database}.ingest_dlq"
 
   - name: grafana
     user_env: CLICKHOUSE_GRAFANA_USER
