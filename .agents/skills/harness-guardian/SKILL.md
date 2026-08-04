@@ -9,7 +9,7 @@ description: >
   pass.
   SKIP for routine per-edit budget checks - the PostToolUse hook runs
   those automatically.
-  v1.4.0
+  v1.5.0
 ---
 
 Keep the always-loaded context layer minimal.
@@ -71,8 +71,9 @@ Append one line to `thoughts/harness-audit-log.md` (date, total always-loaded to
 
 The harness must behave identically under both tools:
 
-- `AGENTS.md` is the canonical root file; `CLAUDE.md` is a symlink to it.
-  Same for nested directories - never let the two diverge as real files.
+- `AGENTS.md` is the sole doc file, root and nested - this repo deliberately maintains no `CLAUDE.md` anywhere, symlink or real file.
+  Both CLIs read `AGENTS.md` directly.
+  Never recreate `CLAUDE.md` on noticing it "missing" - that absence is the convention, not a gap to fix.
 - Codex concatenates the AGENTS.md chain root-down with a 32 KiB default cap (`project_doc_max_bytes`) and silently truncates beyond it - the audit script checks the combined chain size.
 - `.agents/skills/` is the canonical skills directory (Agent Skills open standard, read natively by Codex CLI); `.claude/skills` is a single directory-level symlink to it.
   A new skill goes directly under `.agents/skills/<name>/`; nothing extra on the `.claude/` side.

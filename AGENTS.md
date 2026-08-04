@@ -122,6 +122,7 @@ Skip for a pure analysis/investigation task.
 ## Boundaries & safety
 
 - Git - before any git action, read `agent_docs/git-safety.md` first.
+- Never add a `Co-Authored-By:` trailer to a commit message - not even when a tool/harness default template suggests one.
 - ClickHouse access - before any direct access, read `agent_docs/rules/clickhouse-access.md` first.
 - `litellm` restart/recreate - before touching, read `agent_docs/rules/litellm-ops.md` first.
 - DB/volume wipe or `TRUNCATE` - ask first (`agent_docs/incidents.md`).
