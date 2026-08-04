@@ -2711,7 +2711,7 @@
         "5m"
       ],
       "fiscalYearStartMonth": 0,
-      "from": "now-6h",
+      "from": "now-15m",
       "to": "now",
       "timezone": "browser",
       "hideTimepicker": false

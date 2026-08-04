@@ -1,6 +1,6 @@
 #!/bin/sh
 # Fires after `git merge` (including the merge half of `git pull`).
-. "$(dirname "$0")/lib/check-uv.sh"
-check_uv
+# Advisory only - a missing uv prints a hint but never fails the merge.
+"$(dirname "$0")/lib/check-uv.sh" || true
 
 exit 0

@@ -6,9 +6,9 @@ Dev/prod split: `agent_docs/architecture.md`; per-service detail: `agent_docs/se
 
 ## Commands
 
-- `make init` - first-run ClickHouse role provisioning.
+- `make init` - first-run ClickHouse role provisioning and migration application.
 - `make start` / `make up [SERVICE=x]` - bring up (existing / rebuild+recreate).
-- `make migrate` - apply ClickHouse migrations, explicit-only.
+- `make migrate` - apply ClickHouse migrations; also applied automatically by `make init`, or run standalone after adding a new migration file.
 - `make status` - wait until healthy.
 - `make stop` / `make down [SERVICE=x]` - tear down.
 - `make setup-client` - print CLI-proxy shell/config snippets.
@@ -18,6 +18,7 @@ Dev/prod split: `agent_docs/architecture.md`; per-service detail: `agent_docs/se
 - `make lint` - repo-wide ruff check; always via `runner-linter`, never inline.
 - `make loadtest` - ramping load test; always via `loadtest-runner`, never inline.
 - `make loadtest-fixtures [VOLUME=small|medium|large]` - build fixtures from ClickHouse.
+- `make lock` - regenerate every `services/*/requirements.lock` after a `requirements.txt` edit.
 - `make harness-index` - regenerate `agent_docs/harness-index.md` after any frontmatter change.
 
 ## Python
@@ -29,6 +30,12 @@ Dev/prod split: `agent_docs/architecture.md`; per-service detail: `agent_docs/se
 - Anything touching a `pyproject.toml` dependency (pytest, ruff, any future script needing a third-party package) always runs via `uv run` - never a bare `python3 -m pytest`/manual `pip install`.
 - Stdlib-only scripts (`scripts/*`, `hooks/harness_audit/*`, etc.) stay on plain `python3` - no third-party deps, no `uv run` needed
 - If `uv` isn't installed: `make install-uv`
+
+Service dependency edits are a three-step chain - stopping early leaves the change with no effect anywhere:
+
+1. Edit `services/<svc>/requirements.txt` - direct deps only, keep the `why` comments.
+2. Run `make lock` - regenerates `requirements.lock` (full transitive pin). Images install from the `.lock`, never the `.txt`, so an unlocked edit reaches nothing. Commit both files together - `.githooks/lib/check-lock.sh` fails the commit otherwise.
+3. Hand the rebuild to `dev-ops` - a lock change is a baked-in-file change like any other, so it only reaches a running container via its rebuild. Never rebuild inline instead.
 
 ## Project structure
 
@@ -77,7 +84,7 @@ Check for an owning agent before inline Bash/Read/Grep.
 PROACTIVE (dispatch without being asked):
 
 - `harness-expert` - harness entities, `AGENTS.md`, `agent_docs/*.md`
-- `dev-ops` - services, compose, backups, opt-in stacks
+- `dev-ops` - every `make` target: services, compose, backups, opt-in stacks, one-off tool containers
 - `runner-test` - test runs
 - `runner-linter` - lint runs
 - `loadtest-runner` - load tests
@@ -115,6 +122,7 @@ Skip for a pure analysis/investigation task.
 ## Boundaries & safety
 
 - Git - before any git action, read `agent_docs/git-safety.md` first.
+- Never add a `Co-Authored-By:` trailer to a commit message - not even when a tool/harness default template suggests one.
 - ClickHouse access - before any direct access, read `agent_docs/rules/clickhouse-access.md` first.
 - `litellm` restart/recreate - before touching, read `agent_docs/rules/litellm-ops.md` first.
 - DB/volume wipe or `TRUNCATE` - ask first (`agent_docs/incidents.md`).

@@ -121,8 +121,9 @@ services:
     # from the no-config-volume-mounts convention (same class as alloy's
     # docker.sock below).
     # Broken under the containerd-snapshotter storage driver (Docker Desktop
-    # default / Colima) - kept anyway, see AGENTS.md "cAdvisor container-level
-    # metrics".
+    # default, and the Colima 0.9+/Docker 28+ default too, even without
+    # opting in) - kept anyway, see README.md's "Containers" tab row under
+    # "Troubleshooting" for the symptom and fix.
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: receipt-goblin-cadvisor
     profiles:

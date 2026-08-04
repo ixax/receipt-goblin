@@ -1,9 +1,9 @@
 """Idempotent ClickHouse migration runner - applies every
 services/clickhouse/migrations/*.sql file at most once, then exits.
-Explicit-only: gated behind the `tools` compose profile, so a plain
-`docker compose up` never starts it and no other service `depends_on` it -
-run it via `make migrate` (after `make init` on a fresh clone, or after
-adding a new migration file).
+Gated behind the `tools` compose profile, so a plain `docker compose up`
+never starts it and no other service `depends_on` it.
+Runs automatically at the end of `make init` on a fresh setup.
+Can also be run standalone via `make migrate` after adding a new migration file.
 
 This module never touches ClickHouse users/roles/grants - that's `make
 init`'s job alone (services/init/init_clickhouse_users.py, reading

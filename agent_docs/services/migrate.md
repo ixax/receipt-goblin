@@ -9,4 +9,5 @@ One of five independent services split from a former single `webhook` service, e
   Never touches users/roles/grants (see `agent_docs/services/clickhouse.md`'s `init` section for why that's a separate, `make init`-only concern).
 
 `services/migrate/` has no pytest suite of its own.
-Run `make migrate` to apply, explicit-only.
+Run `make migrate` to apply migrations standalone after adding a new migration file.
+Migrations are also applied automatically at the end of `make init` on a fresh setup.

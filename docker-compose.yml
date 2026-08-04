@@ -307,7 +307,7 @@ services:
     # Prod image is self-contained (config.yml baked in; build context is
     # the repo root - see services/webhook/Dockerfile). docker-compose.dev.yml
     # bind-mounts ./src over /app/src and adds `command: --reload` for live
-    # editing; requirements.txt changes still need a rebuild either way.
+    # editing; dependency changes still need `make lock` plus a rebuild either way.
     build:
       context: .
       dockerfile: services/webhook/Dockerfile
@@ -358,6 +358,8 @@ services:
   autoheal:
     image: willfarrell/autoheal
     container_name: receipt-goblin-autoheal
+    # Real peak ~560KiB; 32m keeps a healthy 58x margin for this tiny bash/docker-cli sidecar.
+    mem_limit: 32m
     restart: always
     logging: *default-logging
     environment:
