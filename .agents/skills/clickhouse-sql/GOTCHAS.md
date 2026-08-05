@@ -61,6 +61,12 @@ Keep each entry a few lines max, no essays.
 - Each `UNION ALL` branch producing a `CAST((...) AS Tuple(f1 T1, f2 Nullable(T2), ...))` row (one tuple-typed "kind" per branch, e.g. `agents_overview.json` panel-100's `lines_raw`) needs every field that doesn't apply to that branch filled in - a bare `NULL` literal there infers as `Nullable(Nothing)`, not the tuple's declared field type, and ClickHouse can reject the `CAST` or silently disagree on the tuple's real per-branch type, breaking `UNION ALL`'s requirement that every branch produce the identical type.
   Fix: cast every not-applicable field explicitly to match the tuple's declared type for that field, e.g. `CAST(NULL AS Nullable(String))`/`CAST(NULL AS Nullable(Int64))` - never a bare `NULL`, and never a `Nullable(T)` that doesn't match the field's own declared `T`.
 
+## Crossed/spurious errors under concurrent `profile_query`/`query` calls
+
+- Running two or more `query`/`profile_query` calls against the shared `mcp-dev` ClickHouse instance at the same time (e.g. two `query-perf-runner` agents launched in parallel for "before"/"after" benchmarking) can surface an error that references an identifier/alias absent from your own SQL entirely (e.g. `Code: 47. DB::Exception: Identifier 'frb.litellm_call_id' cannot be resolved from subquery with name frb` on a query with no `frb` alias anywhere), alongside an `HTTPDriver ... returned response code 404` prefix.
+  This is a crossed/misattributed response under concurrent load, not a bug in the SQL that was actually submitted - confirmed by re-running the exact same resolved SQL alone (no concurrent calls) immediately after, which succeeds with plausible, stable cost numbers.
+  Fix: if a `profile_query`/`query` error names a table/alias/column that doesn't appear in the SQL you sent, don't debug the SQL - re-run the identical call in isolation (no concurrent `query-perf-runner`/other ClickHouse calls in flight) before concluding anything, including before saving a `query_perf.py` "before"/"after" run built on that result.
+
 ## `mcp-dev` SQL validator (`services/mcp-dev/src/server.py`)
 
 - The `;`/keyword/`SYSTEM`/table-function checks scan SQL text with string literals masked out first, via quote-aware `_mask_string_literals` - unmasked, a literal containing `;` (e.g. HTML entities like `&amp;`) or a forbidden-looking word as plain text would false-reject.
