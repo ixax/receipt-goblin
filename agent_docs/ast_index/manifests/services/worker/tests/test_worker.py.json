@@ -1,0 +1,233 @@
+{
+  "path": "services/worker/tests/test_worker.py",
+  "line_count": 177,
+  "module_docstring": "Unit tests for worker.py's _decode_into/_decode_side_into - the\nqueued-payload decode paths that replaced webhook's own inline parsing\n(see worker.py module docstring).\nNo real Redis/ClickHouse - build_event(), the side-channel row-builders,\nand the Prometheus counters are monkeypatched.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 7
+    },
+    {
+      "kind": "import",
+      "module": "pytest",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "from",
+      "module": "src",
+      "names": [
+        "worker"
+      ],
+      "line": 10
+    }
+  ],
+  "module_constants": [],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_reset_decode_failures",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [
+        "pytest.fixture(autouse=True)"
+      ],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 14,
+      "line_end": 19
+    },
+    {
+      "qualname": "test_decode_into_success_appends_message_id_and_built_event",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 22,
+      "line_end": 31
+    },
+    {
+      "qualname": "test_decode_into_unsuccess_bad_json_acks_but_drops_event",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 34,
+      "line_end": 45
+    },
+    {
+      "qualname": "test_decode_into_unsuccess_build_event_raises_acks_but_drops_event",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 48,
+      "line_end": 60
+    },
+    {
+      "qualname": "test_decode_into_unsuccess_missing_event_field_still_tracks_message_id",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 63,
+      "line_end": 72
+    },
+    {
+      "qualname": "test_decode_into_success_one_bad_payload_does_not_drop_others",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 75,
+      "line_end": 88
+    },
+    {
+      "qualname": "_side_buffers",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 91,
+      "line_end": 92
+    },
+    {
+      "qualname": "test_decode_side_into_success_dispatches_git_branch_by_kind",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 95,
+      "line_end": 106
+    },
+    {
+      "qualname": "test_decode_side_into_success_dispatches_plan_proposal_by_kind",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 109,
+      "line_end": 119
+    },
+    {
+      "qualname": "test_decode_side_into_success_dispatches_litellm_alert_by_kind",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 122,
+      "line_end": 132
+    },
+    {
+      "qualname": "test_decode_side_into_unsuccess_unknown_kind_acks_but_drops_row",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 135,
+      "line_end": 142
+    },
+    {
+      "qualname": "test_decode_side_into_unsuccess_bad_json_acks_but_drops_row",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 145,
+      "line_end": 152
+    },
+    {
+      "qualname": "test_decode_side_into_unsuccess_missing_event_field_still_tracks_message_id",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 155,
+      "line_end": 162
+    },
+    {
+      "qualname": "test_decode_side_into_success_one_bad_entry_does_not_drop_others",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 165,
+      "line_end": 177
+    }
+  ],
+  "sha256": "4d89ceb23bf03873351269e5a54b7207b7a38ca0f576ff0273f1b1e70b2a47c5"
+}

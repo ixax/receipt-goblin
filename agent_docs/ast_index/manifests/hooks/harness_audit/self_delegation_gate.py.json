@@ -1,0 +1,102 @@
+{
+  "path": "hooks/harness_audit/self_delegation_gate.py",
+  "line_count": 119,
+  "module_docstring": "PreToolUse hook: deny open-ended read-only research (Grep, Glob, and\ninvestigation-shaped Bash) when issued directly by the main agent instead\nof delegated to code-locator/Explore/script-ops.\nStdlib only.\n\nRoot cause this fixes: delegation of read-only research to script-ops/\ncode-locator/Explore was purely advisory.\nIt was one AGENTS.md bullet plus prose in the agents' own descriptions, with\nno mechanical enforcement.\n`.claude/settings.local.json` pre-allows many of these commands\n(`git status*`, `git diff*`, `git log*`, `ls*`, `find*`, `grep*`) with zero\nfriction, so nothing stopped the main agent from just running them inline.\n\nWire in .claude/settings.json:\n  \"PreToolUse\": [\n    {\"matcher\": \"Grep|Glob\",\n     \"hooks\": [{\"type\": \"command\",\n                \"command\": \"uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/self_delegation_gate.py\"\"}]},\n    {\"matcher\": \"Bash\",\n     \"hooks\": [..., {\"type\": \"command\",\n                \"command\": \"uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/self_delegation_gate.py\"\"}]}\n  ]\n\nScope guard: fires only for the main agent's own tool calls.\n`transcript_path` is NOT the signal - it's identical (the top-level\nsession file) whether the call came from the main agent or a subagent,\nconfirmed by logging a live payload from each.\nThe actual signal is `agent_id`/`agent_type`: present only when a\nTask/Agent-tool-spawned subagent issues the call, absent for the main\nagent's own calls.\nscript-ops needs Bash, code-locator/Explore need Grep/Glob, so any call\ncarrying `agent_id` is allowed unconditionally.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 35
+    },
+    {
+      "kind": "import",
+      "module": "re",
+      "names": [],
+      "line": 36
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 37
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "GREP_GLOB_MESSAGE",
+      "line": 39
+    },
+    {
+      "name": "BASH_MESSAGE",
+      "line": 45
+    },
+    {
+      "name": "DENYLIST",
+      "line": 51
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "ls_recursive",
+      "signature": "(command: str) -> bool",
+      "args": [
+        {
+          "name": "command",
+          "annotation": "str"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": "`ls -R`/`ls -lR` (recursive listing) only - plain `ls` stays allowed.",
+      "is_async": false,
+      "line_start": 60,
+      "line_end": 69
+    },
+    {
+      "qualname": "cat_multi_file",
+      "signature": "(command: str) -> bool",
+      "args": [
+        {
+          "name": "command",
+          "annotation": "str"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": "Multi-file `cat` dump (2+ file args) - a single `cat file` stays allowed.",
+      "is_async": false,
+      "line_start": 72,
+      "line_end": 81
+    },
+    {
+      "qualname": "bash_denylisted",
+      "signature": "(command: str) -> bool",
+      "args": [
+        {
+          "name": "command",
+          "annotation": "str"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 84,
+      "line_end": 87
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> int",
+      "args": [],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 90,
+      "line_end": 115
+    }
+  ],
+  "sha256": "34974b03bf00137ec1066529b9685b59e6244f7337e12319734173abf92fb48d"
+}

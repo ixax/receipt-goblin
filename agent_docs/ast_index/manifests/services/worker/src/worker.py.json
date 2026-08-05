@@ -1,0 +1,412 @@
+{
+  "path": "services/worker/src/worker.py",
+  "line_count": 285,
+  "module_docstring": "Drains the raw StandardLoggingPayloads webhook (server.py) enqueues\nunmodified, calls build_event() on each one here (the CPU-bound parsing -\nregex classification, message scanning, JSON work - kept off webhook's own\nrequest path on purpose), and writes the results into ClickHouse in\nbatches via ingest_events_batch(), so ClickHouse sees a handful of large\ninserts instead of many small ones per request.\nAlso drains a second, low-volume side-channel stream (session-git-branch,\nplan-proposal, LiteLLM native alerts) in the same XREADGROUP call - see\ncommon.side_ingest and queue.yml.\nSee AGENTS.md.\n\nRuns as its own process (`python -m src.worker`), not through FastAPI/uvicorn.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 14
+    },
+    {
+      "kind": "import",
+      "module": "socket",
+      "names": [],
+      "line": 15
+    },
+    {
+      "kind": "import",
+      "module": "time",
+      "names": [],
+      "line": 16
+    },
+    {
+      "kind": "from",
+      "module": "datetime",
+      "names": [
+        "datetime",
+        "timezone"
+      ],
+      "line": 17
+    },
+    {
+      "kind": "import",
+      "module": "redis",
+      "names": [],
+      "line": 19
+    },
+    {
+      "kind": "from",
+      "module": "common",
+      "names": [
+        "fastjson"
+      ],
+      "line": 20
+    },
+    {
+      "kind": "from",
+      "module": "common.config.queue",
+      "names": [
+        "BATCH_SIZE",
+        "CONSUMER_GROUP",
+        "FLUSH_INTERVAL_MS",
+        "SIDE_STREAM_KEY",
+        "STALE_IDLE_MS",
+        "STREAM_KEY"
+      ],
+      "line": 21
+    },
+    {
+      "kind": "from",
+      "module": "common.ingest_db",
+      "names": [
+        "clickhouse_alive",
+        "get_client",
+        "ingest_events_batch"
+      ],
+      "line": 29
+    },
+    {
+      "kind": "from",
+      "module": "common.ingest_parsing",
+      "names": [
+        "build_event"
+      ],
+      "line": 30
+    },
+    {
+      "kind": "from",
+      "module": "common.logging_config",
+      "names": [
+        "create_logger"
+      ],
+      "line": 31
+    },
+    {
+      "kind": "from",
+      "module": "common.side_ingest",
+      "names": [
+        "_git_branch_row",
+        "_litellm_alert_row",
+        "_plan_proposal_row",
+        "insert_git_branch_batch",
+        "insert_litellm_alert_batch",
+        "insert_plan_proposal_batch"
+      ],
+      "line": 32
+    },
+    {
+      "kind": "from",
+      "module": "prometheus_client",
+      "names": [
+        "Counter",
+        "Gauge",
+        "Histogram",
+        "start_http_server"
+      ],
+      "line": 40
+    },
+    {
+      "kind": "from",
+      "module": ".config",
+      "names": [
+        "WORKER_METRICS_PORT"
+      ],
+      "line": 42
+    },
+    {
+      "kind": "from",
+      "module": ".queue",
+      "names": [
+        "get_redis"
+      ],
+      "line": 43
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "logger",
+      "line": 45
+    },
+    {
+      "name": "CONSUMER_NAME",
+      "line": 47
+    },
+    {
+      "name": "BATCHES_FLUSHED",
+      "line": 51
+    },
+    {
+      "name": "EVENTS_INGESTED",
+      "line": 52
+    },
+    {
+      "name": "ENTRIES_RECLAIMED",
+      "line": 53
+    },
+    {
+      "name": "DECODE_FAILURES",
+      "line": 54
+    },
+    {
+      "name": "FLUSH_LATENCY",
+      "line": 55
+    },
+    {
+      "name": "STREAM_DEPTH",
+      "line": 56
+    },
+    {
+      "name": "PENDING_COUNT",
+      "line": 57
+    },
+    {
+      "name": "SIDE_EVENTS_INGESTED",
+      "line": 63
+    },
+    {
+      "name": "SIDE_DECODE_FAILURES",
+      "line": 64
+    },
+    {
+      "name": "SIDE_STREAM_DEPTH",
+      "line": 65
+    },
+    {
+      "name": "SIDE_PENDING_COUNT",
+      "line": 66
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_ensure_group",
+      "signature": "(client: redis.Redis) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": "redis.Redis"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 69,
+      "line_end": 75
+    },
+    {
+      "qualname": "_check_dependencies",
+      "signature": "(redis_client: redis.Redis) -> None",
+      "args": [
+        {
+          "name": "redis_client",
+          "annotation": "redis.Redis"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "Fails fast (crashes the process) if Redis or ClickHouse aren't\nreachable at startup.\nDeliberately not relying on docker-compose's own `depends_on`\nhealth-gating alone - a scoped `--no-deps` restart of just this service\n(see Makefile) skips that gating entirely, and this service's own\n`restart: always` is what should retry until the dependency comes up,\nnot a silently-stuck consumer loop.",
+      "is_async": false,
+      "line_start": 78,
+      "line_end": 95
+    },
+    {
+      "qualname": "_decode_into",
+      "signature": "(entries: list[tuple[str, dict]], message_ids: list[str], events: list[dict]) -> None",
+      "args": [
+        {
+          "name": "entries",
+          "annotation": "list[tuple[str, dict]]"
+        },
+        {
+          "name": "message_ids",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "events",
+          "annotation": "list[dict]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "Turns each queued raw StandardLoggingPayload into a build_event()\ndict - this is where the CPU-bound parsing webhook itself no longer\ndoes happens.\nOne bad payload (malformed JSON, or an exception inside build_event())\nonly drops that item, same guarantee webhook's own per-payload\ntry/except used to give when it called build_event() itself.",
+      "is_async": false,
+      "line_start": 98,
+      "line_end": 123
+    },
+    {
+      "qualname": "_decode_side_into",
+      "signature": "(entries: list[tuple[str, dict]], message_ids: list[str], git_branch_rows: list[list], plan_proposal_rows: list[list], alert_rows: list[list]) -> None",
+      "args": [
+        {
+          "name": "entries",
+          "annotation": "list[tuple[str, dict]]"
+        },
+        {
+          "name": "message_ids",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "git_branch_rows",
+          "annotation": "list[list]"
+        },
+        {
+          "name": "plan_proposal_rows",
+          "annotation": "list[list]"
+        },
+        {
+          "name": "alert_rows",
+          "annotation": "list[list]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "Side-stream counterpart to _decode_into(): each entry additionally\ncarries a `kind` field (see queue.enqueue_side) that picks which\nrow-builder in common.side_ingest to call.\nOne `now` timestamp per XREADGROUP batch, not per row - these are\nreporting timestamps (when the worker observed the event), not values\nthe caller controls.",
+      "is_async": false,
+      "line_start": 126,
+      "line_end": 160
+    },
+    {
+      "qualname": "_flush",
+      "signature": "(client: redis.Redis, message_ids: list[str], events: list[dict]) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": "redis.Redis"
+        },
+        {
+          "name": "message_ids",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "events",
+          "annotation": "list[dict]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 163,
+      "line_end": 171
+    },
+    {
+      "qualname": "_flush_side",
+      "signature": "(client: redis.Redis, message_ids: list[str], git_branch_rows: list[list], plan_proposal_rows: list[list], alert_rows: list[list]) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": "redis.Redis"
+        },
+        {
+          "name": "message_ids",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "git_branch_rows",
+          "annotation": "list[list]"
+        },
+        {
+          "name": "plan_proposal_rows",
+          "annotation": "list[list]"
+        },
+        {
+          "name": "alert_rows",
+          "annotation": "list[list]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 174,
+      "line_end": 192
+    },
+    {
+      "qualname": "_claim_stale_entries",
+      "signature": "(client: redis.Redis, message_ids: list[str], events: list[dict]) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": "redis.Redis"
+        },
+        {
+          "name": "message_ids",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "events",
+          "annotation": "list[dict]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 195,
+      "line_end": 203
+    },
+    {
+      "qualname": "_claim_stale_side_entries",
+      "signature": "(client: redis.Redis, message_ids: list[str], git_branch_rows: list[list], plan_proposal_rows: list[list], alert_rows: list[list]) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": "redis.Redis"
+        },
+        {
+          "name": "message_ids",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "git_branch_rows",
+          "annotation": "list[list]"
+        },
+        {
+          "name": "plan_proposal_rows",
+          "annotation": "list[list]"
+        },
+        {
+          "name": "alert_rows",
+          "annotation": "list[list]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 206,
+      "line_end": 217
+    },
+    {
+      "qualname": "_refresh_queue_gauges",
+      "signature": "(client: redis.Redis) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": "redis.Redis"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 220,
+      "line_end": 227
+    },
+    {
+      "qualname": "run",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 230,
+      "line_end": 281
+    }
+  ],
+  "sha256": "26e3314679d6ee88fd3c3144c42b2b348296104862cfa193fe1a0d2dfed040b5"
+}

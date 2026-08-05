@@ -1,0 +1,153 @@
+{
+  "path": "services/_common/tests/test_fastjson.py",
+  "line_count": 86,
+  "module_docstring": "Unit tests for src/fastjson.py - the orjson-backed drop-in-ish\nreplacement for stdlib json used on the hot/full-payload paths (see\nAGENTS.md \"Why a queue in front of ClickHouse\"). Covers the specific\nplaces it deliberately diverges from stdlib json's contract (dumps/dump\nreturn/write bytes, not str) as well as where it must behave identically\n(default= callback, JSONDecodeError being a ValueError subclass so\nexisting `except (TypeError, ValueError):` call sites keep working).",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "io",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "pytest",
+      "names": [],
+      "line": 11
+    },
+    {
+      "kind": "from",
+      "module": "common",
+      "names": [
+        "fastjson"
+      ],
+      "line": 12
+    }
+  ],
+  "module_constants": [],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "test_loads_success_parses_bytes",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 18,
+      "line_end": 19
+    },
+    {
+      "qualname": "test_loads_success_parses_str",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 22,
+      "line_end": 23
+    },
+    {
+      "qualname": "test_loads_unsuccess_invalid_json_raises_value_error",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 26,
+      "line_end": 30
+    },
+    {
+      "qualname": "test_load_success_reads_from_binary_file_object",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 33,
+      "line_end": 35
+    },
+    {
+      "qualname": "test_dumps_success_returns_bytes_not_str",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 42,
+      "line_end": 44
+    },
+    {
+      "qualname": "test_dumps_success_roundtrips_through_loads",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 47,
+      "line_end": 49
+    },
+    {
+      "qualname": "test_dumps_unsuccess_unsupported_type_without_default_raises",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 52,
+      "line_end": 55
+    },
+    {
+      "qualname": "test_dumps_success_default_str_handles_unsupported_type",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 58,
+      "line_end": 64
+    },
+    {
+      "qualname": "test_dumps_success_indent_produces_multiline_output",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 67,
+      "line_end": 72
+    },
+    {
+      "qualname": "test_dump_success_writes_bytes_to_binary_file_object",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 75,
+      "line_end": 78
+    },
+    {
+      "qualname": "test_dump_success_forwards_default_and_indent",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 81,
+      "line_end": 86
+    }
+  ],
+  "sha256": "b75836d8c06e76dff77ecf6bad216575948b0dbd32d39e9fc497b238b574be10"
+}

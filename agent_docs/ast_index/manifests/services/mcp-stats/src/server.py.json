@@ -1,0 +1,224 @@
+{
+  "path": "services/mcp-stats/src/server.py",
+  "line_count": 188,
+  "module_docstring": "MCP server exposing pre-built statistics over the agent-tracking\nClickHouse database.\n\nClaude Code talks to it over Streamable HTTP (see `.mcp.json`). Unlike\n`mcp-dev` (arbitrary read-only SQL, dev-only, no auth), this ships in\nproduction alongside `litellm`/`grafana`, so every request (other than\n`/health`/`/metrics`) must carry a valid LiteLLM virtual key - see\n`_virtual_key_is_valid` below, the same check `services/webhook/src/server.py`\nalready uses for its own authenticated routes.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 11
+    },
+    {
+      "kind": "from",
+      "module": "common.litellm_auth",
+      "names": [
+        "virtual_key_is_valid"
+      ],
+      "line": 13
+    },
+    {
+      "kind": "from",
+      "module": "common.logging_config",
+      "names": [
+        "create_logger"
+      ],
+      "line": 14
+    },
+    {
+      "kind": "from",
+      "module": "common.mcp_common",
+      "names": [
+        "ClickHouseClientFactory",
+        "build_transport_security",
+        "make_health_route"
+      ],
+      "line": 15
+    },
+    {
+      "kind": "from",
+      "module": "mcp.server.fastmcp",
+      "names": [
+        "FastMCP"
+      ],
+      "line": 20
+    },
+    {
+      "kind": "from",
+      "module": "prometheus_fastapi_instrumentator",
+      "names": [
+        "Instrumentator"
+      ],
+      "line": 21
+    },
+    {
+      "kind": "from",
+      "module": "starlette.middleware.base",
+      "names": [
+        "BaseHTTPMiddleware"
+      ],
+      "line": 22
+    },
+    {
+      "kind": "from",
+      "module": "starlette.requests",
+      "names": [
+        "Request"
+      ],
+      "line": 23
+    },
+    {
+      "kind": "from",
+      "module": "starlette.responses",
+      "names": [
+        "JSONResponse"
+      ],
+      "line": 24
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "CLICKHOUSE_HOST",
+      "line": 27
+    },
+    {
+      "name": "CLICKHOUSE_PORT",
+      "line": 28
+    },
+    {
+      "name": "CLICKHOUSE_USER",
+      "line": 29
+    },
+    {
+      "name": "CLICKHOUSE_PASSWORD",
+      "line": 30
+    },
+    {
+      "name": "CLICKHOUSE_DATABASE",
+      "line": 31
+    },
+    {
+      "name": "MCP_STATS_PORT",
+      "line": 32
+    },
+    {
+      "name": "LITELLM_BASE_URL",
+      "line": 33
+    },
+    {
+      "name": "LITELLM_MASTER_KEY",
+      "line": 34
+    },
+    {
+      "name": "logger",
+      "line": 36
+    },
+    {
+      "name": "mcp",
+      "line": 38
+    },
+    {
+      "name": "app",
+      "line": 68
+    },
+    {
+      "name": "_ch_factory",
+      "line": 72
+    },
+    {
+      "name": "get_client",
+      "line": 79
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "AuthMiddleware",
+      "line_start": 49,
+      "line_end": 62,
+      "decorators": [],
+      "bases": [
+        "BaseHTTPMiddleware"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "AuthMiddleware.dispatch",
+          "signature": "(self, request: Request, call_next)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "request",
+              "annotation": "Request"
+            },
+            {
+              "name": "call_next",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": true,
+          "line_start": 55,
+          "line_end": 62
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "_virtual_key_is_valid",
+      "signature": "(key: str) -> bool",
+      "args": [
+        {
+          "name": "key",
+          "annotation": "str"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 44,
+      "line_end": 46
+    },
+    {
+      "qualname": "_operation_label",
+      "signature": "(row: dict) -> str",
+      "args": [
+        {
+          "name": "row",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 84,
+      "line_end": 112
+    },
+    {
+      "qualname": "me",
+      "signature": "(session_id: str) -> dict",
+      "args": [
+        {
+          "name": "session_id",
+          "annotation": "str"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [
+        "mcp.tool()"
+      ],
+      "docstring": "Report cost/token spend for the current Claude Code session plus the\nlast 30 days, and the 5 most expensive operations in this session.\n\nsession_id must be the value of the CLAUDE_CODE_SESSION_ID environment\nvariable (read it via a shell command first, then pass it here - this\ntool has no other way to know which session is \"current\").\n\nReturns:\n  session: {cost, input_tokens, output_tokens} summed over every\n    agent_usage row for this session_id (the whole session so far, not\n    just the last N hours).\n  last_30_days: same three fields, summed across all usage (every\n    session/user) in the last 30 days - same semantics whatsup used to\n    report for cost/tokens, just fixed to a 30-day window in this tool.\n  top_operations: up to 5 rows from this session, ordered by cost\n    descending - each one a single agent_usage row (one LiteLLM call),\n    labeled by whichever of command/skill/agent/mcp-tool triggered it,\n    or (joined from agent_events by litellm_call_id) what the call\n    itself did - spawned a subagent, ran a tool, answered plainly, etc.\n    (see _operation_label) - falling back to \"llm:<model>\" only when\n    none of that is available.",
+      "is_async": false,
+      "line_start": 116,
+      "line_end": 188
+    }
+  ],
+  "sha256": "3b644d469075546f060ab774489b4baec932b9bf7d25f08c14dda1f1c1a1957e"
+}

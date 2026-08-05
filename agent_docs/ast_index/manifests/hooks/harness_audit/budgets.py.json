@@ -1,0 +1,15 @@
+{
+  "path": "hooks/harness_audit/budgets.py",
+  "line_count": 13,
+  "module_docstring": "Single source of truth for harness token/line/word budgets.\n\nImported by audit.py. Referenced (not restated) by harness-guardian/SKILL.md\nand harness-expert.md - change numbers here only, never in prose.",
+  "imports": [],
+  "module_constants": [
+    {
+      "name": "BUDGETS",
+      "line": 7
+    }
+  ],
+  "classes": [],
+  "functions": [],
+  "sha256": "565c1c9ba6f2cf68210b12dc8aa17cfcab82c092e875c4a80e25ffc06a4ec825"
+}

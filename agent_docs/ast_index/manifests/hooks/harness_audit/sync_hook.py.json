@@ -1,0 +1,84 @@
+{
+  "path": "hooks/harness_audit/sync_hook.py",
+  "line_count": 59,
+  "module_docstring": "PostToolUse hook: regenerate agent_docs/harness-index.md after a\nSKILL.md/agent body edit. Stdlib only.\n\nWire in .claude/settings.json:\n  \"PostToolUse\": [{\"matcher\": \"Edit|Write\",\n    \"hooks\": [{\"type\": \"command\",\n               \"command\": \"uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/sync_hook.py\"\"}]}]\nExit 2 on regeneration failure (works for agents without Bash).\n\nSeparate from audit_hook.py deliberately - that hook checks budgets, this one\nkeeps the generated index in sync. One hook, one job, per this repo's\nconvention (report_git_branch.py, guard_destructive.py).",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 15
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 16
+    },
+    {
+      "kind": "import",
+      "module": "subprocess",
+      "names": [],
+      "line": 17
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 18
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 19
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "HOOK_DIR",
+      "line": 21
+    },
+    {
+      "name": "REPO_ROOT",
+      "line": 22
+    },
+    {
+      "name": "SYNC_HARNESS_SCRIPT",
+      "line": 23
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "is_index_source",
+      "signature": "(rel: str) -> bool",
+      "args": [
+        {
+          "name": "rel",
+          "annotation": "str"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": "True if rel is one of the files scripts/sync_harness.py derives\nagent_docs/harness-index.md from: any SKILL.md (either CLI's skills tree),\nor a Subagent body under .claude/agents/.",
+      "is_async": false,
+      "line_start": 26,
+      "line_end": 34
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> int",
+      "args": [],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 37,
+      "line_end": 55
+    }
+  ],
+  "sha256": "240df7bf827c51d4b549c5878370ff4b44ae153d486e4bfa7979e6621193ee8b"
+}

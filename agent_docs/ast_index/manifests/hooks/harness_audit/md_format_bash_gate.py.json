@@ -1,0 +1,104 @@
+{
+  "path": "hooks/harness_audit/md_format_bash_gate.py",
+  "line_count": 114,
+  "module_docstring": "PreToolUse hook: same md-format skill gate as md_format_skill_gate.py,\nbut for Bash commands that write a .md/.py/.yml/.yaml file directly\n(heredoc, `>`/`>>` redirection, `tee`) instead of going through the Edit\nor Write tools.\nStdlib only.\n\nRoot cause this fixes: md_format_skill_gate.py only matches the Edit/Write\ntools.\nAn agent with Bash access (most subagents that write docs) can write a\n.md file with `cat > file.md <<EOF ... EOF` and the Edit/Write gate never\nsees the call, so the skill is never enforced.\n\nWire in .claude/settings.json, as a second hook under the existing \"Bash\"\nPreToolUse matcher:\n  \"PreToolUse\": [{\"matcher\": \"Bash\",\n    \"hooks\": [..., {\"type\": \"command\",\n               \"command\": \"uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/md_format_bash_gate.py\"\"}]}]\n\nHeuristic only, deliberately narrow: it looks for an explicit redirection\ntarget (`>`, `>>`, or `tee`) ending in one of the four extensions, and for\n.py/.yml/.yaml only fires when a heredoc body is present and contains a\n2+-line comment run.\nCommands with no matched target (e.g. `sed -i`, `python -c \"...\"`, a\nMakefile recipe) are intentionally left uncovered - broadening this to\ncatch every possible write path risks blocking unrelated Bash commands on\nfalse positives, which is worse than the gap it leaves.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 29
+    },
+    {
+      "kind": "import",
+      "module": "re",
+      "names": [],
+      "line": 30
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 31
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 32
+    },
+    {
+      "kind": "from",
+      "module": "md_format_skill_gate",
+      "names": [
+        "already_read",
+        "has_multiline_comment_block",
+        "under_excluded_dir"
+      ],
+      "line": 36
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "HOOK_DIR",
+      "line": 34
+    },
+    {
+      "name": "TARGET_RE",
+      "line": 42
+    },
+    {
+      "name": "HEREDOC_RE",
+      "line": 46
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "heredoc_body",
+      "signature": "(command: str) -> str",
+      "args": [
+        {
+          "name": "command",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "First heredoc's body text, or \"\" if the command has none.",
+      "is_async": false,
+      "line_start": 49,
+      "line_end": 62
+    },
+    {
+      "qualname": "qualifies",
+      "signature": "(command: str) -> str",
+      "args": [
+        {
+          "name": "command",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Returns the qualifying target path, or \"\" if nothing qualifies.",
+      "is_async": false,
+      "line_start": 65,
+      "line_end": 79
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> int",
+      "args": [],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 82,
+      "line_end": 110
+    }
+  ],
+  "sha256": "1cc54d8c8ab61b8d295a516d6ab2fe0a8b7dc3394ff10bcab5aa5e032fe3a4f5"
+}

@@ -1,0 +1,48 @@
+{
+  "path": "services/_common/src/logging_config.py",
+  "line_count": 14,
+  "module_docstring": "Shared logging setup for every service under services/ - one format/level\nconvention instead of each entrypoint retyping its own basicConfig() call.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "logging",
+      "names": [],
+      "line": 4
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 5
+    },
+    {
+      "kind": "from",
+      "module": "typing",
+      "names": [
+        "Optional"
+      ],
+      "line": 6
+    }
+  ],
+  "module_constants": [],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "create_logger",
+      "signature": "(name: Optional[str]=None) -> logging.Logger",
+      "args": [
+        {
+          "name": "name",
+          "annotation": "Optional[str]"
+        }
+      ],
+      "returns": "logging.Logger",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 9,
+      "line_end": 14
+    }
+  ],
+  "sha256": "1e22e0f3600140b2cddff825d4615d04e679918ed43450b6eb532ecd20a1fac7"
+}

@@ -1,0 +1,43 @@
+{
+  "path": "services/worker/src/queue.py",
+  "line_count": 18,
+  "module_docstring": "Redis Streams consumer side - webhook-worker (worker.py) reads back what\nwebhook (server.py) XADDs unmodified onto the stream.\nSplit out of common/queue_client.py - see\nplans/common-module-cleanup-refactor.md.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "redis",
+      "names": [],
+      "line": 6
+    },
+    {
+      "kind": "from",
+      "module": "common.config.redis",
+      "names": [
+        "REDIS_HOST",
+        "REDIS_PORT"
+      ],
+      "line": 7
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "_sync_client",
+      "line": 9
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "get_redis",
+      "signature": "() -> redis.Redis",
+      "args": [],
+      "returns": "redis.Redis",
+      "decorators": [],
+      "docstring": "Used by webhook-worker - a plain blocking consumer loop, no event\nloop to share. decode_responses=True since it only reads back JSON text.",
+      "is_async": false,
+      "line_start": 12,
+      "line_end": 18
+    }
+  ],
+  "sha256": "0497aaac62774528f1ec8ba1712f6b99e8d7b428bacd738f2685e09ee30a6e1b"
+}

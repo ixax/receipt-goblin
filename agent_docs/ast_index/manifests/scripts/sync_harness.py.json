@@ -1,0 +1,103 @@
+{
+  "path": "scripts/sync_harness.py",
+  "line_count": 115,
+  "module_docstring": "Generate agent_docs/harness-index.md from .claude/agents.\n\nSingle source of truth stays in each agent file's frontmatter.\nThis script only derives an index so a non-Claude CLI (Codex) can discover\nagents without native triggering.\nNever edit the output by hand.\n\nAgents stay .claude-only - Codex has no Task-tool/subagent equivalent to\nscan for.\nSkills are not indexed here: both harnesses discover them natively from\n.agents/skills/ (Codex reads that path directly; Claude Code reads it via\nthe .claude/skills symlink).\n\nUsage:\n  uv run python3 scripts/sync_harness.py           # (re)write the index\n  uv run python3 scripts/sync_harness.py --check   # exit 1 if the index is stale (CI/guardian)",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "re",
+      "names": [],
+      "line": 20
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 21
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 22
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "ROOT",
+      "line": 24
+    },
+    {
+      "name": "AGENTS_DIR",
+      "line": 25
+    },
+    {
+      "name": "OUT",
+      "line": 26
+    },
+    {
+      "name": "HEADER",
+      "line": 28
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "parse_frontmatter",
+      "signature": "(text: str) -> dict",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": "Minimal YAML frontmatter parser: flat keys, plain scalars and >/| blocks.",
+      "is_async": false,
+      "line_start": 37,
+      "line_end": 63
+    },
+    {
+      "qualname": "clean",
+      "signature": "(s: str) -> str",
+      "args": [
+        {
+          "name": "s",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Make a description safe for a one-line markdown table cell.",
+      "is_async": false,
+      "line_start": 66,
+      "line_end": 68
+    },
+    {
+      "qualname": "collect",
+      "signature": "() -> str",
+      "args": [],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 71,
+      "line_end": 92
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> int",
+      "args": [],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 95,
+      "line_end": 111
+    }
+  ],
+  "sha256": "a4ef688fb0cc432c75a0c90c57a1db56f8cb12739f1065d7098f969e9bc0e6ea"
+}

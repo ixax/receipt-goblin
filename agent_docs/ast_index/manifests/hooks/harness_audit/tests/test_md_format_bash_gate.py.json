@@ -1,0 +1,309 @@
+{
+  "path": "hooks/harness_audit/tests/test_md_format_bash_gate.py",
+  "line_count": 97,
+  "module_docstring": "Unit tests for hooks/harness_audit/md_format_bash_gate.py.\nStdlib unittest only.\n\nRun: python3 -m unittest discover -s hooks/harness_audit/tests",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "importlib",
+      "names": [],
+      "line": 7
+    },
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 8
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "unittest",
+      "names": [],
+      "line": 10
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 11
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "HOOK_DIR",
+      "line": 13
+    },
+    {
+      "name": "bash_gate",
+      "line": 15
+    },
+    {
+      "name": "SKILL_READ_ENTRY",
+      "line": 17
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "TestHeredocBody",
+      "line_start": 23,
+      "line_end": 29,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestHeredocBody.test_extracts_body_up_to_terminator",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 24,
+          "line_end": 26
+        },
+        {
+          "qualname": "TestHeredocBody.test_no_heredoc_returns_empty",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 28,
+          "line_end": 29
+        }
+      ]
+    },
+    {
+      "qualname": "TestQualifies",
+      "line_start": 32,
+      "line_end": 54,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestQualifies.test_md_redirect_qualifies",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 33,
+          "line_end": 34
+        },
+        {
+          "qualname": "TestQualifies.test_tee_target_qualifies",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 36,
+          "line_end": 37
+        },
+        {
+          "qualname": "TestQualifies.test_py_heredoc_with_multiline_comment_qualifies",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 39,
+          "line_end": 41
+        },
+        {
+          "qualname": "TestQualifies.test_py_heredoc_without_comment_block_does_not_qualify",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 43,
+          "line_end": 45
+        },
+        {
+          "qualname": "TestQualifies.test_no_redirect_target_does_not_qualify",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 47,
+          "line_end": 48
+        },
+        {
+          "qualname": "TestQualifies.test_plans_dir_md_redirect_does_not_qualify",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 50,
+          "line_end": 51
+        },
+        {
+          "qualname": "TestQualifies.test_plans_dir_tee_does_not_qualify",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 53,
+          "line_end": 54
+        }
+      ]
+    },
+    {
+      "qualname": "TestMain",
+      "line_start": 57,
+      "line_end": 93,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestMain._run",
+          "signature": "(self, command, transcript_lines)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "command",
+              "annotation": null
+            },
+            {
+              "name": "transcript_lines",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 58,
+          "line_end": 81
+        },
+        {
+          "qualname": "TestMain.test_denies_when_unread",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 83,
+          "line_end": 85
+        },
+        {
+          "qualname": "TestMain.test_allows_when_already_read",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 87,
+          "line_end": 89
+        },
+        {
+          "qualname": "TestMain.test_allows_plans_dir_write_even_when_unread",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 91,
+          "line_end": 93
+        }
+      ]
+    }
+  ],
+  "functions": [],
+  "sha256": "a7d7e1a00cb711fc768217df707f2fa6e8983e34ff4a258c173b6105614dc2da"
+}

@@ -470,9 +470,10 @@ Most are covered in more depth elsewhere in this README - follow the section poi
 | `setup-client`             |                                   | Prints shell-export/config-file snippets to route a CLI through the local LiteLLM proxy.                                                 |
 | `test`                     |                                   | Runs both `test-services` and `test-hooks`.                                                                                              |
 | `test-services`            |                                   | Runs service pytest suites (webhook/worker/reparse/loadtest/_common) via `uv run pytest`.                                                |
-| `test-hooks`               |                                   | Runs harness audit unit tests (`hooks/harness_audit/tests`).                                                                             |
+| `test-hooks`               |                                   | Runs harness audit and AST index unit tests (`hooks/harness_audit/tests`, `hooks/ast_index/tests`).                                     |
 | `lint`                     |                                   | Runs `uv run ruff check .` repo-wide - see "Linting".                                                                                    |
 | `lock`                     |                                   | Regenerates every `services/*/requirements.lock` from its `requirements.txt` - see "Service dependencies".                               |
+| `ast-index`                |                                   | Rebuilds `agent_docs/ast_index/` from scratch via Python AST structural analysis.                                                       |
 | `reparse`                  | `SESSION=<session_id>` (required) | Reparses one session's events from `ingest_raw` - see "Debugging ingestion".                                                             |
 | `reparse-all`              |                                   | Reparses every event in `ingest_raw`.                                                                                                    |
 | `loadtest`                 | see "Load testing" below          | Replays captured traffic at a ramping concurrency profile - see "Load testing".                                                          |

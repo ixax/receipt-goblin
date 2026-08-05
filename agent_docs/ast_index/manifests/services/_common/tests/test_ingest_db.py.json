@@ -1,0 +1,499 @@
+{
+  "path": "services/_common/tests/test_ingest_db.py",
+  "line_count": 358,
+  "module_docstring": "Unit tests for ingest_db.py's ClickHouse-touching functions -\ningest_events_batch (runs in webhook-worker, takes build_event() outputs\nread back off Redis and inserts them with one client.insert() per table).\nUses a fake in-memory client throughout; no real ClickHouse connection.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 6
+    },
+    {
+      "kind": "from",
+      "module": "datetime",
+      "names": [
+        "datetime",
+        "timezone"
+      ],
+      "line": 7
+    },
+    {
+      "kind": "from",
+      "module": "common",
+      "names": [
+        "ingest_db"
+      ],
+      "line": 9
+    },
+    {
+      "kind": "from",
+      "module": "common.ingest_parsing",
+      "names": [
+        "build_event"
+      ],
+      "line": 10
+    },
+    {
+      "kind": "from",
+      "module": "conftest",
+      "names": [
+        "load_capture"
+      ],
+      "line": 11
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "_FAKE_TABLE_COLUMNS",
+      "line": 16
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "_FakeClient",
+      "line_start": 43,
+      "line_end": 64,
+      "decorators": [],
+      "bases": [],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "_FakeClient.__init__",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 44,
+          "line_end": 46
+        },
+        {
+          "qualname": "_FakeClient.insert",
+          "signature": "(self, table, rows, column_names, column_type_names=None)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "table",
+              "annotation": null
+            },
+            {
+              "name": "rows",
+              "annotation": null
+            },
+            {
+              "name": "column_names",
+              "annotation": null
+            },
+            {
+              "name": "column_type_names",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 48,
+          "line_end": 49
+        },
+        {
+          "qualname": "_FakeClient.query",
+          "signature": "(self, query, parameters=None, **kwargs)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "query",
+              "annotation": null
+            },
+            {
+              "name": "parameters",
+              "annotation": null
+            },
+            {
+              "name": "**kwargs",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 51,
+          "line_end": 64
+        }
+      ]
+    },
+    {
+      "qualname": "_PoisonRowClient",
+      "line_start": 135,
+      "line_end": 151,
+      "decorators": [],
+      "bases": [
+        "_FakeClient"
+      ],
+      "docstring": "Rejects the whole-batch agent_usage insert (like a real UInt32\nrange violation) but accepts single-row inserts for every row except\nthe one belonging to poison_call_id - mirrors what ClickHouse actually\ndoes: the bad row sinks a bulk insert, individual rows recover.",
+      "methods": [
+        {
+          "qualname": "_PoisonRowClient.__init__",
+          "signature": "(self, poison_call_id)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "poison_call_id",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 140,
+          "line_end": 142
+        },
+        {
+          "qualname": "_PoisonRowClient.insert",
+          "signature": "(self, table, rows, column_names, column_type_names=None)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "table",
+              "annotation": null
+            },
+            {
+              "name": "rows",
+              "annotation": null
+            },
+            {
+              "name": "column_names",
+              "annotation": null
+            },
+            {
+              "name": "column_type_names",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 144,
+          "line_end": 151
+        }
+      ]
+    },
+    {
+      "qualname": "_EventuallyResolvingClient",
+      "line_start": 207,
+      "line_end": 231,
+      "decorators": [],
+      "bases": [
+        "_FakeClient"
+      ],
+      "docstring": "Returns a blank agent_invocations lookup for its first `blank_calls`\nquery()s, then a real row - simulates the spawn row committing a beat\nafter the child's first call is processed.",
+      "methods": [
+        {
+          "qualname": "_EventuallyResolvingClient.__init__",
+          "signature": "(self, blank_calls, subagent_type, agent_version)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "blank_calls",
+              "annotation": null
+            },
+            {
+              "name": "subagent_type",
+              "annotation": null
+            },
+            {
+              "name": "agent_version",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 212,
+          "line_end": 216
+        },
+        {
+          "qualname": "_EventuallyResolvingClient.query",
+          "signature": "(self, query, parameters=None, **kwargs)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "query",
+              "annotation": null
+            },
+            {
+              "name": "parameters",
+              "annotation": null
+            },
+            {
+              "name": "**kwargs",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 218,
+          "line_end": 231
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "_describe_table_result",
+      "signature": "(query)",
+      "args": [
+        {
+          "name": "query",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 30,
+      "line_end": 40
+    },
+    {
+      "qualname": "test_ingest_events_batch_success_issues_one_insert_per_table",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 67,
+      "line_end": 87
+    },
+    {
+      "qualname": "test_ingest_events_batch_success_dedups_dimension_rows_by_id",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 90,
+      "line_end": 106
+    },
+    {
+      "qualname": "test_ingest_events_batch_success_resolves_and_dedups_client_rows",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 109,
+      "line_end": 127
+    },
+    {
+      "qualname": "test_ingest_events_batch_unsuccess_empty_list_skips_client_entirely",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 130,
+      "line_end": 132
+    },
+    {
+      "qualname": "test_ingest_events_batch_unsuccess_poison_row_isolated_to_ingest_dlq",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 154,
+      "line_end": 179
+    },
+    {
+      "qualname": "test_ingest_events_batch_resolves_agent_fields_from_same_batch_spawn",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 182,
+      "line_end": 204
+    },
+    {
+      "qualname": "test_ingest_events_batch_resolves_agent_fields_via_retry_on_cross_batch_miss",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 234,
+      "line_end": 249
+    },
+    {
+      "qualname": "test_ingest_events_batch_falls_back_to_blank_after_retries_exhausted",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 252,
+      "line_end": 265
+    },
+    {
+      "qualname": "test_ingest_events_batch_success_backfills_skill_version_from_sibling_event",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 268,
+      "line_end": 303
+    },
+    {
+      "qualname": "test_replay_dlq_row_success_reinserts_into_the_named_stage",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 306,
+      "line_end": 324
+    },
+    {
+      "qualname": "test_replay_dlq_row_unsuccess_unknown_stage_raises",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 327,
+      "line_end": 336
+    },
+    {
+      "qualname": "test_mark_dlq_rows_resolved_success_inserts_one_row_per_marker",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 339,
+      "line_end": 349
+    },
+    {
+      "qualname": "test_mark_dlq_rows_resolved_unsuccess_empty_list_skips_insert",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 352,
+      "line_end": 358
+    }
+  ],
+  "sha256": "452f5827bab619e877caacad474c9e226b3b9a9b5ced65f8a8eefc747e1e4bde"
+}

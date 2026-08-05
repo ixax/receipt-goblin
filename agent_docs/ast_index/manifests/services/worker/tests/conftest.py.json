@@ -1,0 +1,44 @@
+{
+  "path": "services/worker/tests/conftest.py",
+  "line_count": 21,
+  "module_docstring": null,
+  "imports": [
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 1
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 2
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 3
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "_service_dir",
+      "line": 15
+    },
+    {
+      "name": "_services_dir",
+      "line": 16
+    },
+    {
+      "name": "_new_path",
+      "line": 19
+    }
+  ],
+  "classes": [],
+  "functions": [],
+  "sha256": "345765178430fe84538abb3ab249bf50a966c20e52d9c7ecf26e5a9606162632"
+}

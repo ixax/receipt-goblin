@@ -1,0 +1,100 @@
+{
+  "path": "hooks/harness_audit/comment_format.py",
+  "line_count": 89,
+  "module_docstring": "Flag comment/docstring lines in .py/.yml/.yaml files that violate\nmd-format's one-sentence-per-line rule (two sentences hard-wrapped onto\nthe same line). Stdlib only. Same heuristic as audit.py's markdown check,\napplied to code comments instead of markdown prose.\n\nUsage: uv run python3 comment_format.py <file> [<file> ...]\nExit 0 = clean, 1 = violations found.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "re",
+      "names": [],
+      "line": 10
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 11
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "MULTI_SENTENCE_PATTERN",
+      "line": 13
+    },
+    {
+      "name": "TRIPLE_QUOTE",
+      "line": 14
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "comment_lines_in_text",
+      "signature": "(text: str, is_py: bool)",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        },
+        {
+          "name": "is_py",
+          "annotation": "bool"
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": "Yield (lineno, text) for whole-line '#' comments and, for Python,\nthe inner lines of triple-quoted docstrings (single- or multi-line).\nlineno is 1-based within `text`, not necessarily the file's real line\nnumber - callers that pass a snippet (e.g. an Edit's new_string) get\nsnippet-relative numbers, which is fine since this is just for the\nviolation message excerpt.",
+      "is_async": false,
+      "line_start": 17,
+      "line_end": 58
+    },
+    {
+      "qualname": "check_file",
+      "signature": "(path: str)",
+      "args": [
+        {
+          "name": "path",
+          "annotation": "str"
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 61,
+      "line_end": 65
+    },
+    {
+      "qualname": "check_text",
+      "signature": "(text: str, is_py: bool)",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        },
+        {
+          "name": "is_py",
+          "annotation": "bool"
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 68,
+      "line_end": 72
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> int",
+      "args": [],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 75,
+      "line_end": 85
+    }
+  ],
+  "sha256": "0cf49703d8ae264b7aab04064980ee4050352ebd872210444ea0c6be5b54bd5f"
+}

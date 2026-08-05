@@ -1,0 +1,104 @@
+{
+  "path": "hooks/harness_audit/audit_hook.py",
+  "line_count": 98,
+  "module_docstring": "PostToolUse hook: run harness audit when a harness file is edited. Stdlib only.\n\nWire in .claude/settings.json:\n  \"PostToolUse\": [{\"matcher\": \"Edit|Write\",\n    \"hooks\": [{\"type\": \"command\",\n               \"command\": \"uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/audit_hook.py\"\"}]}]\nExit 2 feeds violations back to the editing agent (works for agents without Bash).\n\nIndex regeneration (agent_docs/harness-index.md) is a separate concern, its\nown hook: sync_hook.py.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 13
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 14
+    },
+    {
+      "kind": "import",
+      "module": "subprocess",
+      "names": [],
+      "line": 15
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 16
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 17
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "HOOK_DIR",
+      "line": 19
+    },
+    {
+      "name": "AUDIT_SCRIPT",
+      "line": 20
+    },
+    {
+      "name": "GLOBAL_VIOLATION_PREFIXES",
+      "line": 50
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "is_harness_path",
+      "signature": "(rel: str) -> bool",
+      "args": [
+        {
+          "name": "rel",
+          "annotation": "str"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": "True if rel is under either CLI's harness tree, under agent_docs/ (deep-dive\ndocs harness-expert owns), is an AGENTS.md/CLAUDE.md anywhere, or is any other\nmarkdown file in the repo.\nAny other .md file gets audit.py's \"other_md\" kind - md-format's one-sentence-\nper-line and dead-reference checks, no token budget.\nDual-harness aware - this repo tracks .claude/, .agents/, and .codex/ equally.",
+      "is_async": false,
+      "line_start": 23,
+      "line_end": 39
+    },
+    {
+      "qualname": "relevant_violations",
+      "signature": "(report: str, rel: str)",
+      "args": [
+        {
+          "name": "report",
+          "annotation": "str"
+        },
+        {
+          "name": "rel",
+          "annotation": "str"
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 53,
+      "line_end": 67
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> int",
+      "args": [],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 70,
+      "line_end": 94
+    }
+  ],
+  "sha256": "f1ac87c97e4d05832422703c90871a5822c18d082560fb958c1f817974fce60d"
+}

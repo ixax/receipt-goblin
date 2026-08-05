@@ -1,0 +1,93 @@
+{
+  "path": "scripts/resolve_image_version.py",
+  "line_count": 68,
+  "module_docstring": "Resolves VERSIONS.yml's per-image-group version templates into concrete\nvalues, substituting `{build}` with the current commit's short git hash\n(templates without `{build}` pass through unchanged - see VERSIONS.yml's own\ncomment for why). No PyYAML dependency: VERSIONS.yml is a flat `key: value`\nmapping by design, parsed line-by-line rather than pulling in a real YAML\nparser for something this simple.\n\nEvery key in VERSIONS.yml is spelled as the exact shell variable it exports -\n`WEBHOOK_TAG`, `CLICKHOUSE_VERSION`, etc. - so there is no separate name\ntransform to apply here; the key *is* the var name.\n\nTwo call shapes, both used by the Makefile (see `check-env`/`build`):\n  resolve_image_version.py            -> prints \"export FOO=...\" for every\n                                    key, one per line, for `$(eval $(shell ...))`\n  resolve_image_version.py <key>      -> prints just that key's resolved value,\n                                    e.g. for a one-off lookup outside Make.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "pathlib",
+      "names": [],
+      "line": 19
+    },
+    {
+      "kind": "import",
+      "module": "subprocess",
+      "names": [],
+      "line": 20
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 21
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "VERSION_FILE",
+      "line": 23
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "git_hash",
+      "signature": "() -> str",
+      "args": [],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 26,
+      "line_end": 33
+    },
+    {
+      "qualname": "load_versions",
+      "signature": "(path: pathlib.Path) -> dict[str, str]",
+      "args": [
+        {
+          "name": "path",
+          "annotation": "pathlib.Path"
+        }
+      ],
+      "returns": "dict[str, str]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 36,
+      "line_end": 44
+    },
+    {
+      "qualname": "resolve",
+      "signature": "(template: str, build_hash: str) -> str",
+      "args": [
+        {
+          "name": "template",
+          "annotation": "str"
+        },
+        {
+          "name": "build_hash",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 47,
+      "line_end": 48
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 51,
+      "line_end": 64
+    }
+  ],
+  "sha256": "189116290937c3fa1f650811e9c631c6bf219bb423e9a7183d2327edb59f6df8"
+}

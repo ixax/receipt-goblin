@@ -1,0 +1,118 @@
+{
+  "path": "hooks/report_git_branch.py",
+  "line_count": 83,
+  "module_docstring": "SessionStart/CwdChanged hook (Claude Code; SessionStart only for Codex\nCLI - see .claude/settings.json / .codex/hooks.json): reports the session's\ngit branch/repo to the webhook. Must never raise on git/network failures\n(swallowed, logged to stderr), but missing tracking env vars are a\nmisconfiguration and are allowed to crash the hook rather than fall back\nsilently.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 10
+    },
+    {
+      "kind": "import",
+      "module": "subprocess",
+      "names": [],
+      "line": 11
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 12
+    },
+    {
+      "kind": "import",
+      "module": "urllib.request",
+      "names": [],
+      "line": 13
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "INGEST_API_URL",
+      "line": 15
+    },
+    {
+      "name": "LITELLM_VIRTUAL_KEY",
+      "line": 17
+    },
+    {
+      "name": "REQUEST_TIMEOUT",
+      "line": 18
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_run_git",
+      "signature": "(cwd: str, *args: str) -> str",
+      "args": [
+        {
+          "name": "cwd",
+          "annotation": "str"
+        },
+        {
+          "name": "*args",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 21,
+      "line_end": 31
+    },
+    {
+      "qualname": "_current_branch",
+      "signature": "(cwd: str) -> str",
+      "args": [
+        {
+          "name": "cwd",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 34,
+      "line_end": 35
+    },
+    {
+      "qualname": "_current_repo",
+      "signature": "(cwd: str) -> str",
+      "args": [
+        {
+          "name": "cwd",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 38,
+      "line_end": 47
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 50,
+      "line_end": 78
+    }
+  ],
+  "sha256": "33d04180f07149802afa16f96e6b77ec8ff54f63553facd6f1d94a7611a62e95"
+}

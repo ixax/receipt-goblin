@@ -1,0 +1,930 @@
+{
+  "path": "hooks/harness_audit/tests/test_audit.py",
+  "line_count": 339,
+  "module_docstring": "Unit tests for hooks/harness_audit/audit.py. Stdlib unittest only - no pytest\ndependency, matching audit.py's own \"stdlib only\" design so this hook never\nneeds a venv.\n\nRun: python3 -m unittest discover -s hooks/harness_audit/tests",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "importlib",
+      "names": [],
+      "line": 8
+    },
+    {
+      "kind": "import",
+      "module": "io",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 10
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 11
+    },
+    {
+      "kind": "import",
+      "module": "tempfile",
+      "names": [],
+      "line": 12
+    },
+    {
+      "kind": "import",
+      "module": "unittest",
+      "names": [],
+      "line": 13
+    },
+    {
+      "kind": "from",
+      "module": "contextlib",
+      "names": [
+        "redirect_stdout"
+      ],
+      "line": 14
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 15
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "HOOK_DIR",
+      "line": 17
+    },
+    {
+      "name": "audit",
+      "line": 19
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "TestTokensAndWords",
+      "line_start": 27,
+      "line_end": 52,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestTokensAndWords.test_tokens_strips_comments",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 28,
+          "line_end": 32
+        },
+        {
+          "qualname": "TestTokensAndWords.test_tokens_roughly_bytes_over_four",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 34,
+          "line_end": 36
+        },
+        {
+          "qualname": "TestTokensAndWords.test_description_words_block_scalar",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 38,
+          "line_end": 49
+        },
+        {
+          "qualname": "TestTokensAndWords.test_description_words_no_frontmatter",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 51,
+          "line_end": 52
+        }
+      ]
+    },
+    {
+      "qualname": "TestRuleFunctions",
+      "line_start": 55,
+      "line_end": 167,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": "Each check_* rule in audit.py is a pure function of its arguments -\nno filesystem, no shared state - so it's tested directly here instead\nof only indirectly through main().",
+      "methods": [
+        {
+          "qualname": "TestRuleFunctions.test_check_token_budget_over",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 60,
+          "line_end": 64
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_token_budget_under",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 66,
+          "line_end": 67
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_token_budget_ignores_other_kinds",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 69,
+          "line_end": 71
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_skill_line_budget_over",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 73,
+          "line_end": 77
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_skill_line_budget_ignores_non_skill",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 79,
+          "line_end": 81
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_description_word_budget_over",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 83,
+          "line_end": 88
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_description_word_budget_ignores_other_kinds",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 90,
+          "line_end": 93
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_volatile_content_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 95,
+          "line_end": 98
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_volatile_content_skips_symlink",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 100,
+          "line_end": 102
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_one_sentence_per_line_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 104,
+          "line_end": 108
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_one_sentence_per_line_ignores_unlisted_kind",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 110,
+          "line_end": 112
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_dead_references_flags_missing",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 114,
+          "line_end": 118
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_dead_references_skips_existing",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 120,
+          "line_end": 123
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_dead_references_skips_thoughts_prefix",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 125,
+          "line_end": 128
+        },
+        {
+          "qualname": "TestRuleFunctions.test_rule_candidate_lines_skips_other_md",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 130,
+          "line_end": 132
+        },
+        {
+          "qualname": "TestRuleFunctions.test_rule_candidate_lines_collects_bullets",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 134,
+          "line_end": 139
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_duplicate_rules_flags_shared_line",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 141,
+          "line_end": 145
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_agents_chain_budget_over",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 147,
+          "line_end": 151
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_agents_chain_budget_symlink_excluded",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 153,
+          "line_end": 156
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_claude_agents_pairing_flags_both_present",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 158,
+          "line_end": 162
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_claude_agents_pairing_symlink_not_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 164,
+          "line_end": 167
+        }
+      ]
+    },
+    {
+      "qualname": "TestCollectAndMain",
+      "line_start": 170,
+      "line_end": 335,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestCollectAndMain.setUp",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 171,
+          "line_end": 175
+        },
+        {
+          "qualname": "TestCollectAndMain.tearDown",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 177,
+          "line_end": 179
+        },
+        {
+          "qualname": "TestCollectAndMain.run_main",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 181,
+          "line_end": 185
+        },
+        {
+          "qualname": "TestCollectAndMain.test_clean_repo_exits_zero",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 187,
+          "line_end": 191
+        },
+        {
+          "qualname": "TestCollectAndMain.test_root_md_over_budget_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 193,
+          "line_end": 197
+        },
+        {
+          "qualname": "TestCollectAndMain.test_nested_md_uses_nested_budget",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 199,
+          "line_end": 203
+        },
+        {
+          "qualname": "TestCollectAndMain.test_skill_over_line_budget_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 205,
+          "line_end": 210
+        },
+        {
+          "qualname": "TestCollectAndMain.test_description_over_word_budget_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 212,
+          "line_end": 218
+        },
+        {
+          "qualname": "TestCollectAndMain.test_volatile_content_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 220,
+          "line_end": 224
+        },
+        {
+          "qualname": "TestCollectAndMain.test_duplicate_rule_flagged_across_files",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 226,
+          "line_end": 232
+        },
+        {
+          "qualname": "TestCollectAndMain.test_dead_reference_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 234,
+          "line_end": 238
+        },
+        {
+          "qualname": "TestCollectAndMain.test_live_reference_not_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 240,
+          "line_end": 244
+        },
+        {
+          "qualname": "TestCollectAndMain.test_agents_and_claude_skill_symlink_deduped",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 246,
+          "line_end": 254
+        },
+        {
+          "qualname": "TestCollectAndMain.test_agents_only_skill_still_picked_up",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 256,
+          "line_end": 260
+        },
+        {
+          "qualname": "TestCollectAndMain.test_claude_md_agents_md_separate_files_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 262,
+          "line_end": 267
+        },
+        {
+          "qualname": "TestCollectAndMain.test_claude_md_symlink_to_agents_md_not_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 269,
+          "line_end": 273
+        },
+        {
+          "qualname": "TestCollectAndMain.test_agent_docs_md_classified_as_deep_dive",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 275,
+          "line_end": 278
+        },
+        {
+          "qualname": "TestCollectAndMain.test_harness_index_excluded_from_classification",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 280,
+          "line_end": 283
+        },
+        {
+          "qualname": "TestCollectAndMain.test_root_readme_classified_as_other_md",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 285,
+          "line_end": 288
+        },
+        {
+          "qualname": "TestCollectAndMain.test_other_md_has_no_token_budget",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 290,
+          "line_end": 293
+        },
+        {
+          "qualname": "TestCollectAndMain.test_other_md_multi_sentence_line_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 295,
+          "line_end": 302
+        },
+        {
+          "qualname": "TestCollectAndMain.test_deep_dive_dead_reference_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 304,
+          "line_end": 308
+        },
+        {
+          "qualname": "TestCollectAndMain.test_deep_dive_has_no_token_budget",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 310,
+          "line_end": 313
+        },
+        {
+          "qualname": "TestCollectAndMain.test_multi_sentence_line_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 315,
+          "line_end": 323
+        },
+        {
+          "qualname": "TestCollectAndMain.test_multi_sentence_skips_frontmatter_and_code_and_lists",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 325,
+          "line_end": 335
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "write",
+      "signature": "(path: Path, content: str) -> None",
+      "args": [
+        {
+          "name": "path",
+          "annotation": "Path"
+        },
+        {
+          "name": "content",
+          "annotation": "str"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 22,
+      "line_end": 24
+    }
+  ],
+  "sha256": "8fe1425cafc10cc1c468869ccedd9298a9429d0ba4302244f744e2b0c826fa08"
+}

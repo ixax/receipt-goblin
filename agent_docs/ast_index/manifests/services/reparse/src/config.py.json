@@ -1,0 +1,34 @@
+{
+  "path": "services/reparse/src/config.py",
+  "line_count": 6,
+  "module_docstring": null,
+  "imports": [
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 1
+    },
+    {
+      "kind": "import",
+      "module": "yaml",
+      "names": [],
+      "line": 3
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "_config",
+      "line": 5
+    },
+    {
+      "name": "REPARSE_CHUNK_SIZE",
+      "line": 6
+    }
+  ],
+  "classes": [],
+  "functions": [],
+  "sha256": "a85b3712b2b43e2d10789bee736e25eb4dab8c15f8beea4c1bab8457c2e5cc31"
+}

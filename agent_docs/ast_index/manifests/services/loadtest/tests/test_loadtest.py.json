@@ -1,0 +1,130 @@
+{
+  "path": "services/loadtest/tests/test_loadtest.py",
+  "line_count": 64,
+  "module_docstring": "Unit tests for src/loadtest.py's corpus-loading logic\n(load_session_corpus). Uses synthetic tmp_path fixtures, not the real\nFIXTURES_DIR runtime directory - these tests must stay deterministic and\nindependent of whatever fixtures happen to be generated on a given machine\nat test time.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 7
+    },
+    {
+      "kind": "from",
+      "module": "src",
+      "names": [
+        "loadtest"
+      ],
+      "line": 9
+    }
+  ],
+  "module_constants": [],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_write_event",
+      "signature": "(session_dir, filename, status='success')",
+      "args": [
+        {
+          "name": "session_dir",
+          "annotation": null
+        },
+        {
+          "name": "filename",
+          "annotation": null
+        },
+        {
+          "name": "status",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 12,
+      "line_end": 14
+    },
+    {
+      "qualname": "test_load_session_corpus_success_indexes_all_files_in_a_session",
+      "signature": "(tmp_path)",
+      "args": [
+        {
+          "name": "tmp_path",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 17,
+      "line_end": 28
+    },
+    {
+      "qualname": "test_load_session_corpus_success_computes_real_gaps_between_events",
+      "signature": "(tmp_path)",
+      "args": [
+        {
+          "name": "tmp_path",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 31,
+      "line_end": 40
+    },
+    {
+      "qualname": "test_load_session_corpus_unsuccess_empty_session_dir_is_dropped",
+      "signature": "(tmp_path)",
+      "args": [
+        {
+          "name": "tmp_path",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 43,
+      "line_end": 49
+    },
+    {
+      "qualname": "test_load_session_corpus_success_clamps_gap_to_max_gap_seconds",
+      "signature": "(tmp_path)",
+      "args": [
+        {
+          "name": "tmp_path",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 52,
+      "line_end": 60
+    },
+    {
+      "qualname": "test_load_session_corpus_unsuccess_empty_fixtures_dir_returns_empty_list",
+      "signature": "(tmp_path)",
+      "args": [
+        {
+          "name": "tmp_path",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 63,
+      "line_end": 64
+    }
+  ],
+  "sha256": "1ef21d6bc56e832d85e100d5ec50ee45ee468ba330bb557559f4e7e30e72ccbb"
+}

@@ -1,0 +1,329 @@
+{
+  "path": "hooks/harness_audit/tests/test_sync_hook.py",
+  "line_count": 102,
+  "module_docstring": "Unit tests for hooks/harness_audit/sync_hook.py. Stdlib unittest only.\n\nRun: python3 -m unittest discover -s hooks/harness_audit/tests",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "importlib",
+      "names": [],
+      "line": 6
+    },
+    {
+      "kind": "import",
+      "module": "io",
+      "names": [],
+      "line": 7
+    },
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 8
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "stat",
+      "names": [],
+      "line": 10
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 11
+    },
+    {
+      "kind": "import",
+      "module": "tempfile",
+      "names": [],
+      "line": 12
+    },
+    {
+      "kind": "import",
+      "module": "unittest",
+      "names": [],
+      "line": 13
+    },
+    {
+      "kind": "from",
+      "module": "contextlib",
+      "names": [
+        "redirect_stderr"
+      ],
+      "line": 14
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 15
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "HOOK_DIR",
+      "line": 17
+    },
+    {
+      "name": "sync_hook",
+      "line": 19
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "TestIsIndexSource",
+      "line_start": 22,
+      "line_end": 39,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestIsIndexSource.test_skill_md_matches",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 23,
+          "line_end": 24
+        },
+        {
+          "qualname": "TestIsIndexSource.test_codex_skill_md_matches",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 26,
+          "line_end": 27
+        },
+        {
+          "qualname": "TestIsIndexSource.test_agent_md_matches",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 29,
+          "line_end": 30
+        },
+        {
+          "qualname": "TestIsIndexSource.test_unrelated_claude_md_does_not_match",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 32,
+          "line_end": 33
+        },
+        {
+          "qualname": "TestIsIndexSource.test_agents_md_does_not_match",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 35,
+          "line_end": 36
+        },
+        {
+          "qualname": "TestIsIndexSource.test_unrelated_source_file_does_not_match",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 38,
+          "line_end": 39
+        }
+      ]
+    },
+    {
+      "qualname": "TestMainEndToEnd",
+      "line_start": 42,
+      "line_end": 98,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": "Patches SYNC_HARNESS_SCRIPT to a fake script - never invokes the real\nscripts/sync_harness.py, so these tests never touch this repo's own\nagent_docs/harness-index.md.",
+      "methods": [
+        {
+          "qualname": "TestMainEndToEnd.setUp",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 47,
+          "line_end": 52
+        },
+        {
+          "qualname": "TestMainEndToEnd.tearDown",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 54,
+          "line_end": 57
+        },
+        {
+          "qualname": "TestMainEndToEnd.write_fake_script",
+          "signature": "(self, exit_code: int, stderr: str='') -> Path",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "exit_code",
+              "annotation": "int"
+            },
+            {
+              "name": "stderr",
+              "annotation": "str"
+            }
+          ],
+          "returns": "Path",
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 59,
+          "line_end": 69
+        },
+        {
+          "qualname": "TestMainEndToEnd.run_hook",
+          "signature": "(self, file_path: str)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "file_path",
+              "annotation": "str"
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 71,
+          "line_end": 81
+        },
+        {
+          "qualname": "TestMainEndToEnd.test_non_index_source_exits_zero_without_invoking_script",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 83,
+          "line_end": 86
+        },
+        {
+          "qualname": "TestMainEndToEnd.test_skill_edit_invokes_script_success",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 88,
+          "line_end": 92
+        },
+        {
+          "qualname": "TestMainEndToEnd.test_agent_edit_invokes_script_failure",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 94,
+          "line_end": 98
+        }
+      ]
+    }
+  ],
+  "functions": [],
+  "sha256": "3283adf2c65ed588149f2712c1bead3e0c6f0bf6d7091948f2511f723b1f9b8b"
+}

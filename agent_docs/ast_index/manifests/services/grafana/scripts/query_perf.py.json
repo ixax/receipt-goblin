@@ -1,0 +1,244 @@
+{
+  "path": "services/grafana/scripts/query_perf.py",
+  "line_count": 377,
+  "module_docstring": "Deterministic before/after query-performance benchmarking toolkit for\nservices/grafana/dashboards/agents_overview.json.\n\nExists so that \"how fast is panel X\" / \"did this rewrite actually help\"\nalways gets answered the same way, by the same code, instead of being\nre-derived by an LLM (Grafana macro/variable substitution, run bookkeeping,\ndiff math) on every ask - see the sql-expert agent\n(.claude/agents/sql-expert.md) for the full workflow this supports, and the\nquery-perf-runner agent (.claude/agents/query-perf-runner.md) for who\nactually executes it (this script has no ClickHouse access itself - the\n`profile_query` MCP tool call in between `resolve` and `save-run` is the\none step only an agent can do).\n\nThree subcommands, meant to be chained:\n\n    resolve   dashboard.json [--panels 73,74 | --all] [--hours N] [--var name=value ...] --out resolved.json\n              Deterministic. Extracts each selected panel's rawSql\n              query/queries and substitutes Grafana macros/template\n              variables with concrete literals (see SINGLEQUOTE_VAR_DEFAULTS/\n              BARE_VAR_DEFAULTS below - one fixed table, not re-guessed per\n              call). Writes resolved.json: one entry per (panel, query\n              index) with both raw_sql and resolved_sql, plus any\n              still-unresolved $variable found (which means this table\n              needs a new entry, not that the caller should guess a value).\n\n    save-run  --resolved resolved.json --stats stats.json --label before|after|<anything> --out run.json\n              Deterministic. Merges resolved.json's panel/query identity\n              with stats.json's per-query profile_query results (keyed\n              \"<panel_id>:<query_index>\") into one timestamped run record.\n              stats.json is written by whichever agent actually called\n              `mcp__dev__profile_query` for each resolved_sql - this\n              script never talks to ClickHouse itself.\n\n    diff      run_a.json run_b.json\n              Deterministic. Prints a per-query before/after table (memory,\n              read_rows, read_bytes, duration - absolute and % change) plus\n              a totals row. Exit code is non-zero if run_b.json is not\n              strictly better on every metric summed across all queries -\n              useful as a pass/fail signal, not just a report.\n\n    report    run.json\n              Deterministic. Prints one run's per-query stats with no\n              comparison - for \"what does the dashboard cost right now\",\n              not a before/after ask.\n\nRun artifacts land in .claude/data/query_perf_runs/ (gitignored, and unlike\nthe rest of .claude/data/ - see AGENTS.md - not scratch: these are meant to\npersist and be diffed against later, potentially across sessions) unless\n--out points elsewhere.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "argparse",
+      "names": [],
+      "line": 52
+    },
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 53
+    },
+    {
+      "kind": "import",
+      "module": "re",
+      "names": [],
+      "line": 54
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 55
+    },
+    {
+      "kind": "import",
+      "module": "time",
+      "names": [],
+      "line": 56
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 57
+    },
+    {
+      "kind": "import",
+      "module": "parse_dashboard",
+      "names": [],
+      "line": 60
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "REPO_ROOT",
+      "line": 63
+    },
+    {
+      "name": "RUNS_DIR",
+      "line": 64
+    },
+    {
+      "name": "SINGLEQUOTE_VAR_DEFAULTS",
+      "line": 70
+    },
+    {
+      "name": "BARE_VAR_DEFAULTS",
+      "line": 87
+    },
+    {
+      "name": "DEFAULT_HOURS",
+      "line": 95
+    },
+    {
+      "name": "_TIME_FILTER_RE",
+      "line": 97
+    },
+    {
+      "name": "_SINGLEQUOTE_RE",
+      "line": 98
+    },
+    {
+      "name": "_BARE_VAR_RE",
+      "line": 99
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "resolve_sql",
+      "signature": "(raw_sql: str, hours: int, overrides: dict) -> tuple",
+      "args": [
+        {
+          "name": "raw_sql",
+          "annotation": "str"
+        },
+        {
+          "name": "hours",
+          "annotation": "int"
+        },
+        {
+          "name": "overrides",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "tuple",
+      "decorators": [],
+      "docstring": "Returns (resolved_sql, unresolved_names). unresolved_names is\nnon-empty when the query references a $variable this table doesn't\nknow about - the caller (save-run/the agent) must not silently run\nthat query, since a leftover $name is not valid SQL.",
+      "is_async": false,
+      "line_start": 102,
+      "line_end": 130
+    },
+    {
+      "qualname": "_iter_selected_panels",
+      "signature": "(spec, panel_ids)",
+      "args": [
+        {
+          "name": "spec",
+          "annotation": null
+        },
+        {
+          "name": "panel_ids",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 133,
+      "line_end": 145
+    },
+    {
+      "qualname": "cmd_resolve",
+      "signature": "(args)",
+      "args": [
+        {
+          "name": "args",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 148,
+      "line_end": 207
+    },
+    {
+      "qualname": "cmd_save_run",
+      "signature": "(args)",
+      "args": [
+        {
+          "name": "args",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 210,
+      "line_end": 242
+    },
+    {
+      "qualname": "_query_index",
+      "signature": "(run)",
+      "args": [
+        {
+          "name": "run",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 245,
+      "line_end": 250
+    },
+    {
+      "qualname": "_pct",
+      "signature": "(before, after)",
+      "args": [
+        {
+          "name": "before",
+          "annotation": null
+        },
+        {
+          "name": "after",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 253,
+      "line_end": 256
+    },
+    {
+      "qualname": "cmd_diff",
+      "signature": "(args)",
+      "args": [
+        {
+          "name": "args",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 259,
+      "line_end": 315
+    },
+    {
+      "qualname": "cmd_report",
+      "signature": "(args)",
+      "args": [
+        {
+          "name": "args",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 318,
+      "line_end": 339
+    },
+    {
+      "qualname": "main",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 342,
+      "line_end": 373
+    }
+  ],
+  "sha256": "ad43a832a34f31cc60e802c09fa0d40930a5960504d32f7684562065e0718aaf"
+}

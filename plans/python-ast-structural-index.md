@@ -31,16 +31,17 @@ It never substitutes for `Read` before an `Edit` (verbatim `old_string` needs re
 
 ## Cache format & location
 
-`agent_docs/ast-index/` — **tracked in git**, mirroring the existing `agent_docs/harness-index.md` precedent for committed, agent-regenerated artifacts (unlike `.claude/data/`, which is gitignored scratch per `.gitignore:3` and was the wrong home once "must be committed" was confirmed).
+`agent_docs/ast_index/` — **tracked in git**, mirroring the existing `agent_docs/harness-index.md` precedent for committed, agent-regenerated artifacts (unlike `.claude/data/`, which is gitignored scratch per `.gitignore:3` and was the wrong home once "must be committed" was confirmed).
 
 ```
-agent_docs/ast-index/
-  files/
+agent_docs/ast_index/
+  cache/
+    manifest.json
+  manifests/
     services/_common/src/ingest_parsing.py.json
     hooks/harness_audit/sync_hook.py.json
     hooks/ast_index/sync_hook.py.json
     ...
-  manifest.json
 ```
 
 `<relpath>.json` (append, not swap, the extension) avoids collisions and needs no path sanitization — just `mkdir -p` the parent dirs.
@@ -55,7 +56,7 @@ agent_docs/ast-index/
     "services/_common/src/ingest_parsing.py": {
       "sha256": "...",
       "size": 41022,
-      "cache_path": "files/services/_common/src/ingest_parsing.py.json"
+      "cache_path": "services/_common/src/ingest_parsing.py.json"
     }
   }
 }
@@ -140,7 +141,7 @@ This mirrors exactly how the existing `sync_hook.py` already keeps a *committed*
 1. Reads the pushed refs from stdin (git's pre-push protocol).
 2. Computes changed `.py` files via `git diff --name-only` between the remote and local sha.
 3. Runs the `build --file <path>` subcommand for each changed file.
-4. If that leaves anything uncommitted (`git status --porcelain -- agent_docs/ast-index/`), **blocks the push** with a message to review, commit, and push again.
+4. If that leaves anything uncommitted (`git status --porcelain -- agent_docs/ast_index/`), **blocks the push** with a message to review, commit, and push again.
 
 Deliberately does **not** auto-commit.
 A pre-push hook runs after commits already exist, so silently amending or creating a surprise commit at push time would violate this repo's git-safety norms and diverge from the existing `check-lock.sh`/`check-uv.sh` fail-and-instruct style (they check and block, they don't auto-fix).
@@ -203,3 +204,28 @@ Not done now, flagged as a future follow-up for `harness-expert`'s judgment: a o
 8. Simulate `.githooks/pre-push`: stage a `.py` change, commit, run the hook script manually against fake ref input, confirm it regenerates and blocks (exits non-zero) when the regenerated cache isn't yet committed, and passes cleanly once it is.
 9. Dispatch `python-structure-navigator` with a real structural question about `ingest_parsing.py` and confirm it answers from `query` output without a raw full-file `Read`.
 10. After `harness-expert` creates the agent file, run `scripts/sync_harness.py --check` and confirm `agent_docs/harness-index.md` picked up the new row with no manual edit.
+
+## Implementation log
+
+Implemented 2026-08-05.
+`scripts/ast_index.py`, `hooks/ast_index/sync_hook.py` (+ 8 passing tests), and `.githooks/pre-push` + `.githooks/lib/check-ast-index.sh` are in place.
+`build --all` populated `agent_docs/ast-index/` with 80 tracked files and 0 parse errors (78 was this doc's original count; the file total drifted upward since it was written).
+The new agent, skill, and Makefile/README/AGENTS.md wiring were delegated to `harness-expert` and `dev-ops` per the ownership boundaries above.
+
+All 10 verification checklist items above passed, after fixing one real bug they surfaced.
+`query_view`/`query_symbol` accessed `entry['signature']` directly, which crashed with `KeyError: 'signature'` on any class entry (only functions/methods carry that key) - fixed both call sites to use `entry.get('signature', '')`.
+Item 9's literal `--symbol EventContext.__init__` target doesn't exist in the AST: `EventContext` is a bare `@dataclass` with no explicit `__init__`, so that symbol was never going to be found - not a bug, just a mismatch between this doc's example and the actual source.
+`python-structure-navigator` answered a real structural question about `services/_common/src/ingest_parsing.py` correctly via the query CLI.
+The isolated pre-push simulation confirmed both the block path (unregenerated cache after a source change) and the clean-pass path.
+File count is now 83 (was 78 when this doc was written, 80 at initial `build --all`) - ordinary repo growth, not drift to fix.
+
+### Restructuring: agent_docs/ast-index/ -> agent_docs/ast_index/{cache,manifests}
+
+After initial implementation, the user disliked the flat `agent_docs/ast-index/{manifest.json, files/**/*.json}` layout - JSON sitting directly next to a `files/` name gave no sense of a shadow tree mirroring the repo.
+Renamed the storage directory to `agent_docs/ast_index/{cache/manifest.json, manifests/**/*.json}`: `cache/` holds the manifest (the index), `manifests/` is the shadow JSON tree, one document per source file.
+(An intermediate step briefly used `agent_docs/ast/` for the top-level directory; the user then asked for `ast_index` to match the script/hook naming instead, so that name won out.)
+Every reference across the repo was updated to match: `scripts/ast_index.py` (constants, `save_manifest()`, docstring), `hooks/ast_index/sync_hook.py` and its tests, `.githooks/lib/check-ast-index.sh`, this design doc, the `python-structure-navigator` agent, the `ast-index` skill, `AGENTS.md`, the Makefile comment, and the README make-targets table.
+The old `agent_docs/ast-index/` directory was deleted (fully untracked in git) and the cache was rebuilt fresh at the final location via `build --all`.
+
+`scripts/ast_index.py` itself was never renamed to `ast.py`: the script does `import ast` (the stdlib module), and running it directly puts its own directory first on `sys.path`, so a file named `ast.py` there would shadow the stdlib module it depends on.
+Naming convention confirmed with the user: `.py` files and their containing directories use underscores (`ast_index`), skill directories may use hyphens (`ast-index`) - both were already correct before this rename, only the storage-directory name changed.

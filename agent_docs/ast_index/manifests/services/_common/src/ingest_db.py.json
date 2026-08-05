@@ -1,0 +1,803 @@
+{
+  "path": "services/_common/src/ingest_db.py",
+  "line_count": 584,
+  "module_docstring": "ClickHouse-I/O half of ingesting LiteLLM's StandardLoggingPayload webhook\nevents - everything that opens a client and does INSERT/SELECT.\nSee ingest_parsing.py's docstring for the DB-free parsing/classification\nhalf this module imports from, and AGENTS.md for the overall pipeline.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "logging",
+      "names": [],
+      "line": 6
+    },
+    {
+      "kind": "import",
+      "module": "time",
+      "names": [],
+      "line": 7
+    },
+    {
+      "kind": "from",
+      "module": "datetime",
+      "names": [
+        "datetime",
+        "timezone"
+      ],
+      "line": 8
+    },
+    {
+      "kind": "from",
+      "module": "typing",
+      "names": [
+        "Optional"
+      ],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "clickhouse_connect",
+      "names": [],
+      "line": 11
+    },
+    {
+      "kind": "from",
+      "module": "clickhouse_connect.driver.binding",
+      "names": [
+        "quote_identifier"
+      ],
+      "line": 12
+    },
+    {
+      "kind": "from",
+      "module": "common",
+      "names": [
+        "fastjson"
+      ],
+      "line": 13
+    },
+    {
+      "kind": "from",
+      "module": "common.config.clickhouse",
+      "names": [
+        "CLICKHOUSE_DATABASE",
+        "CLICKHOUSE_HOST",
+        "CLICKHOUSE_PORT"
+      ],
+      "line": 14
+    },
+    {
+      "kind": "from",
+      "module": "common.config.clickhouse_credentials",
+      "names": [
+        "CLICKHOUSE_PASSWORD",
+        "CLICKHOUSE_USER"
+      ],
+      "line": 19
+    },
+    {
+      "kind": "from",
+      "module": "common.ingest_parsing",
+      "names": [
+        "_EVENT_AGENT_NAME_IDX",
+        "_EVENT_AGENT_VERSION_IDX",
+        "_EVENT_CALL_ID_IDX",
+        "_EVENT_CLIENT_ID_IDX",
+        "_EVENT_COLUMNS",
+        "_EVENT_INGESTED_AT_IDX",
+        "_EVENT_SESSION_ID_IDX",
+        "_EVENT_SKILL_NAME_IDX",
+        "_EVENT_SKILL_VERSION_IDX",
+        "_EVENT_TIMESTAMP_IDX",
+        "_GROUP_COLUMNS",
+        "_GROUP_UPDATED_AT_IDX",
+        "_INVOCATION_COLUMNS",
+        "_INVOCATION_SPAWNED_AT_IDX",
+        "_MESSAGE_AGENT_NAME_IDX",
+        "_MESSAGE_AGENT_VERSION_IDX",
+        "_MESSAGE_CALL_ID_IDX",
+        "_MESSAGE_COLUMNS",
+        "_MESSAGE_INGESTED_AT_IDX",
+        "_MESSAGE_SESSION_ID_IDX",
+        "_MESSAGE_SKILL_NAME_IDX",
+        "_MESSAGE_SKILL_VERSION_IDX",
+        "_MESSAGE_TIMESTAMP_IDX",
+        "_SOURCE_COLUMNS",
+        "_SOURCE_INGESTED_AT_IDX",
+        "_USAGE_AGENT_NAME_IDX",
+        "_USAGE_AGENT_VERSION_IDX",
+        "_USAGE_CALL_ID_IDX",
+        "_USAGE_COLUMNS",
+        "_USAGE_INGESTED_AT_IDX",
+        "_USAGE_SESSION_ID_IDX",
+        "_USAGE_SKILL_NAME_IDX",
+        "_USAGE_SKILL_VERSION_IDX",
+        "_USAGE_TIMESTAMP_IDX",
+        "_USER_COLUMNS",
+        "_USER_UPDATED_AT_IDX",
+        "EventContext",
+        "_agent_invocation_id",
+        "_agent_invocation_rows",
+        "_backfill_missing_skill_versions",
+        "_derive_context",
+        "_deserialize_row",
+        "_deserialize_row_multi",
+        "_event_row",
+        "_group_row",
+        "_message_row",
+        "_source_row",
+        "_usage_row",
+        "_user_row",
+        "session_and_trace_id"
+      ],
+      "line": 20
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "logger",
+      "line": 73
+    },
+    {
+      "name": "_column_types_by_table",
+      "line": 77
+    },
+    {
+      "name": "_client",
+      "line": 89
+    },
+    {
+      "name": "_CLIENT_COLUMNS",
+      "line": 113
+    },
+    {
+      "name": "_FAILURE_COLUMNS",
+      "line": 114
+    },
+    {
+      "name": "_DLQ_STAGE_COLUMNS",
+      "line": 542
+    },
+    {
+      "name": "_DLQ_STAGE_TIMESTAMP_INDICES",
+      "line": 547
+    },
+    {
+      "name": "_RESOLVED_COLUMNS",
+      "line": 571
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "_ContextClient",
+      "line_start": 216,
+      "line_end": 226,
+      "decorators": [],
+      "bases": [],
+      "docstring": "Adapts a raw ClickHouse client to the narrow interface\ningest_parsing._derive_context needs (agent_name_and_version_for_invocation),\nso ingest_parsing.py never imports this module (see its docstring on\nthe one-directional dependency arrow).",
+      "methods": [
+        {
+          "qualname": "_ContextClient.__init__",
+          "signature": "(self, client)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "client",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 222,
+          "line_end": 223
+        },
+        {
+          "qualname": "_ContextClient.agent_name_and_version_for_invocation",
+          "signature": "(self, agent_invocation_id: str) -> tuple[str, str]",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "agent_invocation_id",
+              "annotation": "str"
+            }
+          ],
+          "returns": "tuple[str, str]",
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 225,
+          "line_end": 226
+        }
+      ]
+    },
+    {
+      "qualname": "_BatchWriter",
+      "line_start": 361,
+      "line_end": 499,
+      "decorators": [],
+      "bases": [],
+      "docstring": "Owns the per-batch state ingest_events_batch() needs across its three\nconcerns - dimension rows, per-event agent/client resolution caches, and\nper-table insert-with-DLQ-fallback - so ingest_events_batch() itself\nstays a plain call sequence.",
+      "methods": [
+        {
+          "qualname": "_BatchWriter.__init__",
+          "signature": "(self, client)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "client",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 367,
+          "line_end": 371
+        },
+        {
+          "qualname": "_BatchWriter.write_dimensions",
+          "signature": "(self, events: list[dict]) -> None",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "events",
+              "annotation": "list[dict]"
+            }
+          ],
+          "returns": "None",
+          "decorators": [],
+          "docstring": "Inserts agent_invocations, ingest_raw, and the (deduped)\nai_gateway_groups/ai_gateway_users rows for this batch.",
+          "is_async": false,
+          "line_start": 373,
+          "line_end": 413
+        },
+        {
+          "qualname": "_BatchWriter._agent_fields",
+          "signature": "(self, agent_invocation_id: str) -> tuple[str, str]",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "agent_invocation_id",
+              "annotation": "str"
+            }
+          ],
+          "returns": "tuple[str, str]",
+          "decorators": [],
+          "docstring": "Resolves agent_name/agent_version for the (sub)agent that made\nthis call, preferring an in-memory hit over a ClickHouse round trip.\n\nOrder: this batch's own invocation_rows (the spawn event and its\nchild's first call landing in the same batch is the dominant case -\nsee migration 013's docstring), then a per-batch cache, then a\nClickHouse lookup with a short bounded retry for the near-miss case\n(spawn row committed in the immediately preceding batch).",
+          "is_async": false,
+          "line_start": 415,
+          "line_end": 436
+        },
+        {
+          "qualname": "_BatchWriter._client_id",
+          "signature": "(self, user_agent: str) -> int",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "user_agent",
+              "annotation": "str"
+            }
+          ],
+          "returns": "int",
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 438,
+          "line_end": 443
+        },
+        {
+          "qualname": "_BatchWriter.patch_fact_rows",
+          "signature": "(self, events: list[dict]) -> tuple[list[list], list[list], list[list]]",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "events",
+              "annotation": "list[dict]"
+            }
+          ],
+          "returns": "tuple[list[list], list[list], list[list]]",
+          "decorators": [],
+          "docstring": "Resolves each event's agent_name/version and event_client_id\n(both needed a DB round trip build_event() couldn't do), patches\nthem into its event/usage/message rows, and inserts the resolved\n`clients` rows.\nReturns (event_rows, usage_rows, message_rows).",
+          "is_async": false,
+          "line_start": 445,
+          "line_end": 488
+        },
+        {
+          "qualname": "_BatchWriter.insert_with_dlq_fallback",
+          "signature": "(self, table: str, rows: list[list], columns: list[str], call_id_idx: int, session_id_idx: int) -> None",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "table",
+              "annotation": "str"
+            },
+            {
+              "name": "rows",
+              "annotation": "list[list]"
+            },
+            {
+              "name": "columns",
+              "annotation": "list[str]"
+            },
+            {
+              "name": "call_id_idx",
+              "annotation": "int"
+            },
+            {
+              "name": "session_id_idx",
+              "annotation": "int"
+            }
+          ],
+          "returns": "None",
+          "decorators": [],
+          "docstring": "One table's insert, via insert_rows_with_dlq_fallback below.\nEach table is independent: one table rejecting its batch must not\ndrop another table's otherwise-good rows for this same set of\nevents.",
+          "is_async": false,
+          "line_start": 490,
+          "line_end": 499
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "_column_type_names",
+      "signature": "(client, table: str, columns: list[str]) -> list[str]",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "table",
+          "annotation": "str"
+        },
+        {
+          "name": "columns",
+          "annotation": "list[str]"
+        }
+      ],
+      "returns": "list[str]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 80,
+      "line_end": 86
+    },
+    {
+      "qualname": "get_client",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 92,
+      "line_end": 102
+    },
+    {
+      "qualname": "clickhouse_alive",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "Raises if ClickHouse isn't reachable.\nShared by server.py's /health and worker.py's startup dependency check,\nso the liveness probe itself (currently just SELECT 1) only has one\nplace to change.",
+      "is_async": false,
+      "line_start": 105,
+      "line_end": 110
+    },
+    {
+      "qualname": "_insert_agent_invocations",
+      "signature": "(client, rows: list[list]) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "rows",
+          "annotation": "list[list]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 117,
+      "line_end": 123
+    },
+    {
+      "qualname": "_insert_event",
+      "signature": "(client, row: list) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "row",
+          "annotation": "list"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 126,
+      "line_end": 130
+    },
+    {
+      "qualname": "_insert_usage",
+      "signature": "(client, row: list) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "row",
+          "annotation": "list"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 133,
+      "line_end": 137
+    },
+    {
+      "qualname": "_insert_message",
+      "signature": "(client, row: list) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "row",
+          "annotation": "list"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 140,
+      "line_end": 144
+    },
+    {
+      "qualname": "_insert_source",
+      "signature": "(client, row: list) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "row",
+          "annotation": "list"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 147,
+      "line_end": 151
+    },
+    {
+      "qualname": "_insert_ai_gateway_groups",
+      "signature": "(client, rows: list[list]) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "rows",
+          "annotation": "list[list]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 154,
+      "line_end": 160
+    },
+    {
+      "qualname": "_insert_ai_gateway_users",
+      "signature": "(client, rows: list[list]) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "rows",
+          "annotation": "list[list]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 163,
+      "line_end": 169
+    },
+    {
+      "qualname": "_insert_clients",
+      "signature": "(client, rows: list[list]) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "rows",
+          "annotation": "list[list]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 172,
+      "line_end": 178
+    },
+    {
+      "qualname": "_agent_name_and_version_for_invocation",
+      "signature": "(client, agent_invocation_id: str) -> tuple[str, str]",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "agent_invocation_id",
+          "annotation": "str"
+        }
+      ],
+      "returns": "tuple[str, str]",
+      "decorators": [],
+      "docstring": "Best-effort lookup - blank if the parent's Agent tool_use/tool_result\nhasn't been ingested yet (e.g. subagent's first call raced ahead of it).",
+      "is_async": false,
+      "line_start": 181,
+      "line_end": 196
+    },
+    {
+      "qualname": "_resolve_client_id",
+      "signature": "(client, user_agent: str) -> int",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "user_agent",
+          "annotation": "str"
+        }
+      ],
+      "returns": "int",
+      "decorators": [],
+      "docstring": "Best-effort id lookup for a calling-client user-agent string (e.g.\n\"claude-cli/2.1.207 (external, cli)\").\nThe hash is always computed by ClickHouse itself (cityHash64), never\nreimplemented in Python, so this can never diverge from the one-off\nbackfill SQL run separately against ingest_raw.\n0 (unknown) on any failure or empty input - never blocks ingestion.",
+      "is_async": false,
+      "line_start": 199,
+      "line_end": 213
+    },
+    {
+      "qualname": "_derive_context_with_client",
+      "signature": "(payload: dict, messages, client) -> EventContext",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        },
+        {
+          "name": "messages",
+          "annotation": null
+        },
+        {
+          "name": "client",
+          "annotation": null
+        }
+      ],
+      "returns": "EventContext",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 229,
+      "line_end": 230
+    },
+    {
+      "qualname": "ingest_standard_logging_payload",
+      "signature": "(payload: dict) -> None",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "Insert one LiteLLM StandardLoggingPayload into ClickHouse.\nNever raises - LiteLLM would retry a payload forever if this broke the\nack.\n\nHas zero call sites today (leftover from before the Redis-queue split -\nsee AGENTS.md); carried forward unchanged for parity rather than\ndeleted outright.",
+      "is_async": false,
+      "line_start": 233,
+      "line_end": 277
+    },
+    {
+      "qualname": "ingest_webhook_body",
+      "signature": "(body) -> None",
+      "args": [
+        {
+          "name": "body",
+          "annotation": null
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "Usually a list of StandardLoggingPayload dicts (log_format:\njson_array), but tolerate a single dict too.\n\nHas zero call sites today, same as ingest_standard_logging_payload -\ncarried forward unchanged for parity.",
+      "is_async": false,
+      "line_start": 280,
+      "line_end": 289
+    },
+    {
+      "qualname": "reparse_event",
+      "signature": "(client, payload: dict, litellm_call_id: str, source_session_id: str, now: datetime) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "payload",
+          "annotation": "dict"
+        },
+        {
+          "name": "litellm_call_id",
+          "annotation": "str"
+        },
+        {
+          "name": "source_session_id",
+          "annotation": "str"
+        },
+        {
+          "name": "now",
+          "annotation": "datetime"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "Recomputes and re-inserts one ingest_raw row's downstream tables\n(agent_invocations, ai_gateway_groups/users, agent_events, agent_usage,\nagent_messages) from an already-decoded payload.\n\nFormalizes what reparse.py used to do by reaching into 14 of this\nmodule's/ingest_parsing's private helpers directly - see\nplans/webhook-worker-split.md.\nRaises on failure; reparse.py's own caller keeps the try/except-log\nwrapper (per-event, so one bad row doesn't stop a whole reparse run).",
+      "is_async": false,
+      "line_start": 292,
+      "line_end": 333
+    },
+    {
+      "qualname": "ingest_events_batch",
+      "signature": "(events: list[dict]) -> None",
+      "args": [
+        {
+          "name": "events",
+          "annotation": "list[dict]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "Runs in webhook-worker.\nWrites a batch of build_event() outputs with exactly one client.insert()\nper table (vs up-to-4-per-payload in the old synchronous path) - the\nbatching that takes load off ClickHouse under concurrent traffic.\n\nNever raises - the caller still needs to XACK/retry the batch's message\nids regardless of a malformed event.",
+      "is_async": false,
+      "line_start": 336,
+      "line_end": 358
+    },
+    {
+      "qualname": "insert_rows_with_dlq_fallback",
+      "signature": "(client, table: str, rows: list[list], columns: list[str], column_types: list[str], call_id_idx: Optional[int]=None, session_id_idx: Optional[int]=None) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "table",
+          "annotation": "str"
+        },
+        {
+          "name": "rows",
+          "annotation": "list[list]"
+        },
+        {
+          "name": "columns",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "column_types",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "call_id_idx",
+          "annotation": "Optional[int]"
+        },
+        {
+          "name": "session_id_idx",
+          "annotation": "Optional[int]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "One table's insert.\nOn a rejected batch (e.g. a value out of a column's numeric range), falls back to inserting row-by-row.\nOnly the actual poison row(s) are lost that way - those go to ingest_dlq (see schema.sql) for triage instead of silently vanishing with the rest of a good batch.\ncall_id_idx/session_id_idx pick which row fields populate the DLQ row's litellm_call_id/session_id columns.\nPass None for tables that don't carry one (recorded as \"\").\nNever raises - a poison row (or even a failed DLQ write) is logged, not propagated, so callers can insert unconditionally.",
+      "is_async": false,
+      "line_start": 502,
+      "line_end": 539
+    },
+    {
+      "qualname": "replay_dlq_row",
+      "signature": "(client, stage: str, row: list) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "stage",
+          "annotation": "str"
+        },
+        {
+          "name": "row",
+          "annotation": "list"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "Re-inserts one ingest_dlq row's already-transformed raw_row back into\nits original target table.\nraw_row was JSON-serialized with `default=str` (insert_rows_with_dlq_fallback),\nwhich stringifies that stage's timestamp/ingested_at datetime columns -\ndeserialize them back first, same as _deserialize_row_multi already does\nfor event_row/usage_row/message_row coming off Redis.\nRaises ValueError for a stage insert_rows_with_dlq_fallback never\nwrites to - callers should log and skip, not crash the whole replay\nloop.",
+      "is_async": false,
+      "line_start": 554,
+      "line_end": 568
+    },
+    {
+      "qualname": "mark_dlq_rows_resolved",
+      "signature": "(client, rows: list[tuple]) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "rows",
+          "annotation": "list[tuple]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "Batch-inserts resolved markers for ingest_dlq rows that replayed\nsuccessfully this page - never call for a row still failing.\nrows: (occurred_at, stage, litellm_call_id) tuples, the natural key\ningest_dlq_unresolved's LEFT ANTI JOIN matches on.",
+      "is_async": false,
+      "line_start": 574,
+      "line_end": 584
+    }
+  ],
+  "sha256": "cc21084fa4b6870794e019c7188124c6ca5ec17c9e42e13299fa635bd416577c"
+}

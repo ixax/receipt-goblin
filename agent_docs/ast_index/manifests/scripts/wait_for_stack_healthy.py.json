@@ -1,0 +1,253 @@
+{
+  "path": "scripts/wait_for_stack_healthy.py",
+  "line_count": 225,
+  "module_docstring": "Waits for every service `docker compose up`/`start` brings up to finish\nstarting, then reports pass/fail - what `make status` runs instead of a bare\n`docker ps` (see Makefile). Run directly any time, not just from `make\nstatus`: `uv run python3 scripts/wait_for_stack_healthy.py -f docker-compose.yml -f\ndocker-compose.dev.yml`.\n\nStdlib-only, no venv/pip install needed - same convention as\nservices/init/init_clickhouse_users.py/resolve_image_version.py. The live,\nin-place-redrawing status table (like `docker compose up` itself shows) is\nplain ANSI cursor-movement escape codes, gated on `sys.stdout.isatty()` - no\npackage (rich/colorama/etc.) needed for that either. Piped output (a log\nfile, `| cat`) falls back to one compact summary line per poll instead of\nredrawing, so it stays readable there instead of dumping the whole table\nevery 2s.\n\n\"Done\" for a service means either:\n- its healthcheck reports `healthy` (every long-running service in this\n  stack's default profile has one), or\n- it exited with code 0 (covers one-shot services like clickhouse-migrate,\n  which has no healthcheck and `restart: \"no\"` - generic on purpose, so this\n  doesn't need to know which services are one-shot ahead of time).\n\nFails immediately (prints that service's `docker compose logs`, exit 1) the\nmoment any service reports `unhealthy` or exits with a nonzero code, rather\nthan waiting out the full timeout on an already-known failure. Also fails\n(with logs for whatever's still not done) if the timeout elapses first.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 29
+    },
+    {
+      "kind": "import",
+      "module": "pathlib",
+      "names": [],
+      "line": 30
+    },
+    {
+      "kind": "import",
+      "module": "subprocess",
+      "names": [],
+      "line": 31
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 32
+    },
+    {
+      "kind": "import",
+      "module": "time",
+      "names": [],
+      "line": 33
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "REPO_ROOT",
+      "line": 35
+    },
+    {
+      "name": "DEFAULT_COMPOSE_FILES",
+      "line": 36
+    },
+    {
+      "name": "TIMEOUT_S",
+      "line": 37
+    },
+    {
+      "name": "POLL_INTERVAL_S",
+      "line": 38
+    },
+    {
+      "name": "STATUS_HEALTHY",
+      "line": 41
+    },
+    {
+      "name": "STATUS_FAILED",
+      "line": 42
+    },
+    {
+      "name": "STATUS_WAITING",
+      "line": 43
+    },
+    {
+      "name": "DOCKER_HEALTH_HEALTHY",
+      "line": 47
+    },
+    {
+      "name": "DOCKER_HEALTH_UNHEALTHY",
+      "line": 48
+    },
+    {
+      "name": "DOCKER_STATE_EXITED",
+      "line": 49
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "_LiveTable",
+      "line_start": 115,
+      "line_end": 163,
+      "decorators": [],
+      "bases": [],
+      "docstring": "Redraws in place on a real terminal - the same ANSI cursor-up +\nclear-to-end trick `docker compose up` itself uses to show its own\nper-container \"Started\"/\"Healthy\" progress lines - matching that look:\n` \u2714 Container <name>   <Label>   <elapsed>s`, one line per service,\npadded into columns, elapsed frozen once a line reaches a terminal state.\nOn piped/non-tty output it prints one compact line per poll instead, so a\nlog file doesn't get the whole table dumped every 2s.",
+      "methods": [
+        {
+          "qualname": "_LiveTable.__init__",
+          "signature": "(self, expected: list[str], containers: dict[str, dict])",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "expected",
+              "annotation": "list[str]"
+            },
+            {
+              "name": "containers",
+              "annotation": "dict[str, dict]"
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 124,
+          "line_end": 130
+        },
+        {
+          "qualname": "_LiveTable.update",
+          "signature": "(self, expected: list[str], status: dict[str, str], containers: dict[str, dict]) -> None",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "expected",
+              "annotation": "list[str]"
+            },
+            {
+              "name": "status",
+              "annotation": "dict[str, str]"
+            },
+            {
+              "name": "containers",
+              "annotation": "dict[str, dict]"
+            }
+          ],
+          "returns": "None",
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 132,
+          "line_end": 163
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "_compose_services",
+      "signature": "(compose_files: list[str]) -> list[str]",
+      "args": [
+        {
+          "name": "compose_files",
+          "annotation": "list[str]"
+        }
+      ],
+      "returns": "list[str]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 52,
+      "line_end": 57
+    },
+    {
+      "qualname": "_compose_ps",
+      "signature": "(compose_files: list[str]) -> dict[str, dict]",
+      "args": [
+        {
+          "name": "compose_files",
+          "annotation": "list[str]"
+        }
+      ],
+      "returns": "dict[str, dict]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 60,
+      "line_end": 72
+    },
+    {
+      "qualname": "_colored",
+      "signature": "(text: str, code: str, stream) -> str",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        },
+        {
+          "name": "code",
+          "annotation": "str"
+        },
+        {
+          "name": "stream",
+          "annotation": null
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Wraps text in an ANSI color code, but only if stream is a real\nterminal - piped output (a log file, CI) stays plain.",
+      "is_async": false,
+      "line_start": 75,
+      "line_end": 78
+    },
+    {
+      "qualname": "_print_logs",
+      "signature": "(compose_files: list[str], service: str) -> None",
+      "args": [
+        {
+          "name": "compose_files",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "service",
+          "annotation": "str"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 81,
+      "line_end": 86
+    },
+    {
+      "qualname": "_classify",
+      "signature": "(expected: list[str], containers: dict[str, dict]) -> tuple[dict[str, str], list[str], list[str]]",
+      "args": [
+        {
+          "name": "expected",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "containers",
+          "annotation": "dict[str, dict]"
+        }
+      ],
+      "returns": "tuple[dict[str, str], list[str], list[str]]",
+      "decorators": [],
+      "docstring": "Per service: a short display label - Healthy/Failed/Waiting, nothing\nfiner-grained - plus which are failed/pending.",
+      "is_async": false,
+      "line_start": 89,
+      "line_end": 112
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 166,
+      "line_end": 221
+    }
+  ],
+  "sha256": "8e6b75a5df9764621cdd43b74fe934fcc26a36e0cfdbf84309ab76e06487b021"
+}

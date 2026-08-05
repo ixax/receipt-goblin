@@ -1,0 +1,1233 @@
+{
+  "path": "services/_common/src/ingest_parsing.py",
+  "line_count": 1375,
+  "module_docstring": "Pure, DB-free half of ingesting LiteLLM's StandardLoggingPayload webhook\nevents: parses/classifies a payload and builds the per-table row lists\nconsumed by ingest_db.py.\nNo ClickHouse import anywhere in this module - see ingest_db.py's docstring\nfor the DB-touching half and AGENTS.md for the overall ingest pipeline.\nagent_name/skill_name are recovered from the payload's own messages\n(Agent/Skill tool_use blocks), not from a CLI-side hook.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "re",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "from",
+      "module": "dataclasses",
+      "names": [
+        "dataclass"
+      ],
+      "line": 10
+    },
+    {
+      "kind": "from",
+      "module": "datetime",
+      "names": [
+        "datetime",
+        "timezone"
+      ],
+      "line": 11
+    },
+    {
+      "kind": "from",
+      "module": "typing",
+      "names": [
+        "Any",
+        "Optional"
+      ],
+      "line": 12
+    },
+    {
+      "kind": "from",
+      "module": "common",
+      "names": [
+        "fastjson"
+      ],
+      "line": 14
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "_AGENT_ID_RE",
+      "line": 16
+    },
+    {
+      "name": "_COMMAND_NAME_RE",
+      "line": 17
+    },
+    {
+      "name": "_CODEX_INTERNAL_CONTEXT_RE",
+      "line": 28
+    },
+    {
+      "name": "_OBJECTIVE_TAG_RE",
+      "line": 29
+    },
+    {
+      "name": "_COLLABORATION_MODE_HEADER_RE",
+      "line": 31
+    },
+    {
+      "name": "_JUDGE_CALL_PREFIX",
+      "line": 35
+    },
+    {
+      "name": "_SYSTEM_NOTIFICATION_PREFIX",
+      "line": 36
+    },
+    {
+      "name": "_SUGGESTION_MODE_PREFIX",
+      "line": 37
+    },
+    {
+      "name": "_TRANSCRIPT_HANDOFF_PREFIX",
+      "line": 38
+    },
+    {
+      "name": "_TITLE_GEN_PREFIX",
+      "line": 39
+    },
+    {
+      "name": "_INTERRUPTED_PREFIX",
+      "line": 40
+    },
+    {
+      "name": "_WEBPAGE_CONTENT_PREFIX",
+      "line": 41
+    },
+    {
+      "name": "_STOP_HOOK_FEEDBACK_PREFIX",
+      "line": 42
+    },
+    {
+      "name": "_AWAY_RECAP_PREFIX",
+      "line": 45
+    },
+    {
+      "name": "_COMPACT_ANALYSIS_PREFIX",
+      "line": 54
+    },
+    {
+      "name": "_SYSTEM_REMINDER_STRIP_RE",
+      "line": 63
+    },
+    {
+      "name": "_COMMAND_ARGS_RE",
+      "line": 64
+    },
+    {
+      "name": "_LOCAL_STDOUT_STRIP_RE",
+      "line": 65
+    },
+    {
+      "name": "_INTERRUPTED_STRIP_RE",
+      "line": 66
+    },
+    {
+      "name": "_SUMMARY_TAG_RE",
+      "line": 67
+    },
+    {
+      "name": "_ANALYSIS_TAG_RE",
+      "line": 68
+    },
+    {
+      "name": "_STATUS_TAG_RE",
+      "line": 69
+    },
+    {
+      "name": "_SEVERITY_TAG_RE",
+      "line": 70
+    },
+    {
+      "name": "_BLOCK_TAG_RE",
+      "line": 71
+    },
+    {
+      "name": "_STOP_HOOK_REASON_RE",
+      "line": 74
+    },
+    {
+      "name": "_WHITESPACE_COLLAPSE_RE",
+      "line": 75
+    },
+    {
+      "name": "_BLANK_LINES_COLLAPSE_RE",
+      "line": 76
+    },
+    {
+      "name": "_DISPLAY_TEXT_TRUNCATE",
+      "line": 78
+    },
+    {
+      "name": "_WEBPAGE_DISPLAY_TRUNCATE",
+      "line": 79
+    },
+    {
+      "name": "_COMPACT_MESSAGE_WORD_LIMIT",
+      "line": 80
+    },
+    {
+      "name": "_TOOL_ARG_KEY_PREFERENCE",
+      "line": 83
+    },
+    {
+      "name": "_PROVIDER_OPENAI_RE",
+      "line": 87
+    },
+    {
+      "name": "_INVOCATION_COLUMNS",
+      "line": 953
+    },
+    {
+      "name": "_EVENT_COLUMNS",
+      "line": 956
+    },
+    {
+      "name": "_GROUP_COLUMNS",
+      "line": 964
+    },
+    {
+      "name": "_USER_COLUMNS",
+      "line": 965
+    },
+    {
+      "name": "_USAGE_COLUMNS",
+      "line": 966
+    },
+    {
+      "name": "_MESSAGE_COLUMNS",
+      "line": 976
+    },
+    {
+      "name": "_SOURCE_COLUMNS",
+      "line": 982
+    },
+    {
+      "name": "_INVOCATION_SPAWNED_AT_IDX",
+      "line": 984
+    },
+    {
+      "name": "_EVENT_TIMESTAMP_IDX",
+      "line": 985
+    },
+    {
+      "name": "_EVENT_AGENT_NAME_IDX",
+      "line": 986
+    },
+    {
+      "name": "_EVENT_AGENT_VERSION_IDX",
+      "line": 987
+    },
+    {
+      "name": "_EVENT_SKILL_NAME_IDX",
+      "line": 988
+    },
+    {
+      "name": "_EVENT_SKILL_VERSION_IDX",
+      "line": 989
+    },
+    {
+      "name": "_EVENT_CLIENT_ID_IDX",
+      "line": 990
+    },
+    {
+      "name": "_USAGE_TIMESTAMP_IDX",
+      "line": 991
+    },
+    {
+      "name": "_USAGE_AGENT_NAME_IDX",
+      "line": 992
+    },
+    {
+      "name": "_USAGE_AGENT_VERSION_IDX",
+      "line": 993
+    },
+    {
+      "name": "_USAGE_SKILL_NAME_IDX",
+      "line": 994
+    },
+    {
+      "name": "_USAGE_SKILL_VERSION_IDX",
+      "line": 995
+    },
+    {
+      "name": "_MESSAGE_TIMESTAMP_IDX",
+      "line": 996
+    },
+    {
+      "name": "_MESSAGE_AGENT_NAME_IDX",
+      "line": 997
+    },
+    {
+      "name": "_MESSAGE_AGENT_VERSION_IDX",
+      "line": 998
+    },
+    {
+      "name": "_MESSAGE_SKILL_NAME_IDX",
+      "line": 999
+    },
+    {
+      "name": "_MESSAGE_SKILL_VERSION_IDX",
+      "line": 1000
+    },
+    {
+      "name": "_SOURCE_INGESTED_AT_IDX",
+      "line": 1001
+    },
+    {
+      "name": "_GROUP_UPDATED_AT_IDX",
+      "line": 1002
+    },
+    {
+      "name": "_USER_UPDATED_AT_IDX",
+      "line": 1003
+    },
+    {
+      "name": "_EVENT_INGESTED_AT_IDX",
+      "line": 1004
+    },
+    {
+      "name": "_USAGE_INGESTED_AT_IDX",
+      "line": 1005
+    },
+    {
+      "name": "_MESSAGE_INGESTED_AT_IDX",
+      "line": 1006
+    },
+    {
+      "name": "_EVENT_CALL_ID_IDX",
+      "line": 1007
+    },
+    {
+      "name": "_EVENT_SESSION_ID_IDX",
+      "line": 1008
+    },
+    {
+      "name": "_USAGE_CALL_ID_IDX",
+      "line": 1009
+    },
+    {
+      "name": "_USAGE_SESSION_ID_IDX",
+      "line": 1010
+    },
+    {
+      "name": "_MESSAGE_CALL_ID_IDX",
+      "line": 1011
+    },
+    {
+      "name": "_MESSAGE_SESSION_ID_IDX",
+      "line": 1012
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "EventContext",
+      "line_start": 316,
+      "line_end": 328,
+      "decorators": [
+        "dataclass"
+      ],
+      "bases": [],
+      "docstring": "Per-call identity/attribution fields shared by _event_row/_usage_row/\n_message_row - avoids passing the same 9 positional values through all\nthree call sites (build_event, ingest_db.reparse_event, and their\nshared callers).",
+      "methods": []
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "_to_dt",
+      "signature": "(epoch_seconds: Optional[float]) -> datetime",
+      "args": [
+        {
+          "name": "epoch_seconds",
+          "annotation": "Optional[float]"
+        }
+      ],
+      "returns": "datetime",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 90,
+      "line_end": 93
+    },
+    {
+      "qualname": "_flatten_content",
+      "signature": "(content: Any) -> str",
+      "args": [
+        {
+          "name": "content",
+          "annotation": "Any"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Extracts human-readable text from Anthropic content (string or\ntext/tool_use/tool_result blocks) or Responses-API content (input_text/\noutput_text blocks, used by the \"chatgpt\" provider); tool payloads are\ncaptured elsewhere.",
+      "is_async": false,
+      "line_start": 96,
+      "line_end": 116
+    },
+    {
+      "qualname": "_last_user_text",
+      "signature": "(messages: Any) -> str",
+      "args": [
+        {
+          "name": "messages",
+          "annotation": "Any"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Most recent human-typed turn - skips tool_result continuations, which\nare also role=\"user\" but automatic, not human input.\nAlso skips non-turn items from Responses-API-shaped messages (the\n\"chatgpt\" provider mixes \"reasoning\"/\"custom_tool_call\"/etc. items into\nthe same flat list - only \"message\" items are actual chat turns).",
+      "is_async": false,
+      "line_start": 119,
+      "line_end": 137
+    },
+    {
+      "qualname": "_codex_collaboration_mode_change",
+      "signature": "(messages: Any) -> str",
+      "args": [
+        {
+          "name": "messages",
+          "annotation": "Any"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Codex CLI only - Codex occasionally injects a fresh role=\"developer\"\nmessage announcing a collaboration-mode switch (e.g. leaving Plan Mode\nfor \"Collaboration Mode: Default\") immediately before the next real\nuser turn.\nReturns that mode's header line (e.g. \"Collaboration Mode:\nDefault\") only on the call where the switch just happened - the notice\nstays in `messages` history afterward, but on later calls it no longer\nsits immediately before the latest user turn, so this won't re-fire for\nthe same switch.\n\"\" when no such notice preceded this turn (the normal\ncase, and always the case for Claude Code payloads, which have no\nrole=\"developer\" messages at all).\n\nAlso covers the session's *starting* mode: the very first call has no\nswitch notice (the startup preamble's own <collaboration_mode> block\nsits several messages before the first real user turn, separated by\nAGENTS.md/environment_context - see _CODEX_INTERNAL_CONTEXT_RE's own\ncomment for that ordering), so without this the session would silently\nstart \"in\" a mode with no indication of which one.\nDetected by there\nbeing no assistant turn yet anywhere in `messages` - true only for a\nsession's first call - in which case the first <collaboration_mode>\nblock found anywhere (the preamble's) is reported instead.",
+      "is_async": false,
+      "line_start": 140,
+      "line_end": 197
+    },
+    {
+      "qualname": "_active_command_name",
+      "signature": "(messages: Any) -> str",
+      "args": [
+        {
+          "name": "messages",
+          "annotation": "Any"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Walks back to the human-originated turn that started this chain of\ncalls, looking for Claude Code's \"<command-name>/foo</command-name>\" tag\n(slash-command invocation).\nReturns \"\" for a freeform prompt.\n\nAlso recognizes Codex CLI's \"<codex_internal_context source=\"...\">\"\ncontinuation wrapper (see _CODEX_INTERNAL_CONTEXT_RE) as a synthetic\ncommand named after its \"source\" attribute (e.g. \"goal\") - Codex's own\nequivalent of this repo's Claude Code /goal Stop hook, re-injected as\nthe prompt on every turn that context stays active.\nEverything else here (a real Claude Code command, or no command\nat all) still applies to Codex payloads exactly as documented - only\nthis one wrapper is Codex-specific.\nNo version: only custom-authored .claude/commands/*.md files ever\ncarried a version marker, and this repo no longer defines any.",
+      "is_async": false,
+      "line_start": 200,
+      "line_end": 233
+    },
+    {
+      "qualname": "_failed_tool_call",
+      "signature": "(messages: Any) -> tuple[str, str, str]",
+      "args": [
+        {
+          "name": "messages",
+          "annotation": "Any"
+        }
+      ],
+      "returns": "tuple[str, str, str]",
+      "decorators": [],
+      "docstring": "Claude Code only - looks for Anthropic's explicit tool_result\nis_error flag, which Codex's Responses-API shape has no equivalent for\n(its custom_tool_call_output/function_call_output items carry no\nstructured success/failure signal, just an output string), so this\nalways returns (\"\", \"\", \"\") for a Codex payload - a failed Codex tool\ncall is currently invisible to failed_tool_name/args/error.\n\nIf the last message is a tool_result marked is_error, find its paired\ntool_use by tool_use_id and return (tool_name, arguments_json, error_text)\n- the failed invocation this call is reacting to, distinct from\ntool_name (whatever this call's own response invokes next, if anything).",
+      "is_async": false,
+      "line_start": 236,
+      "line_end": 279
+    },
+    {
+      "qualname": "_codex_session_id",
+      "signature": "(headers: dict) -> str",
+      "args": [
+        {
+          "name": "headers",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Codex CLI's equivalent of x-claude-code-session-id: a JSON-encoded\nheader carrying session_id (stable across every turn of one Codex\nconversation, confirmed against real captures), falling back to\nthread_id for calls where session_id isn't set.",
+      "is_async": false,
+      "line_start": 282,
+      "line_end": 296
+    },
+    {
+      "qualname": "session_and_trace_id",
+      "signature": "(payload: dict) -> tuple[str, str]",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "tuple[str, str]",
+      "decorators": [],
+      "docstring": "Shared dispatcher: tries Claude Code's session header first, then\nCodex CLI's (_codex_session_id), before falling back to trace/call id.\nPublic - server.py reaches into this directly for capture-file naming.",
+      "is_async": false,
+      "line_start": 299,
+      "line_end": 312
+    },
+    {
+      "qualname": "_derive_context",
+      "signature": "(payload: dict, messages: Any, client=None) -> EventContext",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        },
+        {
+          "name": "messages",
+          "annotation": "Any"
+        },
+        {
+          "name": "client",
+          "annotation": null
+        }
+      ],
+      "returns": "EventContext",
+      "decorators": [],
+      "docstring": "Computes an EventContext for one payload. agent_name/agent_version\nneed a DB round-trip (ingest_db._agent_name_and_version_for_invocation),\nso they're left blank when client is None - the DB-free build_event()\npath, where ingest_db.ingest_events_batch() patches them in afterward\nonce the batch's own invocation_rows are inserted.\n\n`client` is kept optional (not a hard dependency on ingest_db) so this\nmodule never imports ingest_db - ingest_db already imports extensively\nfrom this module, and importing it back here would create a cycle.",
+      "is_async": false,
+      "line_start": 331,
+      "line_end": 358
+    },
+    {
+      "qualname": "_split_name_version",
+      "signature": "(value: str) -> tuple[str, str]",
+      "args": [
+        {
+          "name": "value",
+          "annotation": "str"
+        }
+      ],
+      "returns": "tuple[str, str]",
+      "decorators": [],
+      "docstring": "Claude Code only - subagents/skills are a Claude Code concept, Codex\nCLI has neither.\nSplits on the last \"_v\" - the old naming convention (e.g.\n\"test-researcher_v1.0.0\"), superseded by _version_marker_for_name.\nKept as a fallback for subagent_type values with no version marker and\nfor historical rows.\nAgents only; skills have no such suffix convention.",
+      "is_async": false,
+      "line_start": 361,
+      "line_end": 372
+    },
+    {
+      "qualname": "_flatten_messages_text",
+      "signature": "(messages: Any) -> str",
+      "args": [
+        {
+          "name": "messages",
+          "annotation": "Any"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Every message's text, joined - used to search for the \"Available\nagent types\"/\"available skills\" listings Claude Code injects, where\nversion markers surface.\nNot restricted to one message since the listing can sit several turns\nback.",
+      "is_async": false,
+      "line_start": 375,
+      "line_end": 389
+    },
+    {
+      "qualname": "_version_marker_for_name",
+      "signature": "(text: str, name: str) -> str",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        },
+        {
+          "name": "name",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Claude Code only - agent/skill listings with these markers are\ninjected by Claude Code, never by Codex CLI, so this always returns \"\"\nagainst a Codex payload.\nFinds \"- <name>: ...vX.Y.Z\" in an agent/skill listing (see AGENTS.md\nfor the marker convention) - the marker must be the last token on that\nline, since the convention places it strictly at the end of the\ndescription.\nTakes the last match so a mid-session refreshed listing wins over a\nstale one.\n\"\" if no marker.",
+      "is_async": false,
+      "line_start": 392,
+      "line_end": 407
+    },
+    {
+      "qualname": "_user_id",
+      "signature": "(payload: dict) -> str",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Stable caller identity: metadata.user_api_key_user_id.\nDeliberately not user_api_key_alias, which is a renamable display name\nthat would silently change what historical rows' user_id \"meant\".\nAlias is only a last-resort fallback so ingestion never drops a row for\nlack of an id.",
+      "is_async": false,
+      "line_start": 410,
+      "line_end": 421
+    },
+    {
+      "qualname": "_user_name",
+      "signature": "(payload: dict) -> str",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Display-only label for the user identified by _user_id, stored once\nin ai_gateway_users.user_name rather than on every fact-table row.",
+      "is_async": false,
+      "line_start": 424,
+      "line_end": 432
+    },
+    {
+      "qualname": "_group_id",
+      "signature": "(payload: dict) -> str",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Stable UUID of the LiteLLM Team a key belongs to (empty until Teams\nare configured).\nDeliberately not user_api_key_team_alias, a renamable display name that\nwould silently break filters keyed on it - see _group_alias for the\ndisplay label.",
+      "is_async": false,
+      "line_start": 435,
+      "line_end": 442
+    },
+    {
+      "qualname": "_group_alias",
+      "signature": "(payload: dict) -> str",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Display-only label for the group identified by _group_id; never\nused as a filter/join key.",
+      "is_async": false,
+      "line_start": 445,
+      "line_end": 449
+    },
+    {
+      "qualname": "_user_key_hash",
+      "signature": "(payload: dict) -> str",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Stable per-key id (metadata.user_api_key_hash).\nDistinct from _user_id since one internal user can hold multiple keys.",
+      "is_async": false,
+      "line_start": 452,
+      "line_end": 456
+    },
+    {
+      "qualname": "_user_agent",
+      "signature": "(payload: dict) -> str",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Calling client, e.g. \"claude-cli/2.1.207 (external, cli)\" - latest\nvalue wins in ai_gateway_users (ReplacingMergeTree).",
+      "is_async": false,
+      "line_start": 459,
+      "line_end": 463
+    },
+    {
+      "qualname": "_agent_invocations_from_messages",
+      "signature": "(messages: Any) -> list[tuple[str, str, str, str]]",
+      "args": [
+        {
+          "name": "messages",
+          "annotation": "Any"
+        }
+      ],
+      "returns": "list[tuple[str, str, str, str]]",
+      "decorators": [],
+      "docstring": "Claude Code only - subagent spawning (the \"Agent\" tool) is a Claude\nCode concept, Codex CLI has no equivalent, so this always returns []\nfor a Codex payload.\nScan messages for Agent tool_use blocks paired with the following\ntool_result, pulling the spawned subagent's agent_id from its text\n(e.g. \"agentId: a04bd3c594bf74fb9\").\nagent_version comes from the bare \"vX.Y.Z\" marker in the \"Available\nagent types\" listing, falling back to splitting a legacy \"_v<version>\"\nsuffix off subagent_type (see _split_name_version).\nReturns (agent_id, subagent_type, agent_version, description) tuples,\nusually empty.",
+      "is_async": false,
+      "line_start": 466,
+      "line_end": 502
+    },
+    {
+      "qualname": "_agent_id_from_tool_result",
+      "signature": "(messages: list, tool_use_index: int, tool_use_id: Optional[str]) -> str",
+      "args": [
+        {
+          "name": "messages",
+          "annotation": "list"
+        },
+        {
+          "name": "tool_use_index",
+          "annotation": "int"
+        },
+        {
+          "name": "tool_use_id",
+          "annotation": "Optional[str]"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 505,
+      "line_end": 523
+    },
+    {
+      "qualname": "_response_tool_calls",
+      "signature": "(payload: dict) -> list[tuple[str, dict]]",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "list[tuple[str, dict]]",
+      "decorators": [],
+      "docstring": "Shared: Claude Code (Anthropic/chat-completions shape) and Codex CLI\n(Responses API shape).\nWhether this call's own completion invoked a tool.\nLiteLLM normalizes the response to an OpenAI-style tool_calls list, so\nthis reads payload[\"response\"], not \"messages\" (which stay\nAnthropic-shaped).\nFalls back to Responses-API shape (the \"chatgpt\" provider, i.e. Codex)\nwhere there's no \"choices\" - tool calls are \"function_call\" items in\nresponse[\"output\"], or \"custom_tool_call\" items for Codex's freeform\ntools.\n(e.g. \"exec\", which runs JS source, not JSON arguments - see the\ncustom_tool_call branch below).",
+      "is_async": false,
+      "line_start": 526,
+      "line_end": 572
+    },
+    {
+      "qualname": "_active_skill_name_and_version",
+      "signature": "(payload: dict, messages: Any) -> tuple[str, str]",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        },
+        {
+          "name": "messages",
+          "annotation": "Any"
+        }
+      ],
+      "returns": "tuple[str, str]",
+      "decorators": [],
+      "docstring": "Claude Code only - the \"Skill\" tool is a Claude Code concept, Codex\nCLI has no equivalent, so this always returns (\"\", \"\") for a Codex\npayload.\nskill_name is the bare directory name (no version suffix -\nsee AGENTS.md).\nskill_version comes from the bare \"vX.Y.Z\" marker in the\n\"available skills\" listing, already present in this payload's messages.\n\nPriority 1: this call's own response invoked \"Skill\" - return it\nimmediately (via _response_tool_calls).\nPriority 2: mirrors\n_active_command_name's continuation-skip walk, but scans\nassistant-role messages for a \"Skill\" tool_use block instead of\nuser-role messages for a command tag.\nThis propagates a skill\ninvocation's attribution forward onto every downstream row of the same\nturn (tool calls, LLM answers), not just the single triggering row -\nexactly like command_name already does.\nMost recent skill wins when\nwalking backward, handling sequential multi-skill turns for free.\nStops and returns (\"\", \"\") at the first genuine (non-continuation) user\nturn - the skill context ended there.",
+      "is_async": false,
+      "line_start": 575,
+      "line_end": 634
+    },
+    {
+      "qualname": "_provider_for_model",
+      "signature": "(model: str) -> str",
+      "args": [
+        {
+          "name": "model",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 637,
+      "line_end": 642
+    },
+    {
+      "qualname": "_collapse_whitespace",
+      "signature": "(text: str) -> str",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 645,
+      "line_end": 647
+    },
+    {
+      "qualname": "_truncate_at_word_boundary",
+      "signature": "(text: str, limit: int) -> str",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        },
+        {
+          "name": "limit",
+          "annotation": "int"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Caps `text` to at most `limit` characters, but never mid-word.\nTrims back to the last whitespace before the cut, dropping the trailing\npartial word/list-item entirely.\nAppends a visible '...' indicator only when truncation actually\noccurred - a shorter-than-`limit` string is returned unchanged, no\nindicator.\nFalls back to a hard cut at `limit` only when no whitespace exists\nanywhere before it (one giant unbroken token) - a hard cut is still\nbetter than an unbounded blob there.\nPorted into panel-76's own SQL (see agents_overview.json) for the\nanalogous SQL-side truncation points (reply text, etc.) - keep both in\nsync if this changes.",
+      "is_async": false,
+      "line_start": 650,
+      "line_end": 669
+    },
+    {
+      "qualname": "_truncate_words",
+      "signature": "(text: str, limit: int) -> str",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        },
+        {
+          "name": "limit",
+          "annotation": "int"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Like _truncate_at_word_boundary, but caps by word count instead of\ncharacter count - used for the compact-summary message, where a\ncharacter cap would cut off mid-sentence at wildly different points\ndepending on the model's phrasing.",
+      "is_async": false,
+      "line_start": 672,
+      "line_end": 680
+    },
+    {
+      "qualname": "_clean_prompt_text",
+      "signature": "(prompt_text: str) -> str",
+      "args": [
+        {
+          "name": "prompt_text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 683,
+      "line_end": 684
+    },
+    {
+      "qualname": "_response_text",
+      "signature": "(payload: dict) -> str",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "The model's reply text - shared by _message_row and the\ntranscript_handoff branch, which reads the <severity>/<block> verdict\nout of it.\nFalls back to Responses-API shape (the \"chatgpt\" provider) where\nthere's no \"choices\" - the reply is the last assistant \"message\" item\nin response[\"output\"], if any (can legitimately be empty even on a\nsuccessful call - not every logged Responses-API call captures its own\nreply text there).",
+      "is_async": false,
+      "line_start": 687,
+      "line_end": 704
+    },
+    {
+      "qualname": "_judge_verdict",
+      "signature": "(response_text: str) -> tuple[Optional[bool], str]",
+      "args": [
+        {
+          "name": "response_text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "tuple[Optional[bool], str]",
+      "decorators": [],
+      "docstring": "Claude Code only - the goal-check judge call is issued by this repo's\nClaude Code /goal Stop hook; Codex CLI has no equivalent lifecycle hook,\nso a Codex payload never reaches this (see _JUDGE_CALL_PREFIX in\n_classify_event/_prompt_kind_and_display).\nParses the goal-check judge's response, once at ingest, so the Trace\npanel doesn't re-parse raw JSON per row.\nExpected shape: a bare {\"ok\": <bool>, \"reason\": \"<string>\"} object.",
+      "is_async": false,
+      "line_start": 707,
+      "line_end": 723
+    },
+    {
+      "qualname": "_compact_message",
+      "signature": "(response_text: str) -> str",
+      "args": [
+        {
+          "name": "response_text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Extracts the human-readable part of an auto-compact call's response.\nThe leading <analysis> block is the model's own scratchpad, never meant\nfor display.\nThe real summary lives in the <summary> tag right after it - or, if\ncompaction's output shape ever changes, whatever text remains once\n<analysis> is stripped.",
+      "is_async": false,
+      "line_start": 726,
+      "line_end": 736
+    },
+    {
+      "qualname": "_prompt_kind_and_display",
+      "signature": "(prompt_text: str, command_name: str, response_text: str='') -> tuple[str, str, str]",
+      "args": [
+        {
+          "name": "prompt_text",
+          "annotation": "str"
+        },
+        {
+          "name": "command_name",
+          "annotation": "str"
+        },
+        {
+          "name": "response_text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "tuple[str, str, str]",
+      "decorators": [],
+      "docstring": "Classifies the *incoming* prompt (port of panel-76's prompt_calc/\nprompt_display/prompt_final CTEs), independent of calculated_type -\nwhich prioritizes \"did the response invoke a tool\" and previously\nmisclassified system-notification/judge-call prompts whose response\nhappened to also call a tool as a real user prompt.\n\nEvery non-\"real\"/\"command\" prompt_kind here (system_notification,\njudge_call, title_gen, transcript_handoff, suggestion_mode,\nstop_hook_feedback) is a Claude Code CLI/hook lifecycle convention with\nno Codex CLI equivalent - a Codex prompt never starts with any of these\nprefixes, so it always falls through to the \"real\" branch at the bottom\n(or \"command\", harmlessly, for a prompt that happens to contain a\nliteral \"<command-args>\" tag).\nNot a Codex-specific bug: there's simply nothing here for Codex to\nmisclassify into.\n\nReturns (prompt_kind, display_text, display_arg); display_arg is the\nvariable \"gray argument\" part of the line (severity score, summary...),\nempty when a branch has none.\n\n\"compact\" is checked first and keyed off response_text, not\nprompt_text - see _COMPACT_ANALYSIS_PREFIX - so it takes priority over\nevery prompt-text-based branch below, including an empty prompt_text.",
+      "is_async": false,
+      "line_start": 739,
+      "line_end": 833
+    },
+    {
+      "qualname": "_tool_display_arg",
+      "signature": "(calculated_type: str, calculated_payload: dict) -> str",
+      "args": [
+        {
+          "name": "calculated_type",
+          "annotation": "str"
+        },
+        {
+          "name": "calculated_payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Ports tool_render's 8-branch preference chain to Python, run once at\ningest instead of per dashboard row over JSON text.",
+      "is_async": false,
+      "line_start": 836,
+      "line_end": 854
+    },
+    {
+      "qualname": "_error_type",
+      "signature": "(payload: dict) -> str",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Decodes the provider's error type (e.g. \"rate_limit_error\") from\nerror_information.error_message once at ingest, instead of a JOIN +\nJSONExtractString per failed row in the Trace panel.",
+      "is_async": false,
+      "line_start": 857,
+      "line_end": 869
+    },
+    {
+      "qualname": "_classify_event",
+      "signature": "(payload: dict) -> tuple[str, dict]",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "tuple[str, dict]",
+      "decorators": [],
+      "docstring": "The calculated_type/calculated_payload dispatcher.\nPriority: did this call's response invoke a tool (category A), else\nwhat did the triggering prompt look like (category B, port of\npanel-76's startsWith chain).\n'unknown' is a searchable bucket, not an error.\n\nShared vs CLI-specific outcomes: \"tool_call\"/\"llm_answer\"/\"unknown\" (and\n\"ask_user_question\", which Codex CLI also exposes) apply to both CLIs.\n\"agent_spawn\" and \"skill_call\" only ever fire for Claude Code (see\n_agent_invocations_from_messages/_active_skill_name_and_version) - a Codex\npayload's first tool call, if any, always lands in the generic\n\"tool_call\" branch instead.\nLikewise every category-B kind besides \"real\"/\"command\" is Claude\nCode-only (see _prompt_kind_and_display).",
+      "is_async": false,
+      "line_start": 872,
+      "line_end": 923
+    },
+    {
+      "qualname": "_source_row",
+      "signature": "(payload: dict, session_id: str, now: datetime) -> list",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        },
+        {
+          "name": "session_id",
+          "annotation": "str"
+        },
+        {
+          "name": "now",
+          "annotation": "datetime"
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": "The ingest_raw row: full untouched original payload, written once\nper call so reparse.py can recompute calculated_type/provider without\nneeding .capture/*.json.\nThis is the one place re-serializing the *entire* ~360KB-1.5MB\npayload, not a small substructure - see AGENTS.md \"Why a queue in\nfront of ClickHouse\".",
+      "is_async": false,
+      "line_start": 926,
+      "line_end": 938
+    },
+    {
+      "qualname": "_first_tool_call_name",
+      "signature": "(payload: dict) -> str",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "The tool the model invoked this turn (e.g. \"Agent\", \"Skill\", \"Read\"),\nor \"\" for a plain text reply.",
+      "is_async": false,
+      "line_start": 941,
+      "line_end": 945
+    },
+    {
+      "qualname": "_agent_invocation_id",
+      "signature": "(payload: dict) -> str",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 948,
+      "line_end": 950
+    },
+    {
+      "qualname": "_agent_invocation_rows",
+      "signature": "(session_id: str, messages: Any, parent_agent_id: str, now: Optional[datetime]=None) -> list[list]",
+      "args": [
+        {
+          "name": "session_id",
+          "annotation": "str"
+        },
+        {
+          "name": "messages",
+          "annotation": "Any"
+        },
+        {
+          "name": "parent_agent_id",
+          "annotation": "str"
+        },
+        {
+          "name": "now",
+          "annotation": "Optional[datetime]"
+        }
+      ],
+      "returns": "list[list]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 1015,
+      "line_end": 1023
+    },
+    {
+      "qualname": "_backfill_missing_skill_versions",
+      "signature": "(row_groups: list[tuple[list[list], int, int, int]]) -> None",
+      "args": [
+        {
+          "name": "row_groups",
+          "annotation": "list[tuple[list[list], int, int, int]]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "Some events in a batch resolve skill_version from their own message\nsnapshot while sibling events for the same (session_id, skill_name)\ndon't.\nFor example, a judge/gate call carries a reduced message list that\nnever included the \"available skills\" listing\n_version_marker_for_name scans for, even though a sibling call in the\nsame session did (see AGENTS.md incidents - this is the \"\u043a\u0443\u0447\u0430 \u0434\u0430\u043d\u043d\u044b\u0445\n\u0431\u0435\u0437 \u0432\u0435\u0440\u0441\u0438\u0438\" bug).\nFills those gaps in place from whatever non-empty version was\nresolved elsewhere in the same batch for the same\n(session_id, skill_name) pair.\nrow_groups is a list of\n(rows, session_id_idx, skill_name_idx, skill_version_idx) - one entry\nper fact table (event/usage/message) sharing this batch, since a\nversion resolved for one table's row should also backfill the\nothers'.\nEach table's own session_id/skill_name/skill_version column\npositions are passed in rather than assumed shared across tables.\nMutates rows in place; does nothing if no batch row resolved a\nversion for a given pair.",
+      "is_async": false,
+      "line_start": 1026,
+      "line_end": 1064
+    },
+    {
+      "qualname": "_group_row",
+      "signature": "(payload: dict, now: Optional[datetime]=None) -> Optional[list]",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        },
+        {
+          "name": "now",
+          "annotation": "Optional[datetime]"
+        }
+      ],
+      "returns": "Optional[list]",
+      "decorators": [],
+      "docstring": "ai_gateway_groups row for this payload's group, or None when the\ncall has no group_id (LiteLLM Teams not configured - see _group_id).",
+      "is_async": false,
+      "line_start": 1067,
+      "line_end": 1073
+    },
+    {
+      "qualname": "_user_row",
+      "signature": "(payload: dict, now: Optional[datetime]=None) -> Optional[list]",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        },
+        {
+          "name": "now",
+          "annotation": "Optional[datetime]"
+        }
+      ],
+      "returns": "Optional[list]",
+      "decorators": [],
+      "docstring": "ai_gateway_users row for this payload's caller. user_id is never\nempty (_user_id always falls back to \"unknown-user\"), so this only\nreturns None if somehow called on a payload with no metadata at all -\nkept Optional for symmetry with _group_row.",
+      "is_async": false,
+      "line_start": 1076,
+      "line_end": 1087
+    },
+    {
+      "qualname": "_event_row",
+      "signature": "(payload: dict, ctx: EventContext, now: Optional[datetime]=None) -> list",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        },
+        {
+          "name": "ctx",
+          "annotation": "EventContext"
+        },
+        {
+          "name": "now",
+          "annotation": "Optional[datetime]"
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 1090,
+      "line_end": 1176
+    },
+    {
+      "qualname": "_usage_row",
+      "signature": "(payload: dict, ctx: EventContext, now: Optional[datetime]=None) -> Optional[list]",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        },
+        {
+          "name": "ctx",
+          "annotation": "EventContext"
+        },
+        {
+          "name": "now",
+          "annotation": "Optional[datetime]"
+        }
+      ],
+      "returns": "Optional[list]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 1179,
+      "line_end": 1257
+    },
+    {
+      "qualname": "_message_row",
+      "signature": "(payload: dict, ctx: EventContext, now: Optional[datetime]=None) -> Optional[list]",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        },
+        {
+          "name": "ctx",
+          "annotation": "EventContext"
+        },
+        {
+          "name": "now",
+          "annotation": "Optional[datetime]"
+        }
+      ],
+      "returns": "Optional[list]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 1260,
+      "line_end": 1284
+    },
+    {
+      "qualname": "_serialize_row",
+      "signature": "(row: Optional[list], timestamp_idx: int) -> Optional[list]",
+      "args": [
+        {
+          "name": "row",
+          "annotation": "Optional[list]"
+        },
+        {
+          "name": "timestamp_idx",
+          "annotation": "int"
+        }
+      ],
+      "returns": "Optional[list]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 1287,
+      "line_end": 1292
+    },
+    {
+      "qualname": "_serialize_row_multi",
+      "signature": "(row: Optional[list], *timestamp_indices: int) -> Optional[list]",
+      "args": [
+        {
+          "name": "row",
+          "annotation": "Optional[list]"
+        },
+        {
+          "name": "*timestamp_indices",
+          "annotation": "int"
+        }
+      ],
+      "returns": "Optional[list]",
+      "decorators": [],
+      "docstring": "Serialize multiple datetime fields in a row by index.",
+      "is_async": false,
+      "line_start": 1295,
+      "line_end": 1303
+    },
+    {
+      "qualname": "_deserialize_row",
+      "signature": "(row: Optional[list], timestamp_idx: int) -> Optional[list]",
+      "args": [
+        {
+          "name": "row",
+          "annotation": "Optional[list]"
+        },
+        {
+          "name": "timestamp_idx",
+          "annotation": "int"
+        }
+      ],
+      "returns": "Optional[list]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 1306,
+      "line_end": 1311
+    },
+    {
+      "qualname": "_deserialize_row_multi",
+      "signature": "(row: Optional[list], *timestamp_indices: int) -> Optional[list]",
+      "args": [
+        {
+          "name": "row",
+          "annotation": "Optional[list]"
+        },
+        {
+          "name": "*timestamp_indices",
+          "annotation": "int"
+        }
+      ],
+      "returns": "Optional[list]",
+      "decorators": [],
+      "docstring": "Deserialize multiple datetime fields in a row by index.",
+      "is_async": false,
+      "line_start": 1314,
+      "line_end": 1322
+    },
+    {
+      "qualname": "build_event",
+      "signature": "(payload: dict) -> dict",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": "The DB-free half of ingesting one StandardLoggingPayload: pure\nfunctions only, no ClickHouse round-trip.\nCalled in webhook-worker (worker.py's _decode_into), not on webhook's\nown request path - webhook only XADDs the raw payload onto Redis\nunmodified, so its hot path never pays for this CPU-bound parsing\n(regex classification, message scanning, JSON work).\n\nIncludes source_row (full untouched payload) alongside the compact\nper-table rows; Redis MAXLEN/mem_limit are sized around this larger\nper-event footprint (see queue.yml).\n\nagent_name/agent_version are left blank - resolving them needs a SELECT\nagainst agent_invocations, which only makes sense once this batch's own\ninvocation_rows are inserted; ingest_db.ingest_events_batch() patches\nthem in.\n\nNever raises internally - lets worker.py's _decode_into decide whether\none bad payload drops just that item or the whole batch.",
+      "is_async": false,
+      "line_start": 1325,
+      "line_end": 1375
+    }
+  ],
+  "sha256": "c93fb3de684db19b88e1ac1658e2e7cc5c215bcfb12ff97e9a30137f3ed33253"
+}

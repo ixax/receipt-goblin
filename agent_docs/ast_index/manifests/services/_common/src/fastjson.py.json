@@ -1,0 +1,113 @@
+{
+  "path": "services/_common/src/fastjson.py",
+  "line_count": 39,
+  "module_docstring": null,
+  "imports": [
+    {
+      "kind": "from",
+      "module": "typing",
+      "names": [
+        "IO",
+        "Any",
+        "Callable",
+        "Optional"
+      ],
+      "line": 1
+    },
+    {
+      "kind": "import",
+      "module": "orjson",
+      "names": [],
+      "line": 3
+    }
+  ],
+  "module_constants": [],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "load",
+      "signature": "(fp: IO[bytes]) -> Any",
+      "args": [
+        {
+          "name": "fp",
+          "annotation": "IO[bytes]"
+        }
+      ],
+      "returns": "Any",
+      "decorators": [],
+      "docstring": "Replacement for json.load().\nExpects a binary file opened with 'rb'.",
+      "is_async": false,
+      "line_start": 6,
+      "line_end": 11
+    },
+    {
+      "qualname": "loads",
+      "signature": "(s: bytes) -> Any",
+      "args": [
+        {
+          "name": "s",
+          "annotation": "bytes"
+        }
+      ],
+      "returns": "Any",
+      "decorators": [],
+      "docstring": "Replacement for json.loads().\nExpects a bytes object.",
+      "is_async": false,
+      "line_start": 13,
+      "line_end": 18
+    },
+    {
+      "qualname": "dump",
+      "signature": "(obj: Any, fp: IO[bytes], *, indent: Optional[int]=None, default: Optional[Callable[[Any], Any]]=None) -> None",
+      "args": [
+        {
+          "name": "obj",
+          "annotation": "Any"
+        },
+        {
+          "name": "fp",
+          "annotation": "IO[bytes]"
+        },
+        {
+          "name": "indent",
+          "annotation": "Optional[int]"
+        },
+        {
+          "name": "default",
+          "annotation": "Optional[Callable[[Any], Any]]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "Replacement for json.dump().\nExpects a binary file opened with 'wb'.\nSupports indent=2 (only 2 spaces, per orjson) and default (called for\nvalues orjson doesn't natively serialize - same contract as stdlib's\njson.dump(default=...), e.g. default=str).",
+      "is_async": false,
+      "line_start": 20,
+      "line_end": 29
+    },
+    {
+      "qualname": "dumps",
+      "signature": "(obj: Any, *, indent: Optional[int]=None, default: Optional[Callable[[Any], Any]]=None) -> bytes",
+      "args": [
+        {
+          "name": "obj",
+          "annotation": "Any"
+        },
+        {
+          "name": "indent",
+          "annotation": "Optional[int]"
+        },
+        {
+          "name": "default",
+          "annotation": "Optional[Callable[[Any], Any]]"
+        }
+      ],
+      "returns": "bytes",
+      "decorators": [],
+      "docstring": "Replacement for json.dumps().\nReturns a bytes object (not str - callers that need a str, e.g. for\nPath.write_text(), must .decode() the result themselves).\nSupports indent=2 (only 2 spaces) and default, same as dump() above.",
+      "is_async": false,
+      "line_start": 31,
+      "line_end": 39
+    }
+  ],
+  "sha256": "ff560d70fcfe5979608f37be4daa8fca1b63599e74bbb671e9ec5a7308add91e"
+}

@@ -1,0 +1,323 @@
+{
+  "path": "hooks/harness_audit/tests/test_comment_format.py",
+  "line_count": 123,
+  "module_docstring": "Unit tests for hooks/harness_audit/comment_format.py and\ncomment_format_hook.py. Stdlib unittest only.\n\nRun: python3 -m unittest discover -s hooks/harness_audit/tests",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "importlib",
+      "names": [],
+      "line": 7
+    },
+    {
+      "kind": "import",
+      "module": "io",
+      "names": [],
+      "line": 8
+    },
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 10
+    },
+    {
+      "kind": "import",
+      "module": "unittest",
+      "names": [],
+      "line": 11
+    },
+    {
+      "kind": "from",
+      "module": "contextlib",
+      "names": [
+        "redirect_stderr"
+      ],
+      "line": 12
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 13
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "HOOK_DIR",
+      "line": 15
+    },
+    {
+      "name": "comment_format",
+      "line": 17
+    },
+    {
+      "name": "comment_format_hook",
+      "line": 18
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "TestCheckText",
+      "line_start": 21,
+      "line_end": 48,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestCheckText.test_multi_sentence_hash_comment_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 22,
+          "line_end": 24
+        },
+        {
+          "qualname": "TestCheckText.test_single_sentence_comments_clean",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 26,
+          "line_end": 28
+        },
+        {
+          "qualname": "TestCheckText.test_shebang_not_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 30,
+          "line_end": 32
+        },
+        {
+          "qualname": "TestCheckText.test_multiline_docstring_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 34,
+          "line_end": 36
+        },
+        {
+          "qualname": "TestCheckText.test_single_line_docstring_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 38,
+          "line_end": 40
+        },
+        {
+          "qualname": "TestCheckText.test_yaml_comment_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 42,
+          "line_end": 44
+        },
+        {
+          "qualname": "TestCheckText.test_code_not_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 46,
+          "line_end": 48
+        }
+      ]
+    },
+    {
+      "qualname": "TestHook",
+      "line_start": 51,
+      "line_end": 119,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestHook.run_hook",
+          "signature": "(self, payload)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "payload",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 52,
+          "line_end": 62
+        },
+        {
+          "qualname": "TestHook.test_edit_violation_blocks",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 64,
+          "line_end": 72
+        },
+        {
+          "qualname": "TestHook.test_edit_clean_passes",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 74,
+          "line_end": 82
+        },
+        {
+          "qualname": "TestHook.test_non_target_extension_skipped",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 84,
+          "line_end": 92
+        },
+        {
+          "qualname": "TestHook.test_write_checks_full_content",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 94,
+          "line_end": 102
+        },
+        {
+          "qualname": "TestHook.test_other_tool_ignored",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 104,
+          "line_end": 109
+        },
+        {
+          "qualname": "TestHook.test_plans_dir_violation_skipped",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 111,
+          "line_end": 119
+        }
+      ]
+    }
+  ],
+  "functions": [],
+  "sha256": "94db9c9ac646c341772fbadce4c207fdf329ff861088c5fcb33bf9a0ea51bfea"
+}

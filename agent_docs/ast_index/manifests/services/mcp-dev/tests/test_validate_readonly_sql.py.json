@@ -1,0 +1,586 @@
+{
+  "path": "services/mcp-dev/tests/test_validate_readonly_sql.py",
+  "line_count": 372,
+  "module_docstring": "Unit tests for server.py's read-only SQL validator - the sole\nenforcement layer gating `query`/`profile_query` (see server.py's module\ndocstring: there is no separate read-only ClickHouse user).\nNo real ClickHouse connection or network access - every test exercises\n`_validate_readonly_sql` and its helpers as pure functions.\n\nTwo groups of coverage:\n- Regression coverage for existing behavior (none of this had any tests\n  before this file).\n- New coverage for the quote-awareness fix: `_strip_sql_comments` was\n  already quote-aware, but every check downstream of it used to scan the\n  raw (unmasked) text, so a string literal's *contents* (e.g. an HTML-\n  entity-escaped `;`, or plain-text mentions of a forbidden keyword) could\n  cause a false-positive rejection. `_mask_string_literals` fixes this by\n  replacing string-literal content with a neutral placeholder before any\n  check runs, without touching the real, unmasked query that actually\n  gets executed.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "pytest",
+      "names": [],
+      "line": 19
+    },
+    {
+      "kind": "from",
+      "module": "src",
+      "names": [
+        "server"
+      ],
+      "line": 20
+    }
+  ],
+  "module_constants": [],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "test_simple_select_passes",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 26,
+      "line_end": 27
+    },
+    {
+      "qualname": "test_simple_with_passes",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 30,
+      "line_end": 32
+    },
+    {
+      "qualname": "test_leading_whitespace_select_passes",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 35,
+      "line_end": 36
+    },
+    {
+      "qualname": "test_case_insensitive_select_with_passes",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 39,
+      "line_end": 41
+    },
+    {
+      "qualname": "test_non_select_with_start_rejected",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 48,
+      "line_end": 50
+    },
+    {
+      "qualname": "test_select_not_at_the_very_start_rejected",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 53,
+      "line_end": 57
+    },
+    {
+      "qualname": "test_forbidden_keyword_rejected",
+      "signature": "(kw)",
+      "args": [
+        {
+          "name": "kw",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [
+        "pytest.mark.parametrize('kw', [k for k in server._FORBIDDEN_KEYWORDS if k != 'SYSTEM'])"
+      ],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 65,
+      "line_end": 68
+    },
+    {
+      "qualname": "test_forbidden_keyword_matched_as_whole_word_only",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 71,
+      "line_end": 74
+    },
+    {
+      "qualname": "test_system_command_rejected",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 77,
+      "line_end": 79
+    },
+    {
+      "qualname": "test_forbidden_table_function_rejected",
+      "signature": "(fn)",
+      "args": [
+        {
+          "name": "fn",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [
+        "pytest.mark.parametrize('fn', server._FORBIDDEN_TABLE_FUNCTIONS)"
+      ],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 87,
+      "line_end": 90
+    },
+    {
+      "qualname": "test_system_query_log_allowed",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 97,
+      "line_end": 98
+    },
+    {
+      "qualname": "test_other_system_tables_rejected",
+      "signature": "(table)",
+      "args": [
+        {
+          "name": "table",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [
+        "pytest.mark.parametrize('table', ['settings', 'tables', 'columns', 'processes', 'metrics'])"
+      ],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 102,
+      "line_end": 104
+    },
+    {
+      "qualname": "test_information_schema_rejected",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 107,
+      "line_end": 109
+    },
+    {
+      "qualname": "test_mysql_schema_rejected",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 112,
+      "line_end": 114
+    },
+    {
+      "qualname": "test_allowed_table_passes",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 122,
+      "line_end": 123
+    },
+    {
+      "qualname": "test_disallowed_table_rejected",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 126,
+      "line_end": 128
+    },
+    {
+      "qualname": "test_join_of_allowed_and_disallowed_table_rejected",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 131,
+      "line_end": 137
+    },
+    {
+      "qualname": "test_query_with_no_from_join_rejected",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 140,
+      "line_end": 142
+    },
+    {
+      "qualname": "test_cte_name_not_required_to_be_allowlisted",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 149,
+      "line_end": 151
+    },
+    {
+      "qualname": "test_cte_names_helper_extracts_definitions_only",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 154,
+      "line_end": 156
+    },
+    {
+      "qualname": "test_referenced_tables_excludes_cte_names",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 159,
+      "line_end": 161
+    },
+    {
+      "qualname": "test_referenced_tables_handles_comma_join_and_schema_qualifier",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 164,
+      "line_end": 166
+    },
+    {
+      "qualname": "test_array_join_does_not_misparse_array_expression_as_table",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 169,
+      "line_end": 178
+    },
+    {
+      "qualname": "test_line_comment_stripped",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 185,
+      "line_end": 187
+    },
+    {
+      "qualname": "test_block_comment_stripped",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 190,
+      "line_end": 192
+    },
+    {
+      "qualname": "test_line_comment_marker_inside_string_not_stripped",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 195,
+      "line_end": 197
+    },
+    {
+      "qualname": "test_block_comment_marker_inside_string_not_stripped",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 200,
+      "line_end": 202
+    },
+    {
+      "qualname": "test_doubled_quote_does_not_end_string_early",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 205,
+      "line_end": 210
+    },
+    {
+      "qualname": "test_adversarial_comment_payload_still_blocked_end_to_end",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 213,
+      "line_end": 219
+    },
+    {
+      "qualname": "test_single_trailing_semicolon_accepted",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 226,
+      "line_end": 227
+    },
+    {
+      "qualname": "test_trailing_semicolon_with_whitespace_accepted",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 230,
+      "line_end": 231
+    },
+    {
+      "qualname": "test_second_real_statement_after_semicolon_rejected",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 234,
+      "line_end": 237
+    },
+    {
+      "qualname": "test_semicolons_inside_string_literal_accepted",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 245,
+      "line_end": 247
+    },
+    {
+      "qualname": "test_html_entity_semicolons_inside_string_literal_accepted",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 250,
+      "line_end": 258
+    },
+    {
+      "qualname": "test_forbidden_keyword_as_plain_text_in_string_accepted",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 261,
+      "line_end": 263
+    },
+    {
+      "qualname": "test_another_forbidden_keyword_as_plain_text_in_string_accepted",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 266,
+      "line_end": 268
+    },
+    {
+      "qualname": "test_forbidden_table_function_as_plain_text_in_string_accepted",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 271,
+      "line_end": 273
+    },
+    {
+      "qualname": "test_system_dot_looking_text_in_string_accepted",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 276,
+      "line_end": 278
+    },
+    {
+      "qualname": "test_information_schema_looking_text_in_string_accepted",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 281,
+      "line_end": 283
+    },
+    {
+      "qualname": "test_masking_does_not_blind_real_semicolon_outside_strings",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 286,
+      "line_end": 293
+    },
+    {
+      "qualname": "test_doubled_quote_escape_then_semicolon_content_accepted",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 296,
+      "line_end": 298
+    },
+    {
+      "qualname": "test_trailing_semicolon_strip_is_quote_aware",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 301,
+      "line_end": 309
+    },
+    {
+      "qualname": "test_panel_76_99_shaped_dynamic_text_query_accepted",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 312,
+      "line_end": 327
+    },
+    {
+      "qualname": "test_mask_string_literals_preserves_length_and_positions",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 334,
+      "line_end": 338
+    },
+    {
+      "qualname": "test_mask_string_literals_keeps_quote_characters",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 341,
+      "line_end": 343
+    },
+    {
+      "qualname": "test_mask_string_literals_leaves_non_string_text_untouched",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 346,
+      "line_end": 350
+    },
+    {
+      "qualname": "test_mask_string_literals_handles_doubled_quote_escape",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 353,
+      "line_end": 355
+    },
+    {
+      "qualname": "test_mask_string_literals_handles_unterminated_string_without_crashing",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 358,
+      "line_end": 365
+    },
+    {
+      "qualname": "test_mask_string_literals_multiple_literals_independently_masked",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 368,
+      "line_end": 372
+    }
+  ],
+  "sha256": "4be708902b4a80a388724e67a73cb69e88973ec42e546dd9244401749e57cf9b"
+}

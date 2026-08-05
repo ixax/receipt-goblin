@@ -1,0 +1,259 @@
+{
+  "path": "services/webhook/tests/test_queue.py",
+  "line_count": 117,
+  "module_docstring": "Unit tests for queue.py's enqueue_raw() fast-path/bundle-split\nbranching - the raw-bytes passthrough that keeps webhook's request path\nfrom parsing/re-serializing every payload (see module + function\ndocstrings). get_async_redis() is monkeypatched to a fake client so no\nreal Redis is needed.\nMoved out of _common/tests/test_queue_client.py when the producer side\nsplit into its own module - see\nplans/common-module-cleanup-refactor.md.\n\nNo pytest-asyncio dependency here - the project doesn't have it installed,\nso each async coroutine under test is driven with asyncio.run() directly.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "asyncio",
+      "names": [],
+      "line": 13
+    },
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 14
+    },
+    {
+      "kind": "import",
+      "module": "pytest",
+      "names": [],
+      "line": 16
+    },
+    {
+      "kind": "from",
+      "module": "src",
+      "names": [
+        "queue"
+      ],
+      "line": 17
+    }
+  ],
+  "module_constants": [],
+  "classes": [
+    {
+      "qualname": "_FakeAsyncRedis",
+      "line_start": 24,
+      "line_end": 29,
+      "decorators": [],
+      "bases": [],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "_FakeAsyncRedis.__init__",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 25,
+          "line_end": 26
+        },
+        {
+          "qualname": "_FakeAsyncRedis.xadd",
+          "signature": "(self, stream_key, fields, maxlen=None, approximate=None)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "stream_key",
+              "annotation": null
+            },
+            {
+              "name": "fields",
+              "annotation": null
+            },
+            {
+              "name": "maxlen",
+              "annotation": null
+            },
+            {
+              "name": "approximate",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": true,
+          "line_start": 28,
+          "line_end": 29
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "_run",
+      "signature": "(coro)",
+      "args": [
+        {
+          "name": "coro",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 20,
+      "line_end": 21
+    },
+    {
+      "qualname": "fake_redis",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [
+        "pytest.fixture"
+      ],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 33,
+      "line_end": 36
+    },
+    {
+      "qualname": "test_enqueue_raw_success_single_object_goes_straight_through_unparsed",
+      "signature": "(fake_redis)",
+      "args": [
+        {
+          "name": "fake_redis",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 39,
+      "line_end": 48
+    },
+    {
+      "qualname": "test_enqueue_raw_success_leading_whitespace_before_brace_still_fast_path",
+      "signature": "(fake_redis)",
+      "args": [
+        {
+          "name": "fake_redis",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 51,
+      "line_end": 57
+    },
+    {
+      "qualname": "test_enqueue_raw_success_bundled_array_splits_into_one_entry_per_payload",
+      "signature": "(fake_redis)",
+      "args": [
+        {
+          "name": "fake_redis",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 60,
+      "line_end": 70
+    },
+    {
+      "qualname": "test_enqueue_raw_unsuccess_malformed_bundled_array_drops_silently",
+      "signature": "(fake_redis)",
+      "args": [
+        {
+          "name": "fake_redis",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 73,
+      "line_end": 78
+    },
+    {
+      "qualname": "test_enqueue_raw_unsuccess_xadd_failure_does_not_raise",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 81,
+      "line_end": 89
+    },
+    {
+      "qualname": "test_enqueue_success_skips_non_dict_items",
+      "signature": "(fake_redis)",
+      "args": [
+        {
+          "name": "fake_redis",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 92,
+      "line_end": 96
+    },
+    {
+      "qualname": "test_enqueue_side_success_tags_payload_with_kind",
+      "signature": "(fake_redis)",
+      "args": [
+        {
+          "name": "fake_redis",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 99,
+      "line_end": 107
+    },
+    {
+      "qualname": "test_enqueue_side_unsuccess_xadd_failure_does_not_raise",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 110,
+      "line_end": 117
+    }
+  ],
+  "sha256": "bcc6e0a7904ed5f472a2244c13d143776350ddfbb23ffdf927becf2beadafa26"
+}

@@ -1,0 +1,44 @@
+{
+  "path": "services/mcp-dev/tests/conftest.py",
+  "line_count": 25,
+  "module_docstring": null,
+  "imports": [
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 1
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 2
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 3
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "_service_dir",
+      "line": 20
+    },
+    {
+      "name": "_services_dir",
+      "line": 21
+    },
+    {
+      "name": "_new_path",
+      "line": 23
+    }
+  ],
+  "classes": [],
+  "functions": [],
+  "sha256": "3e35871a98fc80841190f59f3a708406c9413ddfd3214beb14b19209a1eab63d"
+}

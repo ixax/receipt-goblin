@@ -1,0 +1,155 @@
+{
+  "path": "services/_common/src/mcp_common.py",
+  "line_count": 75,
+  "module_docstring": "Shared plumbing for the mcp-dev/mcp-stats FastMCP servers: a lazily-built,\nper-thread ClickHouse client, the /health route that pings it, and the\nDNS-rebinding-protection transport_security settings both servers need.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "threading",
+      "names": [],
+      "line": 5
+    },
+    {
+      "kind": "import",
+      "module": "clickhouse_connect",
+      "names": [],
+      "line": 7
+    },
+    {
+      "kind": "from",
+      "module": "mcp.server.transport_security",
+      "names": [
+        "TransportSecuritySettings"
+      ],
+      "line": 8
+    },
+    {
+      "kind": "from",
+      "module": "starlette.concurrency",
+      "names": [
+        "run_in_threadpool"
+      ],
+      "line": 9
+    },
+    {
+      "kind": "from",
+      "module": "starlette.requests",
+      "names": [
+        "Request"
+      ],
+      "line": 10
+    },
+    {
+      "kind": "from",
+      "module": "starlette.responses",
+      "names": [
+        "JSONResponse"
+      ],
+      "line": 11
+    }
+  ],
+  "module_constants": [],
+  "classes": [
+    {
+      "qualname": "ClickHouseClientFactory",
+      "line_start": 14,
+      "line_end": 39,
+      "decorators": [],
+      "bases": [],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "ClickHouseClientFactory.__init__",
+          "signature": "(self, host: str, port: int, username: str, password: str, database: str)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "host",
+              "annotation": "str"
+            },
+            {
+              "name": "port",
+              "annotation": "int"
+            },
+            {
+              "name": "username",
+              "annotation": "str"
+            },
+            {
+              "name": "password",
+              "annotation": "str"
+            },
+            {
+              "name": "database",
+              "annotation": "str"
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 15,
+          "line_end": 26
+        },
+        {
+          "qualname": "ClickHouseClientFactory.get_client",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 28,
+          "line_end": 39
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "make_health_route",
+      "signature": "(get_client, logger=None)",
+      "args": [
+        {
+          "name": "get_client",
+          "annotation": null
+        },
+        {
+          "name": "logger",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 42,
+      "line_end": 56
+    },
+    {
+      "qualname": "build_transport_security",
+      "signature": "(host_port: str) -> TransportSecuritySettings",
+      "args": [
+        {
+          "name": "host_port",
+          "annotation": "str"
+        }
+      ],
+      "returns": "TransportSecuritySettings",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 59,
+      "line_end": 75
+    }
+  ],
+  "sha256": "d1f391d054cffde73ee11334913e36cb88bb54a68f335faa32bcf1f199044ec9"
+}

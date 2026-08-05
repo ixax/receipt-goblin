@@ -1,0 +1,72 @@
+{
+  "path": "hooks/guard_destructive.py",
+  "line_count": 104,
+  "module_docstring": "PreToolUse guard for Bash: forces a confirmation prompt on destructive\nDB/infra commands, overriding any blanket Bash allow rule (e.g. Bash(*) in\na local settings override).",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 5
+    },
+    {
+      "kind": "import",
+      "module": "re",
+      "names": [],
+      "line": 6
+    },
+    {
+      "kind": "import",
+      "module": "subprocess",
+      "names": [],
+      "line": 7
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 8
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "PATTERNS",
+      "line": 10
+    },
+    {
+      "name": "_STASH_RE",
+      "line": 31
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_stash_status_note",
+      "signature": "(cwd: str) -> str",
+      "args": [
+        {
+          "name": "cwd",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Best-effort `git status --short` summary for the prompt.\nShows the user what a bare `git stash` is about to sweep up before they decide.\nEmpty string on any failure (git missing, not a repo, etc), never raises.",
+      "is_async": false,
+      "line_start": 34,
+      "line_end": 56
+    },
+    {
+      "qualname": "main",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 59,
+      "line_end": 100
+    }
+  ],
+  "sha256": "2201d5de31e6d21543da4a7d4f80d6cabbac3edbff19fe881cf8de7b4046368b"
+}

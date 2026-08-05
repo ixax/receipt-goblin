@@ -1,0 +1,67 @@
+{
+  "path": "services/_common/src/litellm_auth.py",
+  "line_count": 30,
+  "module_docstring": "Shared LiteLLM virtual-key check - used by every service that gates\nrequests behind a LiteLLM virtual key (services/webhook, services/mcp-stats).",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 4
+    },
+    {
+      "kind": "import",
+      "module": "urllib.error",
+      "names": [],
+      "line": 5
+    },
+    {
+      "kind": "import",
+      "module": "urllib.request",
+      "names": [],
+      "line": 6
+    },
+    {
+      "kind": "from",
+      "module": "datetime",
+      "names": [
+        "datetime",
+        "timezone"
+      ],
+      "line": 7
+    }
+  ],
+  "module_constants": [],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "virtual_key_is_valid",
+      "signature": "(key: str, base_url: str, master_key: str, timeout: int=3) -> bool",
+      "args": [
+        {
+          "name": "key",
+          "annotation": "str"
+        },
+        {
+          "name": "base_url",
+          "annotation": "str"
+        },
+        {
+          "name": "master_key",
+          "annotation": "str"
+        },
+        {
+          "name": "timeout",
+          "annotation": "int"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 10,
+      "line_end": 30
+    }
+  ],
+  "sha256": "e7254b0909f5509022ceb4efcd222ceeda200bda93eefa6e64e730affbbbd84b"
+}

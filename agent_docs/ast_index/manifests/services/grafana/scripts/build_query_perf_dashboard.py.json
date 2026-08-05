@@ -1,0 +1,404 @@
+{
+  "path": "services/grafana/scripts/build_query_perf_dashboard.py",
+  "line_count": 616,
+  "module_docstring": "Render the query-performance companion dashboard from a panel tree.\n\nThis is the \"template\" half of a two-script pipeline - the other half,\nextract_panel_tree.py, parses services/grafana/dashboards/agents_overview.json\ninto a tree JSON (every top-level tab, its sub-tabs, and each panel's\nid/title/tagged state). This script reads that tree (--tree) and stamps it\nonto services/grafana/dashboards-health/query_performance.json, without\ntouching agents_overview.json itself.\n\nFor each tree panel already tagged by tag_panel_queries.py, emits a\ncollapsible row titled \"[<id>] <source title>\", containing 5 panels:\n\n  - Duration: query_duration_ms over time\n  - Memory usage: memory_usage (bytes) over time\n  - Rows / bytes read: read_rows / read_bytes over time\n  - Latency percentiles: p50/p90/p95 of query_duration_ms, bucketed over time\n  - Recent executions: table of event_time, duration, memory, rows, bytes, query_id\n\nAll five are filtered by `log_comment = 'agents_overview:panel_<id>'`\nagainst system.query_log - see tag_panel_queries.py for how that tag\ngets onto the source panel's rawSql, and AGENTS.md for the known\nCLICKHOUSE_USER grant fragility this depends on\n(SELECT ON system.query_log).\n\nThe output dashboard's tab/sub-tab layout mirrors each tree tab's\nstructure 1:1 (flat tab -> a RowsLayout of one collapsible row per\nsource panel; tab with sub-tabs -> nested TabsLayout, one level deep,\nmatching what agents_overview.json itself uses, with a RowsLayout at\neach sub-tab leaf - see parse_dashboard.py's module docstring for the\nv2beta1 TabsLayout/GridLayout shape, and dashboards-health/infra_overview.json\nor docker_containers.json for the RowsLayout/RowsLayoutRow shape this\nreuses).\n\nUsage:\n  # full rebuild - every tab in the tree, one command\n  extract_panel_tree.py --out services/grafana/scripts/panel_tree.json\n  build_query_perf_dashboard.py --tree services/grafana/scripts/panel_tree.json \\\n      --out services/grafana/dashboards-health/query_performance.json\n\n  # scoped sync - just one tab, other tabs in --out left untouched\n  build_query_perf_dashboard.py --tree services/grafana/scripts/panel_tree.json \\\n      --out services/grafana/dashboards-health/query_performance.json --tab \"Top N\"\n\nAlways re-run extract_panel_tree.py first if agents_overview.json's panels,\ntags, or tabs changed since the tree was last written - this script only ever\nreads the tree, never the source dashboard, so a stale tree silently renders\nstale data.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "argparse",
+      "names": [],
+      "line": 50
+    },
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 51
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 52
+    },
+    {
+      "kind": "import",
+      "module": "textwrap",
+      "names": [],
+      "line": 53
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "TAG_PREFIX",
+      "line": 55
+    },
+    {
+      "name": "BASE_ID",
+      "line": 57
+    },
+    {
+      "name": "QUERY_DETAIL_TAB_TITLE",
+      "line": 59
+    },
+    {
+      "name": "QUERY_DETAIL_BASE_ID",
+      "line": 60
+    },
+    {
+      "name": "DYNAMICTEXT_QUERY_DETAIL_REF",
+      "line": 462
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "load",
+      "signature": "(path)",
+      "args": [
+        {
+          "name": "path",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 63,
+      "line_end": 65
+    },
+    {
+      "qualname": "refs_in_output_layout",
+      "signature": "(layout)",
+      "args": [
+        {
+          "name": "layout",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": "All panel refs referenced anywhere under a query_performance.json layout\n(TabsLayout / RowsLayout / GridLayout, in any nesting).",
+      "is_async": false,
+      "line_start": 68,
+      "line_end": 84
+    },
+    {
+      "qualname": "query",
+      "signature": "(ref_id, raw_sql, fmt)",
+      "args": [
+        {
+          "name": "ref_id",
+          "annotation": null
+        },
+        {
+          "name": "raw_sql",
+          "annotation": null
+        },
+        {
+          "name": "fmt",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 87,
+      "line_end": 101
+    },
+    {
+      "qualname": "timeseries_panel",
+      "signature": "(new_id, title, unit, raw_sql, single_series, series_colors=None)",
+      "args": [
+        {
+          "name": "new_id",
+          "annotation": null
+        },
+        {
+          "name": "title",
+          "annotation": null
+        },
+        {
+          "name": "unit",
+          "annotation": null
+        },
+        {
+          "name": "raw_sql",
+          "annotation": null
+        },
+        {
+          "name": "single_series",
+          "annotation": null
+        },
+        {
+          "name": "series_colors",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 104,
+      "line_end": 159
+    },
+    {
+      "qualname": "query_id_link_properties",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": "Same convention as session_id links (dashboard-panels/SKILL.md): a\nregex-all mapping shows a short \"open \u2197\" label instead of the raw id,\nand the dataLink uses __value.raw (not .text, which now resolves to the\nmapped label) plus __url_time_range so the date range travels with the\nlink even though the destination tab's own queries ignore it.\n\ntargetBlank is False here (unlike session_id's Trace link) because this\nis a same-dashboard dtab= drill-down, confirmed live to always open in\nthe same browser tab regardless of the flag - leaving it True would\njust misrepresent behavior the link doesn't actually have.",
+      "is_async": false,
+      "line_start": 162,
+      "line_end": 188
+    },
+    {
+      "qualname": "long_text_override",
+      "signature": "(col)",
+      "args": [
+        {
+          "name": "col",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": "dashboard-panels/SKILL.md convention for a long free-text/JSON column:\nno fixed width (auto-fills), eye-icon inspect instead of truncating -\nthe inspect drawer renders the raw value monospaced with real line\nbreaks/whitespace preserved, unlike the table's own text-wrap feature\n(which as of Grafana's current release does not reliably honor\nembedded newlines - see grafana/grafana#91111/#89915).",
+      "is_async": false,
+      "line_start": 191,
+      "line_end": 204
+    },
+    {
+      "qualname": "numeric_override",
+      "signature": "(col, unit='locale', width=None)",
+      "args": [
+        {
+          "name": "col",
+          "annotation": null
+        },
+        {
+          "name": "unit",
+          "annotation": null
+        },
+        {
+          "name": "width",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 207,
+      "line_end": 211
+    },
+    {
+      "qualname": "table_panel",
+      "signature": "(new_id, title, raw_sql, sort_field='event_time', link_query_id=False, extra_overrides=None)",
+      "args": [
+        {
+          "name": "new_id",
+          "annotation": null
+        },
+        {
+          "name": "title",
+          "annotation": null
+        },
+        {
+          "name": "raw_sql",
+          "annotation": null
+        },
+        {
+          "name": "sort_field",
+          "annotation": null
+        },
+        {
+          "name": "link_query_id",
+          "annotation": null
+        },
+        {
+          "name": "extra_overrides",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 214,
+      "line_end": 260
+    },
+    {
+      "qualname": "build_panels_for",
+      "signature": "(source_id)",
+      "args": [
+        {
+          "name": "source_id",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": "Panel titles are just the metric name - the source panel's own id/title\ngoes on the enclosing collapsible row instead (see build_row_for).",
+      "is_async": false,
+      "line_start": 263,
+      "line_end": 330
+    },
+    {
+      "qualname": "build_grid",
+      "signature": "(refs)",
+      "args": [
+        {
+          "name": "refs",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": "3 timeseries side by side (x0/8/16, width 8 each), then Latency\npercentiles full-width below them, then the Recent executions table\nfull-width below that.",
+      "is_async": false,
+      "line_start": 333,
+      "line_end": 352
+    },
+    {
+      "qualname": "build_row_for",
+      "signature": "(source_id, source_title, refs)",
+      "args": [
+        {
+          "name": "source_id",
+          "annotation": null
+        },
+        {
+          "name": "source_title",
+          "annotation": null
+        },
+        {
+          "name": "refs",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 355,
+      "line_end": 363
+    },
+    {
+      "qualname": "build_rows_layout",
+      "signature": "(source_panels)",
+      "args": [
+        {
+          "name": "source_panels",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": "source_panels: list of (source_id, source_title, refs).",
+      "is_async": false,
+      "line_start": 366,
+      "line_end": 371
+    },
+    {
+      "qualname": "build_tab_layout",
+      "signature": "(groups)",
+      "args": [
+        {
+          "name": "groups",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": "groups: list of (subtab_title_or_None, [(source_id, source_title, refs)]).",
+      "is_async": false,
+      "line_start": 374,
+      "line_end": 381
+    },
+    {
+      "qualname": "query_id_variable",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": "Plain text variable, not a dropdown - populated by clicking a query_id\nlink (var-query_id=...), not meant for manual browsing (unlike\nagents_overview.json's session_id QueryVariable, which lists recent\nsessions - there's no equivalent \"recent query_ids\" concept worth a\ndropdown here).",
+      "is_async": false,
+      "line_start": 384,
+      "line_end": 401
+    },
+    {
+      "qualname": "build_query_detail_panels",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": "Every panel here filters by query_id alone, deliberately ignoring\n$__timeFilter/the dashboard time range - a query_id already pins one\nexact execution, so there's nothing for a time bound to narrow down,\nand the link that gets you here already carried __url_time_range only\nso the *other* tabs' state survives the round trip, not to constrain\nthese queries. Trade-off: with no time/partition bound at all, this is\na full scan of system.query_log by query_id on every load - acceptable\nfor an occasional drill-down, not a panel meant for a busy dashboard.",
+      "is_async": false,
+      "line_start": 404,
+      "line_end": 459
+    },
+    {
+      "qualname": "build_query_detail_tab",
+      "signature": "(elements)",
+      "args": [
+        {
+          "name": "elements",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 465,
+      "line_end": 488
+    },
+    {
+      "qualname": "new_dashboard_shell",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 491,
+      "line_end": 519
+    },
+    {
+      "qualname": "render_tab",
+      "signature": "(tab_entry, out_elements)",
+      "args": [
+        {
+          "name": "tab_entry",
+          "annotation": null
+        },
+        {
+          "name": "out_elements",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": "tab_entry: one {\"title\": ..., \"groups\": [...]} entry from the tree.\nBuilds every tagged panel's elements into out_elements, returns\n(new_tab_dict, new_refs, untagged).",
+      "is_async": false,
+      "line_start": 522,
+      "line_end": 543
+    },
+    {
+      "qualname": "main",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 546,
+      "line_end": 612
+    }
+  ],
+  "sha256": "98f3a231e334800149833c1e5e2bbace386768bf7932d59722eb025fdcce7d10"
+}

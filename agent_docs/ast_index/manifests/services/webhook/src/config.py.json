@@ -1,0 +1,22 @@
+{
+  "path": "services/webhook/src/config.py",
+  "line_count": 7,
+  "module_docstring": null,
+  "imports": [
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 1
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "APP_VERSION",
+      "line": 7
+    }
+  ],
+  "classes": [],
+  "functions": [],
+  "sha256": "40dc62c8da81f86aa2089868cbc23288b1dcce76121da69440d99fa49fcc4067"
+}

@@ -1,0 +1,2 @@
+#!/bin/sh
+"$(dirname "$0")/lib/check-ast-index.sh" || exit 1

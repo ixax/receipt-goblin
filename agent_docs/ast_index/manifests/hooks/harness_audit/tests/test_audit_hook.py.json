@@ -1,0 +1,395 @@
+{
+  "path": "hooks/harness_audit/tests/test_audit_hook.py",
+  "line_count": 129,
+  "module_docstring": "Unit tests for hooks/harness_audit/audit_hook.py. Stdlib unittest only.\n\nRun: python3 -m unittest discover -s hooks/harness_audit/tests",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "importlib",
+      "names": [],
+      "line": 6
+    },
+    {
+      "kind": "import",
+      "module": "io",
+      "names": [],
+      "line": 7
+    },
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 8
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 10
+    },
+    {
+      "kind": "import",
+      "module": "tempfile",
+      "names": [],
+      "line": 11
+    },
+    {
+      "kind": "import",
+      "module": "unittest",
+      "names": [],
+      "line": 12
+    },
+    {
+      "kind": "from",
+      "module": "contextlib",
+      "names": [
+        "redirect_stderr"
+      ],
+      "line": 13
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 14
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "HOOK_DIR",
+      "line": 16
+    },
+    {
+      "name": "audit_hook",
+      "line": 18
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "TestIsHarnessPath",
+      "line_start": 21,
+      "line_end": 49,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestIsHarnessPath.test_claude_path_matches",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 22,
+          "line_end": 23
+        },
+        {
+          "qualname": "TestIsHarnessPath.test_codex_path_matches",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 25,
+          "line_end": 26
+        },
+        {
+          "qualname": "TestIsHarnessPath.test_agents_skill_path_matches",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 28,
+          "line_end": 29
+        },
+        {
+          "qualname": "TestIsHarnessPath.test_root_agents_md_matches",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 31,
+          "line_end": 32
+        },
+        {
+          "qualname": "TestIsHarnessPath.test_root_claude_md_matches",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 34,
+          "line_end": 35
+        },
+        {
+          "qualname": "TestIsHarnessPath.test_nested_agents_md_matches",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 37,
+          "line_end": 38
+        },
+        {
+          "qualname": "TestIsHarnessPath.test_agent_docs_path_matches",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 40,
+          "line_end": 41
+        },
+        {
+          "qualname": "TestIsHarnessPath.test_unrelated_path_does_not_match",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 43,
+          "line_end": 44
+        },
+        {
+          "qualname": "TestIsHarnessPath.test_readme_matches",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 46,
+          "line_end": 49
+        }
+      ]
+    },
+    {
+      "qualname": "TestMainEndToEnd",
+      "line_start": 52,
+      "line_end": 125,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestMainEndToEnd.setUp",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 53,
+          "line_end": 57
+        },
+        {
+          "qualname": "TestMainEndToEnd.tearDown",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 59,
+          "line_end": 61
+        },
+        {
+          "qualname": "TestMainEndToEnd.run_hook",
+          "signature": "(self, file_path: str)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "file_path",
+              "annotation": "str"
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 63,
+          "line_end": 74
+        },
+        {
+          "qualname": "TestMainEndToEnd.test_non_harness_edit_exits_zero_without_running_audit",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 76,
+          "line_end": 78
+        },
+        {
+          "qualname": "TestMainEndToEnd.test_harness_edit_within_budget_exits_zero",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 80,
+          "line_end": 84
+        },
+        {
+          "qualname": "TestMainEndToEnd.test_harness_edit_over_budget_exits_two",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 86,
+          "line_end": 90
+        },
+        {
+          "qualname": "TestMainEndToEnd.test_agents_skill_edit_over_budget_exits_two",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 92,
+          "line_end": 98
+        },
+        {
+          "qualname": "TestMainEndToEnd.test_preexisting_violation_in_other_file_does_not_block",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": "A pre-existing md-format violation in an unrelated file must not\nblock an edit to a different, clean harness file - only violations\nin the file just edited (or genuinely cross-file kinds) should.",
+          "is_async": false,
+          "line_start": 100,
+          "line_end": 114
+        },
+        {
+          "qualname": "TestMainEndToEnd.test_own_violation_still_blocks",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 116,
+          "line_end": 125
+        }
+      ]
+    }
+  ],
+  "functions": [],
+  "sha256": "69602992a482bf7c14581dcfeba8e08b818b6d47e0409f8e42692cc60f408649"
+}

@@ -1,0 +1,88 @@
+{
+  "path": "hooks/ast_index/sync_hook.py",
+  "line_count": 59,
+  "module_docstring": "PostToolUse hook: keep agent_docs/ast_index/ live during a session.\nRegenerates the edited file's cache entry after an Edit/Write to a tracked .py file.\nStdlib only.\n\nWire in .claude/settings.json:\n  \"PostToolUse\": [{\"matcher\": \"Edit|Write\",\n    \"hooks\": [{\"type\": \"command\",\n               \"command\": \"uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/ast_index/sync_hook.py\"\"}]}]\nExit 2 on regeneration failure (works for agents without Bash).\n\nSeparate from hooks/harness_audit/sync_hook.py deliberately - that hook keeps agent_docs/harness-index.md in sync, this one keeps agent_docs/ast_index/ in sync.\nOne hook, one job, per this repo's convention (report_git_branch.py, guard_destructive.py).",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 15
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 16
+    },
+    {
+      "kind": "import",
+      "module": "subprocess",
+      "names": [],
+      "line": 17
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 18
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 19
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "HOOK_DIR",
+      "line": 21
+    },
+    {
+      "name": "REPO_ROOT",
+      "line": 22
+    },
+    {
+      "name": "AST_INDEX_SCRIPT",
+      "line": 23
+    },
+    {
+      "name": "EXCLUDE_DIR_NAMES",
+      "line": 25
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "is_tracked_source",
+      "signature": "(rel: str) -> bool",
+      "args": [
+        {
+          "name": "rel",
+          "annotation": "str"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": "True if rel is a .py file scripts/ast_index.py would index.",
+      "is_async": false,
+      "line_start": 28,
+      "line_end": 33
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> int",
+      "args": [],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 36,
+      "line_end": 55
+    }
+  ],
+  "sha256": "c8959b7bd47119783c7c14eefd46cb4c76a873f6238107e6cca27706f4e89b48"
+}

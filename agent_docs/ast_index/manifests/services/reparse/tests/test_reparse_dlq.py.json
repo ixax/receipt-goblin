@@ -1,0 +1,177 @@
+{
+  "path": "services/reparse/tests/test_reparse_dlq.py",
+  "line_count": 132,
+  "module_docstring": "Unit tests for reparse_dlq.py's decode-then-dispatch wrapper around\ncommon.ingest_db.replay_dlq_row() and its LIMIT-only pagination loop over\ningest_dlq_unresolved.\nNo real ClickHouse connection - replay_dlq_row, mark_dlq_rows_resolved, and\nget_client are monkeypatched.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 7
+    },
+    {
+      "kind": "from",
+      "module": "src",
+      "names": [
+        "reparse_dlq"
+      ],
+      "line": 9
+    }
+  ],
+  "module_constants": [],
+  "classes": [
+    {
+      "qualname": "_FakePagingClient",
+      "line_start": 50,
+      "line_end": 70,
+      "decorators": [],
+      "bases": [],
+      "docstring": "Returns successive `pages` on each query(), then an empty page once\nexhausted - mirrors reparse_dlq()'s plain LIMIT query against\ningest_dlq_unresolved (no cursor: each page's rows would actually be\nexcluded from the next page by mark_dlq_rows_resolved having run\nagainst a real view, but this fake just hands back whatever pages it\nwas given).",
+      "methods": [
+        {
+          "qualname": "_FakePagingClient.__init__",
+          "signature": "(self, pages)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "pages",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 58,
+          "line_end": 60
+        },
+        {
+          "qualname": "_FakePagingClient.query",
+          "signature": "(self, query, parameters=None)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "query",
+              "annotation": null
+            },
+            {
+              "name": "parameters",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 62,
+          "line_end": 70
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "test_replay_one_success_decodes_and_calls_replay_dlq_row",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 12,
+      "line_end": 25
+    },
+    {
+      "qualname": "test_replay_one_unsuccess_malformed_json_skips_replay_dlq_row",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 28,
+      "line_end": 35
+    },
+    {
+      "qualname": "test_replay_one_unsuccess_replay_dlq_row_raising_is_caught",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 38,
+      "line_end": 47
+    },
+    {
+      "qualname": "test_reparse_dlq_success_pages_through_chunks_until_empty",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 73,
+      "line_end": 96
+    },
+    {
+      "qualname": "test_reparse_dlq_unsuccess_no_matching_rows_returns_zero",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 99,
+      "line_end": 105
+    },
+    {
+      "qualname": "test_reparse_dlq_unsuccess_zero_progress_page_stops_without_looping",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 108,
+      "line_end": 132
+    }
+  ],
+  "sha256": "7c8171950292026ab3134fc322c79f9cc980c2bee650e3a85b7fe1b423dadc99"
+}

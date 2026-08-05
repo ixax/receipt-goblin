@@ -1,0 +1,124 @@
+{
+  "path": "hooks/goal_scope_guard.py",
+  "line_count": 110,
+  "module_docstring": "UserPromptSubmit hook: warns when the session's context has grown large enough that, if `/goal` is active, its periodic judge_call checks would be expensive.\nClaude Code's /goal judge_call always misses prompt cache and rewrites the full current context on every check (see `agent_docs/incidents.md`, \"/goal judge calls never hit prompt cache\") - cost scales with context size, not with anything we can see or control from a hook.\nThis can't detect whether /goal is actually set, so the warning is phrased conditionally and is advisory only, not a block.\n\nReads total context size (cache_read + cache_creation + input tokens) off the last assistant turn in the session transcript, so it needs no ClickHouse round-trip and reflects the current turn immediately.\nWarns at most once per threshold tier per session (state file under the system temp dir), so it doesn't repeat on every prompt once a tier is crossed.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 10
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 11
+    },
+    {
+      "kind": "import",
+      "module": "tempfile",
+      "names": [],
+      "line": 12
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "TIERS",
+      "line": 17
+    },
+    {
+      "name": "STATE_DIR",
+      "line": 23
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_last_assistant_usage",
+      "signature": "(transcript_path: str) -> dict",
+      "args": [
+        {
+          "name": "transcript_path",
+          "annotation": "str"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 26,
+      "line_end": 46
+    },
+    {
+      "qualname": "_highest_tier_crossed",
+      "signature": "(total_tokens: int) -> int",
+      "args": [
+        {
+          "name": "total_tokens",
+          "annotation": "int"
+        }
+      ],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 49,
+      "line_end": 54
+    },
+    {
+      "qualname": "_last_warned_tier",
+      "signature": "(session_id: str) -> int",
+      "args": [
+        {
+          "name": "session_id",
+          "annotation": "str"
+        }
+      ],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 57,
+      "line_end": 63
+    },
+    {
+      "qualname": "_record_warned_tier",
+      "signature": "(session_id: str, tier: int) -> None",
+      "args": [
+        {
+          "name": "session_id",
+          "annotation": "str"
+        },
+        {
+          "name": "tier",
+          "annotation": "int"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 66,
+      "line_end": 70
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 73,
+      "line_end": 105
+    }
+  ],
+  "sha256": "12a99d0eb2e360dafaea47a67280ffebbc64734f6e6eb83757e4a4d85a3907be"
+}

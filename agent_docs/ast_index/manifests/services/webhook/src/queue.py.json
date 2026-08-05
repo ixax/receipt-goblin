@@ -1,0 +1,124 @@
+{
+  "path": "services/webhook/src/queue.py",
+  "line_count": 107,
+  "module_docstring": "Redis Streams producer side - webhook (server.py) XADDs each raw\nStandardLoggingPayload completely unmodified onto the stream worker.py\ndrains - no parsing, no build_event() - so webhook's own request path\nstays cheap (I/O only); webhook-worker calls build_event() itself when it\ndrains the stream, then does the actual ClickHouse inserts in batches.\nSplit out of common/queue_client.py - see\nplans/common-module-cleanup-refactor.md.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "logging",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "redis.asyncio",
+      "names": [],
+      "line": 11
+    },
+    {
+      "kind": "from",
+      "module": "common",
+      "names": [
+        "fastjson"
+      ],
+      "line": 12
+    },
+    {
+      "kind": "from",
+      "module": "common.config.queue",
+      "names": [
+        "MAXLEN",
+        "SIDE_MAXLEN",
+        "SIDE_STREAM_KEY",
+        "STREAM_KEY"
+      ],
+      "line": 13
+    },
+    {
+      "kind": "from",
+      "module": "common.config.redis",
+      "names": [
+        "REDIS_HOST",
+        "REDIS_PORT"
+      ],
+      "line": 14
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "logger",
+      "line": 16
+    },
+    {
+      "name": "_async_client",
+      "line": 18
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "get_async_redis",
+      "signature": "() -> aioredis.Redis",
+      "args": [],
+      "returns": "aioredis.Redis",
+      "decorators": [],
+      "docstring": "Used by webhook (server.py) - the request path is async FastAPI.",
+      "is_async": false,
+      "line_start": 21,
+      "line_end": 26
+    },
+    {
+      "qualname": "enqueue",
+      "signature": "(payloads: list) -> None",
+      "args": [
+        {
+          "name": "payloads",
+          "annotation": "list"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "payloads: StandardLoggingPayload dicts from one webhook POST body.\nPushed onto Redis exactly as received - no build_event() here, see\nmodule docstring.\nNever raises - LiteLLM would retry the whole body forever if a\nmalformed payload or unavailable Redis broke the ack.\n\nUsed directly when the caller already has parsed payloads (enqueue_raw()'s\nown bundled-array fallback below) - everyone else should call\nenqueue_raw() instead, to skip the parse this function requires its\ncaller to have already done.",
+      "is_async": true,
+      "line_start": 29,
+      "line_end": 56
+    },
+    {
+      "qualname": "enqueue_raw",
+      "signature": "(body: bytes) -> None",
+      "args": [
+        {
+          "name": "body",
+          "annotation": "bytes"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "Fast path for webhook's request handler: `body` is the exact raw\nPOST bytes, unparsed.\nThe common case - one StandardLoggingPayload object, not a\n`log_format: json_array` bundle - goes straight onto Redis unmodified,\nno json.loads/json.dumps round-trip at all.\nOnly a bundled array (starts with `[`) needs an actual parse, to split\nit into one Redis entry per payload (falls back to enqueue() for that\ncase).\n\nThis split exists because json parse+re-serialize of a ~360KB-1.5MB\npayload is itself real CPU cost - load testing showed it alone\nsaturating a single core under concurrency, even with build_event()\nno longer running on webhook's request path (see AGENTS.md \"Why a\nqueue in front of ClickHouse\").\nNever raises, same reasoning as enqueue().",
+      "is_async": true,
+      "line_start": 59,
+      "line_end": 89
+    },
+    {
+      "qualname": "enqueue_side",
+      "signature": "(kind: str, payload: dict) -> None",
+      "args": [
+        {
+          "name": "kind",
+          "annotation": "str"
+        },
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "kind: \"git_branch\" | \"plan_proposal\" | \"litellm_alert\".\nFire-and-forget onto a second, separate stream from enqueue()/enqueue_raw()\nabove, so a burst of these low-volume session-metadata/alert events can't\ncrowd out webhook:events' own batching - see queue.yml.\nNever raises, same reasoning as enqueue().",
+      "is_async": true,
+      "line_start": 92,
+      "line_end": 107
+    }
+  ],
+  "sha256": "1098ad7e6321d15d18be188bf00ab97458f654b1876fd0717ab39efdfebf58ab"
+}

@@ -1,0 +1,66 @@
+{
+  "path": "services/_common/src/config/queue.py",
+  "line_count": 34,
+  "module_docstring": null,
+  "imports": [
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 1
+    },
+    {
+      "kind": "import",
+      "module": "yaml",
+      "names": [],
+      "line": 3
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "_here",
+      "line": 17
+    },
+    {
+      "name": "_config",
+      "line": 25
+    },
+    {
+      "name": "STREAM_KEY",
+      "line": 27
+    },
+    {
+      "name": "CONSUMER_GROUP",
+      "line": 28
+    },
+    {
+      "name": "MAXLEN",
+      "line": 29
+    },
+    {
+      "name": "BATCH_SIZE",
+      "line": 30
+    },
+    {
+      "name": "FLUSH_INTERVAL_MS",
+      "line": 31
+    },
+    {
+      "name": "STALE_IDLE_MS",
+      "line": 32
+    },
+    {
+      "name": "SIDE_STREAM_KEY",
+      "line": 33
+    },
+    {
+      "name": "SIDE_MAXLEN",
+      "line": 34
+    }
+  ],
+  "classes": [],
+  "functions": [],
+  "sha256": "311c43572bae743636142b947e7a74436a3d875c49af6c5122de08ca0189bb18"
+}

@@ -1,0 +1,1109 @@
+{
+  "path": "services/_common/tests/test_ingest_parsing.py",
+  "line_count": 930,
+  "module_docstring": "Unit tests for the pure (no-ClickHouse-access) functions in\ningest_parsing.py, exercised against real payloads in\n_common/tests/captures/*.json.\nDB-touching functions are out of scope (see test_ingest_db.py).",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 6
+    },
+    {
+      "kind": "from",
+      "module": "datetime",
+      "names": [
+        "datetime",
+        "timezone"
+      ],
+      "line": 7
+    },
+    {
+      "kind": "from",
+      "module": "common",
+      "names": [
+        "ingest_parsing"
+      ],
+      "line": 9
+    },
+    {
+      "kind": "from",
+      "module": "conftest",
+      "names": [
+        "load_capture"
+      ],
+      "line": 10
+    }
+  ],
+  "module_constants": [],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "test_to_dt_success_converts_epoch_seconds",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 16,
+      "line_end": 18
+    },
+    {
+      "qualname": "test_to_dt_unsuccess_falls_back_to_now_for_falsy_input",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 21,
+      "line_end": 25
+    },
+    {
+      "qualname": "test_flatten_content_success_joins_text_and_placeholders",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 32,
+      "line_end": 38
+    },
+    {
+      "qualname": "test_flatten_content_unsuccess_non_list_non_str_returns_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 41,
+      "line_end": 43
+    },
+    {
+      "qualname": "test_flatten_content_success_extracts_responses_api_text_blocks",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 46,
+      "line_end": 51
+    },
+    {
+      "qualname": "test_last_user_text_success_returns_plain_prompt",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 58,
+      "line_end": 61
+    },
+    {
+      "qualname": "test_last_user_text_unsuccess_skips_pure_tool_result_continuation",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 64,
+      "line_end": 70
+    },
+    {
+      "qualname": "test_last_user_text_success_returns_responses_api_prompt",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 73,
+      "line_end": 76
+    },
+    {
+      "qualname": "test_last_user_text_unsuccess_skips_non_message_items",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 79,
+      "line_end": 83
+    },
+    {
+      "qualname": "_developer_message",
+      "signature": "(text)",
+      "args": [
+        {
+          "name": "text",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 90,
+      "line_end": 91
+    },
+    {
+      "qualname": "_user_message",
+      "signature": "(text)",
+      "args": [
+        {
+          "name": "text",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 94,
+      "line_end": 95
+    },
+    {
+      "qualname": "test_codex_collaboration_mode_change_success_finds_switch_notice",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 98,
+      "line_end": 107
+    },
+    {
+      "qualname": "test_codex_collaboration_mode_change_success_reports_starting_mode_on_first_call",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 110,
+      "line_end": 121
+    },
+    {
+      "qualname": "test_codex_collaboration_mode_change_unsuccess_later_call_with_no_switch_stays_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 124,
+      "line_end": 134
+    },
+    {
+      "qualname": "test_codex_collaboration_mode_change_unsuccess_later_call_does_not_refire",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 137,
+      "line_end": 147
+    },
+    {
+      "qualname": "test_codex_collaboration_mode_change_unsuccess_claude_code_payload_returns_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 150,
+      "line_end": 152
+    },
+    {
+      "qualname": "test_active_command_name_success_recovers_slash_command",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 159,
+      "line_end": 161
+    },
+    {
+      "qualname": "test_active_command_name_unsuccess_freeform_prompt_returns_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 164,
+      "line_end": 166
+    },
+    {
+      "qualname": "test_active_command_name_success_recovers_codex_internal_context",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 169,
+      "line_end": 178
+    },
+    {
+      "qualname": "test_active_command_name_success_recovers_arbitrary_codex_context_source",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 181,
+      "line_end": 185
+    },
+    {
+      "qualname": "test_prompt_kind_and_display_success_renders_codex_goal_context_as_command",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 188,
+      "line_end": 197
+    },
+    {
+      "qualname": "test_prompt_kind_and_display_success_classifies_away_recap",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 200,
+      "line_end": 209
+    },
+    {
+      "qualname": "test_prompt_kind_and_display_success_classifies_compact_summary",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 212,
+      "line_end": 225
+    },
+    {
+      "qualname": "test_prompt_kind_and_display_success_classifies_compact_summary_without_summary_tag",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 228,
+      "line_end": 235
+    },
+    {
+      "qualname": "test_prompt_kind_and_display_success_compact_takes_priority_over_empty_prompt",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 238,
+      "line_end": 244
+    },
+    {
+      "qualname": "test_prompt_kind_and_display_success_strips_two_leading_system_reminders",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 247,
+      "line_end": 259
+    },
+    {
+      "qualname": "test_failed_tool_call_success_finds_paired_failing_tool_use",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 266,
+      "line_end": 271
+    },
+    {
+      "qualname": "test_failed_tool_call_unsuccess_no_trailing_error_returns_blank",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 274,
+      "line_end": 276
+    },
+    {
+      "qualname": "test_session_and_trace_id_success_prefers_claude_code_header",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 283,
+      "line_end": 287
+    },
+    {
+      "qualname": "test_session_and_trace_id_unsuccess_falls_back_without_headers",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 290,
+      "line_end": 294
+    },
+    {
+      "qualname": "test_session_and_trace_id_success_uses_codex_turn_metadata",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 297,
+      "line_end": 301
+    },
+    {
+      "qualname": "test_session_and_trace_id_success_claude_header_wins_over_codex",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 304,
+      "line_end": 316
+    },
+    {
+      "qualname": "test_user_agent_success_reads_claude_cli_string",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 323,
+      "line_end": 325
+    },
+    {
+      "qualname": "test_user_agent_success_reads_codex_tui_string",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 328,
+      "line_end": 338
+    },
+    {
+      "qualname": "test_user_agent_unsuccess_missing_metadata_returns_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 341,
+      "line_end": 342
+    },
+    {
+      "qualname": "test_user_agent_unsuccess_absent_key_returns_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 345,
+      "line_end": 346
+    },
+    {
+      "qualname": "test_codex_session_id_unsuccess_malformed_json_returns_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 349,
+      "line_end": 350
+    },
+    {
+      "qualname": "test_codex_session_id_unsuccess_no_header_returns_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 353,
+      "line_end": 354
+    },
+    {
+      "qualname": "test_split_name_version_success_splits_on_last_v",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 361,
+      "line_end": 362
+    },
+    {
+      "qualname": "test_split_name_version_unsuccess_no_version_suffix",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 365,
+      "line_end": 366
+    },
+    {
+      "qualname": "test_version_marker_for_name_unsuccess_marker_at_start_of_listing_line_returns_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 373,
+      "line_end": 381
+    },
+    {
+      "qualname": "test_version_marker_for_name_unsuccess_marker_in_middle_of_listing_line_returns_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 384,
+      "line_end": 389
+    },
+    {
+      "qualname": "test_version_marker_for_name_success_finds_marker_at_end_of_listing_line",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 392,
+      "line_end": 397
+    },
+    {
+      "qualname": "test_version_marker_for_name_unsuccess_name_has_no_marker_returns_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 400,
+      "line_end": 403
+    },
+    {
+      "qualname": "test_user_id_success_reads_real_user_id",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 410,
+      "line_end": 412
+    },
+    {
+      "qualname": "test_user_id_falls_back_to_alias_when_no_real_id",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 415,
+      "line_end": 417
+    },
+    {
+      "qualname": "test_user_id_unsuccess_falls_back_to_unknown",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 420,
+      "line_end": 421
+    },
+    {
+      "qualname": "test_user_name_prefers_alias_over_real_id",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 424,
+      "line_end": 426
+    },
+    {
+      "qualname": "test_user_name_falls_back_to_real_id_when_no_alias",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 429,
+      "line_end": 431
+    },
+    {
+      "qualname": "test_user_name_unsuccess_falls_back_to_unknown",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 434,
+      "line_end": 435
+    },
+    {
+      "qualname": "test_group_id_success_reads_stable_team_id",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 442,
+      "line_end": 444
+    },
+    {
+      "qualname": "test_group_id_unsuccess_no_team_falls_back_to_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 447,
+      "line_end": 449
+    },
+    {
+      "qualname": "test_group_alias_success_reads_team_alias",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 452,
+      "line_end": 454
+    },
+    {
+      "qualname": "test_group_alias_unsuccess_no_team_falls_back_to_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 457,
+      "line_end": 459
+    },
+    {
+      "qualname": "test_agent_invocations_from_messages_success_finds_spawned_subagent",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 466,
+      "line_end": 471
+    },
+    {
+      "qualname": "test_agent_invocations_from_messages_success_recovers_version_marker",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 474,
+      "line_end": 487
+    },
+    {
+      "qualname": "test_agent_invocations_from_messages_unsuccess_no_agent_calls_returns_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 490,
+      "line_end": 492
+    },
+    {
+      "qualname": "test_agent_id_from_tool_result_unsuccess_mismatched_tool_use_id",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 495,
+      "line_end": 500
+    },
+    {
+      "qualname": "test_response_tool_calls_success_parses_function_arguments",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 507,
+      "line_end": 510
+    },
+    {
+      "qualname": "test_response_tool_calls_unsuccess_plain_text_reply_returns_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 513,
+      "line_end": 515
+    },
+    {
+      "qualname": "test_response_tool_calls_success_parses_function_call_output",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 518,
+      "line_end": 523
+    },
+    {
+      "qualname": "test_response_tool_calls_success_parses_custom_tool_call_output",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 526,
+      "line_end": 535
+    },
+    {
+      "qualname": "test_response_text_success_falls_back_to_responses_output",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 538,
+      "line_end": 543
+    },
+    {
+      "qualname": "test_response_text_unsuccess_empty_output_returns_blank",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 546,
+      "line_end": 548
+    },
+    {
+      "qualname": "test_first_tool_call_name_success_returns_first_call",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 551,
+      "line_end": 553
+    },
+    {
+      "qualname": "test_first_tool_call_name_unsuccess_plain_text_reply_returns_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 556,
+      "line_end": 558
+    },
+    {
+      "qualname": "test_active_skill_name_and_version_success_splits_skill_argument",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 561,
+      "line_end": 564
+    },
+    {
+      "qualname": "test_active_skill_name_and_version_success_recovers_version_marker",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 567,
+      "line_end": 583
+    },
+    {
+      "qualname": "test_active_skill_name_and_version_unsuccess_no_skill_call",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 586,
+      "line_end": 588
+    },
+    {
+      "qualname": "test_active_skill_name_and_version_success_propagates_through_tool_result_continuation",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 591,
+      "line_end": 607
+    },
+    {
+      "qualname": "test_active_skill_name_and_version_success_propagates_through_skill_body_injection",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 610,
+      "line_end": 634
+    },
+    {
+      "qualname": "test_active_skill_name_and_version_success_most_recent_skill_wins",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 637,
+      "line_end": 658
+    },
+    {
+      "qualname": "test_active_skill_name_and_version_unsuccess_stops_at_fresh_user_turn",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 661,
+      "line_end": 678
+    },
+    {
+      "qualname": "test_active_skill_name_and_version_unsuccess_empty_messages_no_index_error",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 681,
+      "line_end": 684
+    },
+    {
+      "qualname": "test_agent_invocation_id_success_reads_header",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 691,
+      "line_end": 693
+    },
+    {
+      "qualname": "test_agent_invocation_id_unsuccess_missing_header_returns_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 696,
+      "line_end": 698
+    },
+    {
+      "qualname": "test_agent_invocation_rows_success_builds_one_row_per_spawn",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 705,
+      "line_end": 711
+    },
+    {
+      "qualname": "test_agent_invocation_rows_unsuccess_no_spawns_returns_empty_list",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 714,
+      "line_end": 716
+    },
+    {
+      "qualname": "test_event_row_success_reports_status_and_latency",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 723,
+      "line_end": 732
+    },
+    {
+      "qualname": "test_event_row_unsuccess_failure_payload_has_no_tool_name_or_latency",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 735,
+      "line_end": 740
+    },
+    {
+      "qualname": "test_usage_row_success_extracts_token_counts",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 747,
+      "line_end": 754
+    },
+    {
+      "qualname": "test_usage_row_unsuccess_no_billable_tokens_returns_none",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 757,
+      "line_end": 759
+    },
+    {
+      "qualname": "test_usage_row_unsuccess_negative_ttft_clamps_to_zero",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 762,
+      "line_end": 772
+    },
+    {
+      "qualname": "test_usage_row_success_falls_back_to_responses_api_cache_fields",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 775,
+      "line_end": 785
+    },
+    {
+      "qualname": "test_message_row_success_captures_prompt_and_response_text",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 792,
+      "line_end": 799
+    },
+    {
+      "qualname": "test_message_row_unsuccess_no_prompt_or_response_text_returns_none",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 802,
+      "line_end": 804
+    },
+    {
+      "qualname": "test_build_event_success_returns_json_safe_dict_with_source_row",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 812,
+      "line_end": 826
+    },
+    {
+      "qualname": "test_build_event_unsuccess_failure_payload_has_no_usage_or_message_row",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 829,
+      "line_end": 835
+    },
+    {
+      "qualname": "test_build_event_success_populates_invocation_row_parent_agent_id_from_header",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 838,
+      "line_end": 854
+    },
+    {
+      "qualname": "test_build_event_success_blank_parent_agent_id_for_main_session",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 857,
+      "line_end": 863
+    },
+    {
+      "qualname": "test_backfill_missing_skill_versions_fills_from_sibling_row_same_table",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 871,
+      "line_end": 878
+    },
+    {
+      "qualname": "test_backfill_missing_skill_versions_fills_across_tables",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 881,
+      "line_end": 891
+    },
+    {
+      "qualname": "test_backfill_missing_skill_versions_does_not_leak_across_sessions",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 894,
+      "line_end": 900
+    },
+    {
+      "qualname": "test_backfill_missing_skill_versions_does_not_leak_across_skill_names",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 903,
+      "line_end": 909
+    },
+    {
+      "qualname": "test_backfill_missing_skill_versions_leaves_genuinely_versionless_rows_blank",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 912,
+      "line_end": 921
+    },
+    {
+      "qualname": "test_backfill_missing_skill_versions_ignores_rows_with_no_skill_name",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 924,
+      "line_end": 930
+    }
+  ],
+  "sha256": "b680907962a75a377cb3efe2a1a46f8be003b1fc4f6f799ee7951645a0dd8866"
+}

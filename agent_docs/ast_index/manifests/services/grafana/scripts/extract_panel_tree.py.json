@@ -1,0 +1,112 @@
+{
+  "path": "services/grafana/scripts/extract_panel_tree.py",
+  "line_count": 123,
+  "module_docstring": "Parse agents_overview.json into a panel tree model for build_query_perf_dashboard.py.\n\nWalks every top-level tab of services/grafana/dashboards/agents_overview.json\n(and one level of nested sub-tabs, same shape parse_dashboard.py's module\ndocstring describes) and records, for each panel referenced anywhere in that\nlayout, its id/title and whether it's already tagged with\n`SETTINGS log_comment = 'agents_overview:panel_<id>'` (see tag_panel_queries.py\nfor how that tag gets onto a panel's rawSql).\n\nThis is the \"parse\" half of a two-script pipeline - the other half,\nbuild_query_perf_dashboard.py, takes this tree's --out JSON and stamps it onto\nthe query_performance.json template. Splitting these means a full rebuild of\nevery tab is one build_query_perf_dashboard.py invocation over a tree that\nalready covers the whole dashboard, instead of one build invocation per tab\neach re-parsing agents_overview.json from scratch.\n\nOutput tree shape:\n  {\"tabs\": [\n    {\"title\": \"Top N\", \"groups\": [\n      {\"subtitle\": \"Issues\", \"panels\": [{\"id\": 95, \"title\": \"...\", \"tagged\": true}, ...]},\n      {\"subtitle\": \"Models\", \"panels\": [...]}\n    ]},\n    {\"title\": \"Overview\", \"groups\": [{\"subtitle\": null, \"panels\": [...]}]}\n  ]}\n\nA tab with no sub-tabs gets a single group with subtitle: null (mirrors\nbuild_query_perf_dashboard.py's build_tab_layout, which collapses that case to\na flat RowsLayout instead of a nested TabsLayout).\n\nThe tree is a regenerated intermediate artifact (services/grafana/scripts/\npanel_tree.json is gitignored) - re-run this any time agents_overview.json's\npanels/tags/tabs change before rendering, since build_query_perf_dashboard.py\nonly ever reads the tree, never the source dashboard directly.\n\nUsage:\n  extract_panel_tree.py --source services/grafana/dashboards/agents_overview.json \\\n      --out services/grafana/scripts/panel_tree.json",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "argparse",
+      "names": [],
+      "line": 40
+    },
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 41
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "TAG_PREFIX",
+      "line": 43
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "load",
+      "signature": "(path)",
+      "args": [
+        {
+          "name": "path",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 46,
+      "line_end": 48
+    },
+    {
+      "qualname": "is_tagged",
+      "signature": "(panel_spec, panel_id)",
+      "args": [
+        {
+          "name": "panel_spec",
+          "annotation": null
+        },
+        {
+          "name": "panel_id",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 51,
+      "line_end": 56
+    },
+    {
+      "qualname": "walk_layout",
+      "signature": "(layout, path)",
+      "args": [
+        {
+          "name": "layout",
+          "annotation": null
+        },
+        {
+          "name": "path",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": "Yield (path_titles, [panel_refs]) for every leaf GridLayout under layout.",
+      "is_async": false,
+      "line_start": 59,
+      "line_end": 71
+    },
+    {
+      "qualname": "build_tree",
+      "signature": "(src_spec)",
+      "args": [
+        {
+          "name": "src_spec",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 74,
+      "line_end": 102
+    },
+    {
+      "qualname": "main",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 105,
+      "line_end": 119
+    }
+  ],
+  "sha256": "b82b9e1e2784b21a7f302b1635fdf05b9081c1b737bda4dc64e504e1c1475a44"
+}

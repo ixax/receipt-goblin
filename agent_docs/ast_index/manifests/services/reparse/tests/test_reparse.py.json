@@ -1,0 +1,161 @@
+{
+  "path": "services/reparse/tests/test_reparse.py",
+  "line_count": 94,
+  "module_docstring": "Unit tests for reparse.py's decode-then-dispatch wrapper around\ncommon.ingest_db.reparse_event() and its keyset-pagination loop over\ningest_raw.\nNo real ClickHouse connection - reparse_event and get_client are\nmonkeypatched.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 7
+    },
+    {
+      "kind": "from",
+      "module": "src",
+      "names": [
+        "reparse"
+      ],
+      "line": 9
+    }
+  ],
+  "module_constants": [],
+  "classes": [
+    {
+      "qualname": "_FakePagingClient",
+      "line_start": 48,
+      "line_end": 65,
+      "decorators": [],
+      "bases": [],
+      "docstring": "Returns `rows_by_cursor` pages keyed by the query's cursor\nparameter, then an empty page once exhausted - mirrors reparse()'s\nkeyset pagination on litellm_call_id.",
+      "methods": [
+        {
+          "qualname": "_FakePagingClient.__init__",
+          "signature": "(self, pages)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "pages",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 53,
+          "line_end": 55
+        },
+        {
+          "qualname": "_FakePagingClient.query",
+          "signature": "(self, query, parameters=None)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "query",
+              "annotation": null
+            },
+            {
+              "name": "parameters",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 57,
+          "line_end": 65
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "test_reparse_one_success_decodes_and_calls_reparse_event",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 12,
+      "line_end": 27
+    },
+    {
+      "qualname": "test_reparse_one_unsuccess_malformed_json_skips_reparse_event",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 30,
+      "line_end": 35
+    },
+    {
+      "qualname": "test_reparse_one_unsuccess_reparse_event_raising_is_caught",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 38,
+      "line_end": 45
+    },
+    {
+      "qualname": "test_reparse_success_pages_through_chunks_until_empty",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 68,
+      "line_end": 85
+    },
+    {
+      "qualname": "test_reparse_unsuccess_no_matching_rows_returns_zero",
+      "signature": "(monkeypatch)",
+      "args": [
+        {
+          "name": "monkeypatch",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 88,
+      "line_end": 94
+    }
+  ],
+  "sha256": "b70500758ef2fbbdc9fd4ed3c8e277f53603af2e8cba15990407ca1b5106db10"
+}

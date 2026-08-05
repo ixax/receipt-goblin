@@ -1,0 +1,409 @@
+{
+  "path": "services/mcp-dev/src/server.py",
+  "line_count": 429,
+  "module_docstring": "MCP server exposing read access to the agent-tracking ClickHouse database.\n\nClaude Code talks to it over Streamable HTTP (see `.mcp.json`).\n`query`/`profile_query` accept arbitrary SQL from the model, validated in\n`_validate_readonly_sql` (SELECT/WITH only, no DDL/DML, no system tables\nexcept `system.query_log` - a narrow, deliberate exception for\nquery-performance introspection, everything else under `system.*` stays\nblocked - no remote/file/URL functions, every FROM/JOIN target in\n`_ALLOWED_TABLES` - not just \"some allowed name appears somewhere in the\nquery\", which used to let a query join an allowlisted table together with\nan arbitrary out-of-allowlist one). There is no separate read-only\nClickHouse user, so this validation is the only thing preventing a\nwrite/DDL statement or an unauthorized table read - keep it strict rather\nthan convenient, and treat any change to\n`_validate_readonly_sql`/`_strip_sql_comments`/`_mask_string_literals`/\n`_walk_sql`/`_referenced_tables` as security-sensitive.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 18
+    },
+    {
+      "kind": "import",
+      "module": "re",
+      "names": [],
+      "line": 19
+    },
+    {
+      "kind": "import",
+      "module": "threading",
+      "names": [],
+      "line": 20
+    },
+    {
+      "kind": "import",
+      "module": "time",
+      "names": [],
+      "line": 21
+    },
+    {
+      "kind": "from",
+      "module": "concurrent.futures",
+      "names": [
+        "ThreadPoolExecutor"
+      ],
+      "line": 22
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 23
+    },
+    {
+      "kind": "import",
+      "module": "yaml",
+      "names": [],
+      "line": 25
+    },
+    {
+      "kind": "from",
+      "module": "common.logging_config",
+      "names": [
+        "create_logger"
+      ],
+      "line": 26
+    },
+    {
+      "kind": "from",
+      "module": "common.mcp_common",
+      "names": [
+        "ClickHouseClientFactory",
+        "build_transport_security",
+        "make_health_route"
+      ],
+      "line": 27
+    },
+    {
+      "kind": "from",
+      "module": "mcp.server.fastmcp",
+      "names": [
+        "FastMCP"
+      ],
+      "line": 32
+    },
+    {
+      "kind": "from",
+      "module": "prometheus_fastapi_instrumentator",
+      "names": [
+        "Instrumentator"
+      ],
+      "line": 33
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "CLICKHOUSE_HOST",
+      "line": 36
+    },
+    {
+      "name": "CLICKHOUSE_PORT",
+      "line": 37
+    },
+    {
+      "name": "CLICKHOUSE_USER",
+      "line": 38
+    },
+    {
+      "name": "CLICKHOUSE_PASSWORD",
+      "line": 39
+    },
+    {
+      "name": "CLICKHOUSE_DATABASE",
+      "line": 40
+    },
+    {
+      "name": "MCP_DEV_PORT",
+      "line": 41
+    },
+    {
+      "name": "logger",
+      "line": 43
+    },
+    {
+      "name": "mcp",
+      "line": 45
+    },
+    {
+      "name": "app",
+      "line": 53
+    },
+    {
+      "name": "_ch_factory",
+      "line": 56
+    },
+    {
+      "name": "get_client",
+      "line": 63
+    },
+    {
+      "name": "_config",
+      "line": 68
+    },
+    {
+      "name": "_ALLOWED_TABLES",
+      "line": 70
+    },
+    {
+      "name": "_FORBIDDEN_KEYWORDS",
+      "line": 71
+    },
+    {
+      "name": "_FORBIDDEN_TABLE_FUNCTIONS",
+      "line": 72
+    },
+    {
+      "name": "_MAX_ROWS_HARD_CAP",
+      "line": 73
+    },
+    {
+      "name": "_MAX_CONCURRENT_QUERIES",
+      "line": 74
+    },
+    {
+      "name": "_MAX_BATCH_QUERIES",
+      "line": 75
+    },
+    {
+      "name": "_MAX_EXECUTION_TIME_DEFAULT_S",
+      "line": 76
+    },
+    {
+      "name": "_MAX_EXECUTION_TIME_HARD_CAP_S",
+      "line": 77
+    },
+    {
+      "name": "_ch_semaphore",
+      "line": 86
+    },
+    {
+      "name": "_TABLE_REFS_RE",
+      "line": 206
+    },
+    {
+      "name": "_CTE_NAME_RE",
+      "line": 220
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_walk_sql",
+      "signature": "(sql: str, on_string_char, on_other_char, on_comment_start=None)",
+      "args": [
+        {
+          "name": "sql",
+          "annotation": "str"
+        },
+        {
+          "name": "on_string_char",
+          "annotation": null
+        },
+        {
+          "name": "on_other_char",
+          "annotation": null
+        },
+        {
+          "name": "on_comment_start",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": "Shared core for `_strip_sql_comments`/`_mask_string_literals`.\nWalks `sql` once, tracking single-quoted string-literal state (a\ndoubled `''` inside a string doesn't end it early) so both callers\nagree on exactly which characters are \"inside a string\" without\nduplicating that state machine.\nFor each character, calls `on_string_char(ch)` if it's part of a\nstring literal's content/quotes, else `on_other_char(ch)`.\nIf `on_comment_start` is given, it's consulted at each non-string\nposition to let the caller skip over `--`/`/* */` comments (returns\nthe index to resume at, or None if `ch` doesn't start a comment\nthere).\nComment stripping only makes sense once, in `_strip_sql_comments`, so\nmasking doesn't pass this and simply treats comment markers as\nordinary characters (masking runs on already-comment-stripped text\nanyway).",
+      "is_async": false,
+      "line_start": 89,
+      "line_end": 130
+    },
+    {
+      "qualname": "_strip_sql_comments",
+      "signature": "(sql: str) -> str",
+      "args": [
+        {
+          "name": "sql",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Removes `--` line comments and `/* */` block comments, respecting\nsingle-quoted string literals (a `--`/`/*` inside a string is left\nalone, and a doubled `''` inside a string doesn't end it early). Must\nrun before every check below, not after: an unstripped comment can\notherwise plant a fake allowlist table name or hide a forbidden\nkeyword from the regex checks that follow (confirmed exploitable - a\npayload like `SELECT 1) UNION ALL SELECT * FROM secret_table --\nagent_events` used to pass validation, the trailing comment supplying\nthe required allowlist token while the real FROM target went\nunchecked, and once wrapped in `query()`'s `SELECT * FROM (...) AS\n_query_result LIMIT n`, that same `--` swallowed the wrapper's own\n`AS _query_result LIMIT n` too, so the row cap never applied either).",
+      "is_async": false,
+      "line_start": 133,
+      "line_end": 159
+    },
+    {
+      "qualname": "_mask_string_literals",
+      "signature": "(sql: str) -> str",
+      "args": [
+        {
+          "name": "sql",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Returns `sql` with the *contents* of every single-quoted string\nliteral replaced by a neutral placeholder character (`x`), preserving\nthe original length and the position of every non-string character -\nincluding the quote characters themselves and any doubled `''` escape.\nEvery keyword/semicolon/table-function/SYSTEM/information_schema/\ntable-reference check in `_validate_readonly_sql` must run against\nthis masked text, not the raw (comment-stripped) text.\n`_strip_sql_comments` is quote-aware, but plain regex/substring\nchecks downstream of it are not, so a literal `;` or a forbidden\nkeyword spelled out as plain text inside a string (e.g. `'please\nDELETE this row manually'`, or HTML-entity output like\n`'&amp;lt;span&amp;gt;'` - both of which occur in real dashboard\npanels, see agents_overview.json panels 76/99) used to cause\nfalse-positive rejections.\nOnly masks for validation purposes - the real query sent to\nClickHouse always uses the original unmasked text, never this one.",
+      "is_async": false,
+      "line_start": 162,
+      "line_end": 187
+    },
+    {
+      "qualname": "_cte_names",
+      "signature": "(sql: str) -> set",
+      "args": [
+        {
+          "name": "sql",
+          "annotation": "str"
+        }
+      ],
+      "returns": "set",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 223,
+      "line_end": 224
+    },
+    {
+      "qualname": "_referenced_tables",
+      "signature": "(sql: str) -> set",
+      "args": [
+        {
+          "name": "sql",
+          "annotation": "str"
+        }
+      ],
+      "returns": "set",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 227,
+      "line_end": 236
+    },
+    {
+      "qualname": "_validate_readonly_sql",
+      "signature": "(sql: str) -> str",
+      "args": [
+        {
+          "name": "sql",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 239,
+      "line_end": 305
+    },
+    {
+      "qualname": "_do_query",
+      "signature": "(sql: str, max_rows: int, max_duration_s: int) -> dict",
+      "args": [
+        {
+          "name": "sql",
+          "annotation": "str"
+        },
+        {
+          "name": "max_rows",
+          "annotation": "int"
+        },
+        {
+          "name": "max_duration_s",
+          "annotation": "int"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 308,
+      "line_end": 336
+    },
+    {
+      "qualname": "_do_query_safe",
+      "signature": "(sql: str, max_rows: int, max_duration_s: int) -> dict",
+      "args": [
+        {
+          "name": "sql",
+          "annotation": "str"
+        },
+        {
+          "name": "max_rows",
+          "annotation": "int"
+        },
+        {
+          "name": "max_duration_s",
+          "annotation": "int"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 339,
+      "line_end": 344
+    },
+    {
+      "qualname": "query",
+      "signature": "(sql: str | list[str], max_rows: int=200, max_duration_s: int=_MAX_EXECUTION_TIME_DEFAULT_S) -> dict",
+      "args": [
+        {
+          "name": "sql",
+          "annotation": "str | list[str]"
+        },
+        {
+          "name": "max_rows",
+          "annotation": "int"
+        },
+        {
+          "name": "max_duration_s",
+          "annotation": "int"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [
+        "mcp.tool()"
+      ],
+      "docstring": "Run one or several read-only SQL queries against the agent-tracking ClickHouse tables\n(agent_events, agent_usage, agent_messages).\nsql can be a single SQL string, or a list of independent SQL strings to run as one batch instead of looping single calls - up to max_batch_queries per call (an empty list, or one over that cap, returns a top-level {\"error\": \"...\"} without touching ClickHouse).\nOnly a single SELECT/WITH statement is allowed per query - no DDL/DML, no system tables, no remote/file/URL table functions.\nAlways returns {\"results\": [...]}, one entry per input query in input order (a single sql string is treated as a one-item batch): {\"status\": \"ok\", \"result\": {...}} on success, or {\"status\": \"error\", \"error\": \"<message>\"} on failure - one bad query in a batch doesn't abort the rest.\nEach successful result has columns/rows/row_count/truncated/execution_time_ms; results are capped at max_rows (default 200, hard cap 1000, applied per query) - truncated=True means there were more rows than that.\nPrefer aggregating/filtering in the query itself over relying on this cap, since rows beyond it are silently dropped, not sampled.\nmax_duration_s sets ClickHouse's max_execution_time for this call (default 10s), clamped server-side to a hard cap - raise it for a known-slow query you're profiling/debugging rather than letting it silently time out.\nReal concurrency against ClickHouse is throttled server-side (shared with `profile_query`), so a large batch - or several callers at once - can't overload the local instance.",
+      "is_async": false,
+      "line_start": 348,
+      "line_end": 371
+    },
+    {
+      "qualname": "_do_profile",
+      "signature": "(sql: str, max_duration_s: int) -> dict",
+      "args": [
+        {
+          "name": "sql",
+          "annotation": "str"
+        },
+        {
+          "name": "max_duration_s",
+          "annotation": "int"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 374,
+      "line_end": 416
+    },
+    {
+      "qualname": "profile_query",
+      "signature": "(sql: str, max_duration_s: int=_MAX_EXECUTION_TIME_DEFAULT_S) -> dict",
+      "args": [
+        {
+          "name": "sql",
+          "annotation": "str"
+        },
+        {
+          "name": "max_duration_s",
+          "annotation": "int"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [
+        "mcp.tool()"
+      ],
+      "docstring": "Run a read-only SQL query and report its real ClickHouse execution cost instead of result rows: memory_usage_bytes, read_rows, read_bytes, query_duration_ms.\nSame SELECT/WITH-only validation as `query`.\nUse this (not `query`) when the point is comparing how expensive two versions of a query are, e.g. before/after a rewrite - `query`'s execution_time_ms is wall-clock only and says nothing about memory or rows scanned.\n\nread_rows/read_bytes/query_duration_ms come straight back in ClickHouse's own response summary (no extra round trip).\nmemory_usage_bytes needs system.query_log, which only becomes queryable after a SYSTEM FLUSH LOGS - this tool does that automatically, but the lookup is best-effort: if it fails (e.g. a permissions issue), memory_usage_bytes comes back null with a `memory_usage_warning` explaining why, rather than failing the whole call - the other three numbers are still valid either way.\nmax_duration_s sets ClickHouse's max_execution_time for this call (default 10s), clamped server-side to a hard cap - raise it for a known-slow query you're profiling rather than letting it silently time out.",
+      "is_async": false,
+      "line_start": 420,
+      "line_end": 429
+    }
+  ],
+  "sha256": "013d1ddc015576b6a052212e321db473e7698e8125c50792bb12ad7f09318cee"
+}

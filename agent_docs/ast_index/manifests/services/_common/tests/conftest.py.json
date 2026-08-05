@@ -1,0 +1,63 @@
+{
+  "path": "services/_common/tests/conftest.py",
+  "line_count": 29,
+  "module_docstring": null,
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 1
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 2
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 3
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 4
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "CAPTURES_DIR",
+      "line": 21
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "load_capture",
+      "signature": "(name: str, index: int=0) -> dict",
+      "args": [
+        {
+          "name": "name",
+          "annotation": "str"
+        },
+        {
+          "name": "index",
+          "annotation": "int"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": "Loads payload `index` from tests/captures/<name>.json - a real\nStandardLoggingPayload captured by webhook/src/server.py.",
+      "is_async": false,
+      "line_start": 24,
+      "line_end": 29
+    }
+  ],
+  "sha256": "35aad47ae1c453b6d007828b4471bf6a13888a489b8523f986d83bdef5f82308"
+}

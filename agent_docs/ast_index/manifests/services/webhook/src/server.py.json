@@ -1,0 +1,306 @@
+{
+  "path": "services/webhook/src/server.py",
+  "line_count": 168,
+  "module_docstring": "Receives LiteLLM's generic_api webhook payloads and hands them to\nqueue.enqueue()/enqueue_raw() - a fast, DB-free push onto Redis.\nwebhook-worker (worker.py) is what actually parses/inserts into ClickHouse,\nin batches - see AGENTS.md.",
+  "imports": [
+    {
+      "kind": "from",
+      "module": "common.config.litellm",
+      "names": [
+        "LITELLM_BASE_URL",
+        "LITELLM_MASTER_KEY"
+      ],
+      "line": 8
+    },
+    {
+      "kind": "from",
+      "module": "common.ingest_db",
+      "names": [
+        "clickhouse_alive"
+      ],
+      "line": 9
+    },
+    {
+      "kind": "from",
+      "module": "common.litellm_auth",
+      "names": [
+        "virtual_key_is_valid"
+      ],
+      "line": 10
+    },
+    {
+      "kind": "from",
+      "module": "common.logging_config",
+      "names": [
+        "create_logger"
+      ],
+      "line": 11
+    },
+    {
+      "kind": "from",
+      "module": "fastapi",
+      "names": [
+        "Depends",
+        "FastAPI",
+        "HTTPException",
+        "Request"
+      ],
+      "line": 12
+    },
+    {
+      "kind": "from",
+      "module": "fastapi.security",
+      "names": [
+        "HTTPAuthorizationCredentials",
+        "HTTPBearer"
+      ],
+      "line": 13
+    },
+    {
+      "kind": "from",
+      "module": "prometheus_fastapi_instrumentator",
+      "names": [
+        "Instrumentator"
+      ],
+      "line": 14
+    },
+    {
+      "kind": "from",
+      "module": "pydantic",
+      "names": [
+        "BaseModel"
+      ],
+      "line": 15
+    },
+    {
+      "kind": "from",
+      "module": ".config",
+      "names": [
+        "APP_VERSION"
+      ],
+      "line": 17
+    },
+    {
+      "kind": "from",
+      "module": ".queue",
+      "names": [
+        "enqueue_raw",
+        "enqueue_side",
+        "get_async_redis"
+      ],
+      "line": 18
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "logger",
+      "line": 20
+    },
+    {
+      "name": "app",
+      "line": 22
+    },
+    {
+      "name": "bearer_scheme",
+      "line": 31
+    },
+    {
+      "name": "_METRICS_EXAMPLE",
+      "line": 58
+    },
+    {
+      "name": "_LITELLM_ALERT_EXAMPLE",
+      "line": 62
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "HealthResponse",
+      "line_start": 34,
+      "line_end": 36,
+      "decorators": [],
+      "bases": [
+        "BaseModel"
+      ],
+      "docstring": null,
+      "methods": []
+    },
+    {
+      "qualname": "AckResponse",
+      "line_start": 39,
+      "line_end": 40,
+      "decorators": [],
+      "bases": [
+        "BaseModel"
+      ],
+      "docstring": null,
+      "methods": []
+    },
+    {
+      "qualname": "GitBranchPayload",
+      "line_start": 43,
+      "line_end": 46,
+      "decorators": [],
+      "bases": [
+        "BaseModel"
+      ],
+      "docstring": null,
+      "methods": []
+    },
+    {
+      "qualname": "PlanProposalPayload",
+      "line_start": 49,
+      "line_end": 51,
+      "decorators": [],
+      "bases": [
+        "BaseModel"
+      ],
+      "docstring": null,
+      "methods": []
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "_example_request_body",
+      "signature": "(example: dict) -> dict",
+      "args": [
+        {
+          "name": "example",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 69,
+      "line_end": 77
+    },
+    {
+      "qualname": "_virtual_key_is_valid",
+      "signature": "(key: str) -> bool",
+      "args": [
+        {
+          "name": "key",
+          "annotation": "str"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 80,
+      "line_end": 81
+    },
+    {
+      "qualname": "require_virtual_key",
+      "signature": "(credentials: HTTPAuthorizationCredentials | None=Depends(bearer_scheme)) -> None",
+      "args": [
+        {
+          "name": "credentials",
+          "annotation": "HTTPAuthorizationCredentials | None"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 84,
+      "line_end": 89
+    },
+    {
+      "qualname": "health",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [
+        "app.get('/health', tags=['health'], summary='Liveness/readiness check', response_model=HealthResponse)"
+      ],
+      "docstring": null,
+      "is_async": true,
+      "line_start": 93,
+      "line_end": 99
+    },
+    {
+      "qualname": "receive_metrics",
+      "signature": "(request: Request)",
+      "args": [
+        {
+          "name": "request",
+          "annotation": "Request"
+        }
+      ],
+      "returns": null,
+      "decorators": [
+        "app.post('/api/v1/metrics', tags=['ingest'], summary='Receive a LiteLLM generic_api webhook payload', response_model=AckResponse, openapi_extra={'requestBody': _example_request_body(_METRICS_EXAMPLE)})"
+      ],
+      "docstring": null,
+      "is_async": true,
+      "line_start": 109,
+      "line_end": 118
+    },
+    {
+      "qualname": "receive_git_branch",
+      "signature": "(payload: GitBranchPayload, _: None=Depends(require_virtual_key))",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "GitBranchPayload"
+        },
+        {
+          "name": "_",
+          "annotation": "None"
+        }
+      ],
+      "returns": null,
+      "decorators": [
+        "app.post('/api/v1/session-git-branch', tags=['session-metadata'], summary=\"Report a Claude Code session's git branch\", response_model=AckResponse, responses={401: {'description': 'invalid or missing virtual key'}})"
+      ],
+      "docstring": null,
+      "is_async": true,
+      "line_start": 128,
+      "line_end": 133
+    },
+    {
+      "qualname": "receive_plan_proposal",
+      "signature": "(payload: PlanProposalPayload, _: None=Depends(require_virtual_key))",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "PlanProposalPayload"
+        },
+        {
+          "name": "_",
+          "annotation": "None"
+        }
+      ],
+      "returns": null,
+      "decorators": [
+        "app.post('/api/v1/plan-proposal', tags=['session-metadata'], summary='Report an ExitPlanMode proposal', response_model=AckResponse, responses={401: {'description': 'invalid or missing virtual key'}})"
+      ],
+      "docstring": null,
+      "is_async": true,
+      "line_start": 143,
+      "line_end": 148
+    },
+    {
+      "qualname": "receive_litellm_alert",
+      "signature": "(request: Request)",
+      "args": [
+        {
+          "name": "request",
+          "annotation": "Request"
+        }
+      ],
+      "returns": null,
+      "decorators": [
+        "app.post('/api/v1/litellm-alert', tags=['alerting'], summary='Receive a LiteLLM native alerting webhook event', response_model=AckResponse, openapi_extra={'requestBody': _example_request_body(_LITELLM_ALERT_EXAMPLE)})"
+      ],
+      "docstring": null,
+      "is_async": true,
+      "line_start": 158,
+      "line_end": 168
+    }
+  ],
+  "sha256": "28e026ddacdff292a492fada327c5e71f72505f8d595fb89ce86ef7ca72185d0"
+}

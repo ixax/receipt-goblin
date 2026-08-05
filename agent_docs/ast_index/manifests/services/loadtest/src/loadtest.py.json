@@ -1,0 +1,446 @@
+{
+  "path": "services/loadtest/src/loadtest.py",
+  "line_count": 379,
+  "module_docstring": "CLI-only load generator - replays real traffic from FIXTURES_DIR, filled\nby the separate loadtest-fixtures service (services/loadtest-fixtures/,\nwhich extracts it from ClickHouse - see AGENTS.md), against webhook's own\nPOST /api/v1/metrics, at a ramping concurrency profile. Run via `make\nloadtest` or `python -m src.loadtest`; no HTTP API of its own.\n\nDeliberately bypasses LiteLLM and the real Claude/Anthropic API entirely -\nthe only thing exercised is webhook -> redis -> webhook-worker -> clickhouse\n(see AGENTS.md \"Why a queue in front of ClickHouse\"). /api/v1/metrics needs\nno LiteLLM virtual key (unlike /api/v1/session-git-branch and\n/api/v1/plan-proposal - see server.py), so this never touches LITELLM_*.\n\nTraffic model: each session directory under FIXTURES_DIR is one real Claude\nCode session's status=\"success\" StandardLoggingPayload events (agentic\ntool-call round trips, not standalone chat messages) - build_fixtures.py\nalready filters to status=\"success\" at extraction time, so every file here\nqualifies - with real inter-event gaps and real payload sizes/token counts.\nOne \"virtual user\" here is a loop\nthat repeatedly picks a random session, replays its events in order at the\nreal (or --speed-scaled) cadence, then immediately picks another session and\nkeeps going - modeling one person's continuous Claude usage, not a single\nrequest. Each event file's bytes are sent to webhook completely unmodified -\nno id/trace_id rewriting, no timestamp shifting. This is a load test, not a\ndata-integrity test: concurrent replays of the same captured session will\ncollide on ingest_raw' ReplacingMergeTree key in ClickHouse, so row counts\nthere under-report actual replayed volume - use Stats/the final report\n(requests sent, status codes) as the real throughput signal, not ClickHouse\nrow growth.\n\nLoad profile is a ramp, not a flat concurrency level: starts at\n--start-users, adds more every --ramp-step-minutes, up to --end-users, then\nholds. See _resolve_schedule()'s docstring for the exact two ways total\nlength can be specified.\n\nWhat to watch in another terminal/Grafana while this runs:\n  - webhook-worker's own metrics on :9200/metrics - worker_stream_depth\n    (Redis Stream backlog, the best \"is the worker keeping up\" signal),\n    worker_pending_count, worker_flush_latency_seconds, worker_decode_failures_total.\n  - webhook's FastAPI Instrumentator metrics on :8000/metrics (request\n    latency/count - client-perceived POST latency here doubles as \"is the\n    queue backpressuring\").\n  - redis-exporter's stock Redis memory stats (config.yml's maxlen=1500 is\n    sized around ~360KB average payload staying under redis's maxmemory).\n  - ClickHouse's own :9363 Prometheus endpoint, or clickhouse-analyst for\n    ingest_raw row growth.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "argparse",
+      "names": [],
+      "line": 47
+    },
+    {
+      "kind": "import",
+      "module": "asyncio",
+      "names": [],
+      "line": 48
+    },
+    {
+      "kind": "import",
+      "module": "glob",
+      "names": [],
+      "line": 49
+    },
+    {
+      "kind": "import",
+      "module": "math",
+      "names": [],
+      "line": 50
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 51
+    },
+    {
+      "kind": "import",
+      "module": "random",
+      "names": [],
+      "line": 52
+    },
+    {
+      "kind": "import",
+      "module": "statistics",
+      "names": [],
+      "line": 53
+    },
+    {
+      "kind": "import",
+      "module": "time",
+      "names": [],
+      "line": 54
+    },
+    {
+      "kind": "from",
+      "module": "dataclasses",
+      "names": [
+        "dataclass",
+        "field"
+      ],
+      "line": 55
+    },
+    {
+      "kind": "from",
+      "module": "datetime",
+      "names": [
+        "datetime",
+        "timezone"
+      ],
+      "line": 56
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 57
+    },
+    {
+      "kind": "from",
+      "module": "typing",
+      "names": [
+        "Optional"
+      ],
+      "line": 58
+    },
+    {
+      "kind": "import",
+      "module": "aiohttp",
+      "names": [],
+      "line": 60
+    },
+    {
+      "kind": "from",
+      "module": "common.logging_config",
+      "names": [
+        "create_logger"
+      ],
+      "line": 61
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "logger",
+      "line": 63
+    },
+    {
+      "name": "FIXTURES_DIR",
+      "line": 68
+    },
+    {
+      "name": "DEFAULT_TARGET_URL",
+      "line": 70
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "SessionTrace",
+      "line_start": 74,
+      "line_end": 84,
+      "decorators": [
+        "dataclass"
+      ],
+      "bases": [],
+      "docstring": "One real session: its event files' paths in chronological order, each\npaired with the real gap (seconds) since the previous file's timestamp.\nThe first file's gap is always 0 - nothing to wait for before it.\nDeliberately holds only paths, not parsed payloads - a large fixture set\ncan still run multi-GB, and loading every session's full event content\ninto memory upfront doesn't scale with it. Each file's bytes are only\never read once, right before that event is sent, unmodified (see\n_read_bytes/_virtual_user).",
+      "methods": []
+    },
+    {
+      "qualname": "Stats",
+      "line_start": 151,
+      "line_end": 172,
+      "decorators": [
+        "dataclass"
+      ],
+      "bases": [],
+      "docstring": "Shared across all virtual users - plain counters/lists, no locking\nneeded since asyncio tasks only yield at awaits, never mid-statement.",
+      "methods": [
+        {
+          "qualname": "Stats.record",
+          "signature": "(self, status: Optional[int], latency: float, size: int) -> None",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "status",
+              "annotation": "Optional[int]"
+            },
+            {
+              "name": "latency",
+              "annotation": "float"
+            },
+            {
+              "name": "size",
+              "annotation": "int"
+            }
+          ],
+          "returns": "None",
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 160,
+          "line_end": 167
+        },
+        {
+          "qualname": "Stats.summary_line",
+          "signature": "(self, elapsed: float) -> str",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "elapsed",
+              "annotation": "float"
+            }
+          ],
+          "returns": "str",
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 169,
+          "line_end": 172
+        }
+      ]
+    },
+    {
+      "qualname": "RampStep",
+      "line_start": 204,
+      "line_end": 206,
+      "decorators": [
+        "dataclass"
+      ],
+      "bases": [],
+      "docstring": null,
+      "methods": []
+    },
+    {
+      "qualname": "Schedule",
+      "line_start": 210,
+      "line_end": 217,
+      "decorators": [
+        "dataclass"
+      ],
+      "bases": [],
+      "docstring": null,
+      "methods": []
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "_filename_epoch",
+      "signature": "(path: str) -> float",
+      "args": [
+        {
+          "name": "path",
+          "annotation": "str"
+        }
+      ],
+      "returns": "float",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 87,
+      "line_end": 97
+    },
+    {
+      "qualname": "load_session_corpus",
+      "signature": "(fixtures_dir: str, max_gap_seconds: float) -> list[SessionTrace]",
+      "args": [
+        {
+          "name": "fixtures_dir",
+          "annotation": "str"
+        },
+        {
+          "name": "max_gap_seconds",
+          "annotation": "float"
+        }
+      ],
+      "returns": "list[SessionTrace]",
+      "decorators": [],
+      "docstring": "Scans fixtures_dir for session subdirectories (one per real Claude\nCode session) and indexes each one's event file paths, in filename\norder, into a SessionTrace with real inter-event gaps (from filename\ntimestamps, not file content) clamped to max_gap_seconds so a rare\nmulti-minute \"human stepped away\" gap doesn't stall a virtual user for\nthe whole test.\n\nNo status filter here - build_fixtures.py already extracts only\nstatus=\"success\" agent_events rows, so every file under fixtures_dir\nqualifies (unlike the old .capture/-based corpus, which mixed in failed\nLiteLLM calls that needed filtering out per-file).",
+      "is_async": false,
+      "line_start": 100,
+      "line_end": 126
+    },
+    {
+      "qualname": "_read_bytes",
+      "signature": "(path: str) -> Optional[bytes]",
+      "args": [
+        {
+          "name": "path",
+          "annotation": "str"
+        }
+      ],
+      "returns": "Optional[bytes]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 129,
+      "line_end": 147
+    },
+    {
+      "qualname": "_virtual_user",
+      "signature": "(session: aiohttp.ClientSession, target_url: str, corpus: list[SessionTrace], speed: float, stats: Stats, deadline: float, rng: random.Random) -> None",
+      "args": [
+        {
+          "name": "session",
+          "annotation": "aiohttp.ClientSession"
+        },
+        {
+          "name": "target_url",
+          "annotation": "str"
+        },
+        {
+          "name": "corpus",
+          "annotation": "list[SessionTrace]"
+        },
+        {
+          "name": "speed",
+          "annotation": "float"
+        },
+        {
+          "name": "stats",
+          "annotation": "Stats"
+        },
+        {
+          "name": "deadline",
+          "annotation": "float"
+        },
+        {
+          "name": "rng",
+          "annotation": "random.Random"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": true,
+      "line_start": 175,
+      "line_end": 200
+    },
+    {
+      "qualname": "_resolve_schedule",
+      "signature": "(start_users: int, end_users: int, ramp_steps: int, ramp_step_minutes: float, duration_minutes: float, hold_minutes: float) -> Schedule",
+      "args": [
+        {
+          "name": "start_users",
+          "annotation": "int"
+        },
+        {
+          "name": "end_users",
+          "annotation": "int"
+        },
+        {
+          "name": "ramp_steps",
+          "annotation": "int"
+        },
+        {
+          "name": "ramp_step_minutes",
+          "annotation": "float"
+        },
+        {
+          "name": "duration_minutes",
+          "annotation": "float"
+        },
+        {
+          "name": "hold_minutes",
+          "annotation": "float"
+        }
+      ],
+      "returns": "Schedule",
+      "decorators": [],
+      "docstring": "Two ways to specify total length, unified into one Schedule:\n\n- duration_minutes == 0 (default): total = ramp_minutes + hold_minutes.\n  \"Tell me start/end and how fast to step, figure out the rest.\"\n- duration_minutes > 0: that IS the total, hold_minutes is derived as\n  duration_minutes - ramp_minutes (clamped at 0 - if the window is\n  shorter than the ramp needs, the run just ends mid-ramp, never\n  reaching end_users; no error). \"I know max users and total test\n  length, you figure out the ramp/hold split.\"\n\nramp_step_users (how many users each step adds) is never a manual flag -\nit's derived from ramp_steps so the caller only has to pick how many\nincrements to split the climb into, not hand-tune a step size.",
+      "is_async": false,
+      "line_start": 220,
+      "line_end": 258
+    },
+    {
+      "qualname": "_print_schedule",
+      "signature": "(schedule: Schedule) -> None",
+      "args": [
+        {
+          "name": "schedule",
+          "annotation": "Schedule"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 261,
+      "line_end": 269
+    },
+    {
+      "qualname": "_run_ramp",
+      "signature": "(target_url: str, corpus: list, schedule: Schedule, speed: float, seed: Optional[int]) -> Stats",
+      "args": [
+        {
+          "name": "target_url",
+          "annotation": "str"
+        },
+        {
+          "name": "corpus",
+          "annotation": "list"
+        },
+        {
+          "name": "schedule",
+          "annotation": "Schedule"
+        },
+        {
+          "name": "speed",
+          "annotation": "float"
+        },
+        {
+          "name": "seed",
+          "annotation": "Optional[int]"
+        }
+      ],
+      "returns": "Stats",
+      "decorators": [],
+      "docstring": null,
+      "is_async": true,
+      "line_start": 272,
+      "line_end": 304
+    },
+    {
+      "qualname": "_log_progress",
+      "signature": "(stats: Stats, start: float, deadline: float) -> None",
+      "args": [
+        {
+          "name": "stats",
+          "annotation": "Stats"
+        },
+        {
+          "name": "start",
+          "annotation": "float"
+        },
+        {
+          "name": "deadline",
+          "annotation": "float"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": true,
+      "line_start": 307,
+      "line_end": 323
+    },
+    {
+      "qualname": "_print_final_report",
+      "signature": "(stats: Stats, elapsed: float) -> None",
+      "args": [
+        {
+          "name": "stats",
+          "annotation": "Stats"
+        },
+        {
+          "name": "elapsed",
+          "annotation": "float"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 326,
+      "line_end": 340
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 343,
+      "line_end": 375
+    }
+  ],
+  "sha256": "49159e7fcd6beb52a1994c8fc9a927253de3e6090857f5652cbcc432db920b32"
+}

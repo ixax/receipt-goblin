@@ -1,0 +1,30 @@
+{
+  "path": "services/_common/src/config/clickhouse.py",
+  "line_count": 5,
+  "module_docstring": null,
+  "imports": [
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 1
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "CLICKHOUSE_HOST",
+      "line": 3
+    },
+    {
+      "name": "CLICKHOUSE_PORT",
+      "line": 4
+    },
+    {
+      "name": "CLICKHOUSE_DATABASE",
+      "line": 5
+    }
+  ],
+  "classes": [],
+  "functions": [],
+  "sha256": "94fc0f03a3156dd9d29bab96abe32379aaaaddd88103f10a622900e57345e927"
+}

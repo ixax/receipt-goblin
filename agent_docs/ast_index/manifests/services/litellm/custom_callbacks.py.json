@@ -1,0 +1,360 @@
+{
+  "path": "services/litellm/custom_callbacks.py",
+  "line_count": 305,
+  "module_docstring": null,
+  "imports": [
+    {
+      "kind": "import",
+      "module": "asyncio",
+      "names": [],
+      "line": 8
+    },
+    {
+      "kind": "import",
+      "module": "base64",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "binascii",
+      "names": [],
+      "line": 10
+    },
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 11
+    },
+    {
+      "kind": "from",
+      "module": "collections",
+      "names": [
+        "OrderedDict"
+      ],
+      "line": 12
+    },
+    {
+      "kind": "from",
+      "module": "typing",
+      "names": [
+        "Any",
+        "Literal",
+        "Optional",
+        "Tuple"
+      ],
+      "line": 13
+    },
+    {
+      "kind": "import",
+      "module": "litellm.llms.anthropic.common_utils",
+      "names": [],
+      "line": 15
+    },
+    {
+      "kind": "from",
+      "module": "litellm._logging",
+      "names": [
+        "verbose_proxy_logger"
+      ],
+      "line": 16
+    },
+    {
+      "kind": "from",
+      "module": "litellm.integrations.custom_logger",
+      "names": [
+        "CustomLogger"
+      ],
+      "line": 17
+    },
+    {
+      "kind": "from",
+      "module": "litellm.responses.sse_output_recovery",
+      "names": [
+        "record_output_item_chunk",
+        "record_output_text_chunk"
+      ],
+      "line": 18
+    },
+    {
+      "kind": "from",
+      "module": "litellm.integrations.generic_api.generic_api_callback",
+      "names": [
+        "GenericAPILogger"
+      ],
+      "line": 246
+    },
+    {
+      "kind": "from",
+      "module": "litellm.litellm_core_utils.safe_json_dumps",
+      "names": [
+        "safe_dumps"
+      ],
+      "line": 249
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "session_id_handler",
+      "line": 49
+    },
+    {
+      "name": "_original_is_anthropic_oauth_key",
+      "line": 77
+    },
+    {
+      "name": "chatgpt_auth_forward_handler",
+      "line": 128
+    },
+    {
+      "name": "_MAX_PENDING_OUTPUT_RECOVERIES",
+      "line": 170
+    },
+    {
+      "name": "_RECOVERY_WAIT_TIMEOUT_S",
+      "line": 171
+    },
+    {
+      "name": "_pending_output_items",
+      "line": 173
+    },
+    {
+      "name": "_recovery_ready",
+      "line": 174
+    },
+    {
+      "name": "chatgpt_responses_output_recovery_handler",
+      "line": 237
+    },
+    {
+      "name": "_MAX_RETAINED_LOG_QUEUE",
+      "line": 252
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "SessionIdHandler",
+      "line_start": 24,
+      "line_end": 46,
+      "decorators": [],
+      "bases": [
+        "CustomLogger"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "SessionIdHandler.async_pre_call_hook",
+          "signature": "(self, user_api_key_dict, cache, data: dict, call_type: Literal['completion', 'text_completion', 'embeddings', 'image_generation', 'moderation', 'audio_transcription', 'responses']) -> Optional[dict]",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "user_api_key_dict",
+              "annotation": null
+            },
+            {
+              "name": "cache",
+              "annotation": null
+            },
+            {
+              "name": "data",
+              "annotation": "dict"
+            },
+            {
+              "name": "call_type",
+              "annotation": "Literal['completion', 'text_completion', 'embeddings', 'image_generation', 'moderation', 'audio_transcription', 'responses']"
+            }
+          ],
+          "returns": "Optional[dict]",
+          "decorators": [],
+          "docstring": null,
+          "is_async": true,
+          "line_start": 25,
+          "line_end": 46
+        }
+      ]
+    },
+    {
+      "qualname": "ChatGPTAuthForwardHandler",
+      "line_start": 91,
+      "line_end": 125,
+      "decorators": [],
+      "bases": [
+        "CustomLogger"
+      ],
+      "docstring": "Forwards a Codex caller's own ChatGPT subscription token to the\n`chatgpt` provider per-call, instead of using its single shared\ndevice-code-logged-in identity. Requires the monkeypatch above to have\nalready let the header survive `clean_headers()`.",
+      "methods": [
+        {
+          "qualname": "ChatGPTAuthForwardHandler.async_pre_call_hook",
+          "signature": "(self, user_api_key_dict, cache, data: dict, call_type: Literal['completion', 'text_completion', 'embeddings', 'image_generation', 'moderation', 'audio_transcription', 'responses']) -> Optional[dict]",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "user_api_key_dict",
+              "annotation": null
+            },
+            {
+              "name": "cache",
+              "annotation": null
+            },
+            {
+              "name": "data",
+              "annotation": "dict"
+            },
+            {
+              "name": "call_type",
+              "annotation": "Literal['completion', 'text_completion', 'embeddings', 'image_generation', 'moderation', 'audio_transcription', 'responses']"
+            }
+          ],
+          "returns": "Optional[dict]",
+          "decorators": [],
+          "docstring": null,
+          "is_async": true,
+          "line_start": 97,
+          "line_end": 125
+        }
+      ]
+    },
+    {
+      "qualname": "ChatGPTResponsesOutputRecoveryHandler",
+      "line_start": 187,
+      "line_end": 234,
+      "decorators": [],
+      "bases": [
+        "CustomLogger"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "ChatGPTResponsesOutputRecoveryHandler.async_post_call_streaming_iterator_hook",
+          "signature": "(self, user_api_key_dict, response, request_data: dict)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "user_api_key_dict",
+              "annotation": null
+            },
+            {
+              "name": "response",
+              "annotation": null
+            },
+            {
+              "name": "request_data",
+              "annotation": "dict"
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": true,
+          "line_start": 188,
+          "line_end": 214
+        },
+        {
+          "qualname": "ChatGPTResponsesOutputRecoveryHandler.async_logging_hook",
+          "signature": "(self, kwargs: dict, result: Any, call_type: str) -> Tuple[dict, Any]",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "kwargs",
+              "annotation": "dict"
+            },
+            {
+              "name": "result",
+              "annotation": "Any"
+            },
+            {
+              "name": "call_type",
+              "annotation": "str"
+            }
+          ],
+          "returns": "Tuple[dict, Any]",
+          "decorators": [],
+          "docstring": null,
+          "is_async": true,
+          "line_start": 216,
+          "line_end": 234
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "_chatgpt_account_id",
+      "signature": "(token: str) -> Optional[str]",
+      "args": [
+        {
+          "name": "token",
+          "annotation": "str"
+        }
+      ],
+      "returns": "Optional[str]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 64,
+      "line_end": 74
+    },
+    {
+      "qualname": "_is_anthropic_or_chatgpt_oauth_key",
+      "signature": "(value: Optional[str]) -> bool",
+      "args": [
+        {
+          "name": "value",
+          "annotation": "Optional[str]"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 80,
+      "line_end": 83
+    },
+    {
+      "qualname": "_recovery_event_for",
+      "signature": "(call_id: str) -> asyncio.Event",
+      "args": [
+        {
+          "name": "call_id",
+          "annotation": "str"
+        }
+      ],
+      "returns": "asyncio.Event",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 177,
+      "line_end": 184
+    },
+    {
+      "qualname": "_patched_async_send_batch",
+      "signature": "(self: GenericAPILogger) -> None",
+      "args": [
+        {
+          "name": "self",
+          "annotation": "GenericAPILogger"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": true,
+      "line_start": 255,
+      "line_end": 302
+    }
+  ],
+  "sha256": "93553212d23fd519c7652d734a36932ae1b079cd31313cd9e8e90ee43c80e154"
+}

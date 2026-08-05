@@ -1,0 +1,46 @@
+{
+  "path": "services/loadtest-fixtures/src/clickhouse_client.py",
+  "line_count": 27,
+  "module_docstring": "Own minimal ClickHouse client factory - deliberately not importing\nservices/_common/src/ingest_db.py's get_client(), since this\nservice shares no code with webhook at all (see AGENTS.md).",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "clickhouse_connect",
+      "names": [],
+      "line": 4
+    },
+    {
+      "kind": "from",
+      "module": ".config",
+      "names": [
+        "CLICKHOUSE_DATABASE",
+        "CLICKHOUSE_HOST",
+        "CLICKHOUSE_PASSWORD",
+        "CLICKHOUSE_PORT",
+        "CLICKHOUSE_USER"
+      ],
+      "line": 6
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "_client",
+      "line": 14
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "get_client",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 17,
+      "line_end": 27
+    }
+  ],
+  "sha256": "916291539ed61b566c99831ebef2f7dee1982f933d873aa166020e99e724771e"
+}

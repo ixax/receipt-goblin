@@ -1,0 +1,603 @@
+{
+  "path": "scripts/ast_index.py",
+  "line_count": 470,
+  "module_docstring": "Build/query agent_docs/ast_index/, a committed structural digest of every tracked .py file.\nCovers classes/methods/functions/signatures/docstrings, derived via stdlib `ast`.\nStdlib only - no third-party deps, but still runs via `uv run` for the pinned .python-version interpreter (not whatever bare `python3` resolves to).\n\nA navigation aid, not a Read replacement: answers \"what's in this file / where is X defined\" without a full read.\nNever substitutes for Read before an Edit (verbatim old_string needs real source).\n\nCache layout:\n  agent_docs/ast_index/cache/manifest.json        - relpath -> {sha256, size, cache_path}\n  agent_docs/ast_index/manifests/<relpath>.json   - one comprehensive-but-flat doc per file\n\nsha256 (not mtime) is the staleness signal - content hash is authoritative.\n\nUsage:\n  uv run python3 scripts/ast_index.py build --file <relpath>   # single-file incremental regen\n  uv run python3 scripts/ast_index.py build --all              # full rebuild, prunes stale entries\n  uv run python3 scripts/ast_index.py build --check             # exit 1 if any tracked file is stale\n\n  uv run python3 scripts/ast_index.py query <relpath> --view outline      # qualnames + line ranges\n  uv run python3 scripts/ast_index.py query <relpath> --view signatures   # + signature + 1-line docstring\n  uv run python3 scripts/ast_index.py query <relpath> --view full         # entire stored document\n  uv run python3 scripts/ast_index.py query <relpath> --symbol Class.method\n  uv run python3 scripts/ast_index.py query --grep <substring>            # cross-file qualname search\n  (add --json to any query for structured output)",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "argparse",
+      "names": [],
+      "line": 27
+    },
+    {
+      "kind": "import",
+      "module": "ast",
+      "names": [],
+      "line": 28
+    },
+    {
+      "kind": "import",
+      "module": "hashlib",
+      "names": [],
+      "line": 29
+    },
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 30
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 31
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 32
+    },
+    {
+      "kind": "from",
+      "module": "datetime",
+      "names": [
+        "datetime",
+        "timezone"
+      ],
+      "line": 33
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 34
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "ROOT",
+      "line": 36
+    },
+    {
+      "name": "CACHE_DIR",
+      "line": 37
+    },
+    {
+      "name": "FILES_DIR",
+      "line": 38
+    },
+    {
+      "name": "MANIFEST",
+      "line": 39
+    },
+    {
+      "name": "EXCLUDE_DIR_NAMES",
+      "line": 41
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "now_iso",
+      "signature": "() -> str",
+      "args": [],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 46,
+      "line_end": 47
+    },
+    {
+      "qualname": "file_sha256",
+      "signature": "(path: Path) -> str",
+      "args": [
+        {
+          "name": "path",
+          "annotation": "Path"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 50,
+      "line_end": 51
+    },
+    {
+      "qualname": "normalize_relpath",
+      "signature": "(raw: str) -> str",
+      "args": [
+        {
+          "name": "raw",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 54,
+      "line_end": 58
+    },
+    {
+      "qualname": "iter_py_files",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 61,
+      "line_end": 66
+    },
+    {
+      "qualname": "load_manifest",
+      "signature": "() -> dict",
+      "args": [],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 69,
+      "line_end": 72
+    },
+    {
+      "qualname": "save_manifest",
+      "signature": "(manifest: dict) -> None",
+      "args": [
+        {
+          "name": "manifest",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 75,
+      "line_end": 78
+    },
+    {
+      "qualname": "get_docstring_first_line",
+      "signature": "(doc)",
+      "args": [
+        {
+          "name": "doc",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 83,
+      "line_end": 86
+    },
+    {
+      "qualname": "arg_entry",
+      "signature": "(a: ast.arg) -> dict",
+      "args": [
+        {
+          "name": "a",
+          "annotation": "ast.arg"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 89,
+      "line_end": 90
+    },
+    {
+      "qualname": "extract_args",
+      "signature": "(args_node: ast.arguments) -> list",
+      "args": [
+        {
+          "name": "args_node",
+          "annotation": "ast.arguments"
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 93,
+      "line_end": 103
+    },
+    {
+      "qualname": "format_signature",
+      "signature": "(node) -> str",
+      "args": [
+        {
+          "name": "node",
+          "annotation": null
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 106,
+      "line_end": 110
+    },
+    {
+      "qualname": "function_entry",
+      "signature": "(node, prefix: str='') -> dict",
+      "args": [
+        {
+          "name": "node",
+          "annotation": null
+        },
+        {
+          "name": "prefix",
+          "annotation": "str"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 113,
+      "line_end": 124
+    },
+    {
+      "qualname": "class_entry",
+      "signature": "(node: ast.ClassDef) -> dict",
+      "args": [
+        {
+          "name": "node",
+          "annotation": "ast.ClassDef"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 127,
+      "line_end": 141
+    },
+    {
+      "qualname": "import_entries",
+      "signature": "(node) -> list",
+      "args": [
+        {
+          "name": "node",
+          "annotation": null
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 144,
+      "line_end": 148
+    },
+    {
+      "qualname": "module_constant_entries",
+      "signature": "(node) -> list",
+      "args": [
+        {
+          "name": "node",
+          "annotation": null
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 151,
+      "line_end": 156
+    },
+    {
+      "qualname": "extract_module",
+      "signature": "(source: str, relpath: str) -> dict",
+      "args": [
+        {
+          "name": "source",
+          "annotation": "str"
+        },
+        {
+          "name": "relpath",
+          "annotation": "str"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": "One level deep only: class bodies walk direct methods, not nested defs.",
+      "is_async": false,
+      "line_start": 159,
+      "line_end": 180
+    },
+    {
+      "qualname": "build_one",
+      "signature": "(relpath: str, manifest: dict) -> bool",
+      "args": [
+        {
+          "name": "relpath",
+          "annotation": "str"
+        },
+        {
+          "name": "manifest",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": "Update manifest in place for one file.\nReturns True if the cache entry changed.",
+      "is_async": false,
+      "line_start": 185,
+      "line_end": 208
+    },
+    {
+      "qualname": "prune_orphans",
+      "signature": "(tracked: set) -> None",
+      "args": [
+        {
+          "name": "tracked",
+          "annotation": "set"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 211,
+      "line_end": 222
+    },
+    {
+      "qualname": "cmd_build_file",
+      "signature": "(relpath: str) -> int",
+      "args": [
+        {
+          "name": "relpath",
+          "annotation": "str"
+        }
+      ],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 225,
+      "line_end": 236
+    },
+    {
+      "qualname": "cmd_build_all",
+      "signature": "() -> int",
+      "args": [],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 239,
+      "line_end": 257
+    },
+    {
+      "qualname": "build_check",
+      "signature": "() -> int",
+      "args": [],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 260,
+      "line_end": 274
+    },
+    {
+      "qualname": "cmd_build",
+      "signature": "(args) -> int",
+      "args": [
+        {
+          "name": "args",
+          "annotation": null
+        }
+      ],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 277,
+      "line_end": 282
+    },
+    {
+      "qualname": "load_entry",
+      "signature": "(relpath: str)",
+      "args": [
+        {
+          "name": "relpath",
+          "annotation": "str"
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 287,
+      "line_end": 295
+    },
+    {
+      "qualname": "is_stale",
+      "signature": "(relpath: str, info: dict) -> bool",
+      "args": [
+        {
+          "name": "relpath",
+          "annotation": "str"
+        },
+        {
+          "name": "info",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 298,
+      "line_end": 300
+    },
+    {
+      "qualname": "iter_entries",
+      "signature": "(doc: dict)",
+      "args": [
+        {
+          "name": "doc",
+          "annotation": "dict"
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 303,
+      "line_end": 307
+    },
+    {
+      "qualname": "project_view",
+      "signature": "(doc: dict, view: str) -> dict",
+      "args": [
+        {
+          "name": "doc",
+          "annotation": "dict"
+        },
+        {
+          "name": "view",
+          "annotation": "str"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 310,
+      "line_end": 323
+    },
+    {
+      "qualname": "print_full",
+      "signature": "(doc: dict) -> None",
+      "args": [
+        {
+          "name": "doc",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 326,
+      "line_end": 360
+    },
+    {
+      "qualname": "query_view",
+      "signature": "(doc: dict, view: str, as_json: bool) -> int",
+      "args": [
+        {
+          "name": "doc",
+          "annotation": "dict"
+        },
+        {
+          "name": "view",
+          "annotation": "str"
+        },
+        {
+          "name": "as_json",
+          "annotation": "bool"
+        }
+      ],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 363,
+      "line_end": 379
+    },
+    {
+      "qualname": "query_symbol",
+      "signature": "(doc: dict, symbol: str, as_json: bool) -> int",
+      "args": [
+        {
+          "name": "doc",
+          "annotation": "dict"
+        },
+        {
+          "name": "symbol",
+          "annotation": "str"
+        },
+        {
+          "name": "as_json",
+          "annotation": "bool"
+        }
+      ],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 382,
+      "line_end": 395
+    },
+    {
+      "qualname": "query_grep",
+      "signature": "(substring: str, as_json: bool) -> int",
+      "args": [
+        {
+          "name": "substring",
+          "annotation": "str"
+        },
+        {
+          "name": "as_json",
+          "annotation": "bool"
+        }
+      ],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 398,
+      "line_end": 416
+    },
+    {
+      "qualname": "cmd_query",
+      "signature": "(args) -> int",
+      "args": [
+        {
+          "name": "args",
+          "annotation": null
+        }
+      ],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 419,
+      "line_end": 437
+    },
+    {
+      "qualname": "build_arg_parser",
+      "signature": "() -> argparse.ArgumentParser",
+      "args": [],
+      "returns": "argparse.ArgumentParser",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 442,
+      "line_end": 461
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> int",
+      "args": [],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 464,
+      "line_end": 466
+    }
+  ],
+  "sha256": "da6b58ca24556becaaf7c7d99ed948e1ba93d2207b2df209a80a45b3e285c773"
+}

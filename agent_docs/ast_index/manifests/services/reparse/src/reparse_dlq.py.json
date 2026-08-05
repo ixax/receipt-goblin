@@ -1,0 +1,112 @@
+{
+  "path": "services/reparse/src/reparse_dlq.py",
+  "line_count": 109,
+  "module_docstring": "CLI-only DLQ-replay tool - re-inserts ingest_dlq rows back into their original target table (agent_events/agent_usage/agent_messages), reusing common.ingest_db's replay_dlq_row() directly.\nRun via `make reparse-dlq` or `make reparse-dlq STAGE=<table>`; no HTTP API, one-shot `python -m src.reparse_dlq` only.\n\nFaster than `reparse.py` for routine incident recovery: it replays only the rows that actually failed (ingest_dlq.raw_row is the already-transformed row that insert_rows_with_dlq_fallback rejected), instead of rescanning all of ingest_raw.\nUse reparse.py instead when the failure could have affected dimension/invocation resolution too, not just these three tables.\n\nSafe to re-run any number of times: the target tables are all ReplacingMergeTree, keyed so this run's now() always wins.\ningest_dlq itself is never deleted from - replayed rows stay in it as an append-only forensic log.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "argparse",
+      "names": [],
+      "line": 10
+    },
+    {
+      "kind": "from",
+      "module": "common",
+      "names": [
+        "fastjson"
+      ],
+      "line": 12
+    },
+    {
+      "kind": "from",
+      "module": "common.ingest_db",
+      "names": [
+        "get_client",
+        "mark_dlq_rows_resolved",
+        "replay_dlq_row"
+      ],
+      "line": 13
+    },
+    {
+      "kind": "from",
+      "module": "common.logging_config",
+      "names": [
+        "create_logger"
+      ],
+      "line": 14
+    },
+    {
+      "kind": "from",
+      "module": ".config",
+      "names": [
+        "REPARSE_CHUNK_SIZE"
+      ],
+      "line": 16
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "logger",
+      "line": 18
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_replay_one",
+      "signature": "(client, stage: str, litellm_call_id: str, raw_row: str) -> bool",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "stage",
+          "annotation": "str"
+        },
+        {
+          "name": "litellm_call_id",
+          "annotation": "str"
+        },
+        {
+          "name": "raw_row",
+          "annotation": "str"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 21,
+      "line_end": 33
+    },
+    {
+      "qualname": "reparse_dlq",
+      "signature": "(stage: str='') -> int",
+      "args": [
+        {
+          "name": "stage",
+          "annotation": "str"
+        }
+      ],
+      "returns": "int",
+      "decorators": [],
+      "docstring": "stage=\"\" replays every not-yet-resolved row in ingest_dlq, across all stages.\nReturns rows processed (attempted, not necessarily succeeded).\n\nPages REPARSE_CHUNK_SIZE rows at a time from ingest_dlq_unresolved (see\nmigrations/015_ingest_dlq_resolved.sql) - no cursor needed.\nEach successfully replayed row gets marked resolved before the next page\nis fetched, so it permanently drops out of ingest_dlq_unresolved and the\nsame plain LIMIT query naturally returns different rows next iteration.\nThat's what makes pagination terminate: a plain ORDER BY/LIMIT cursor\nover occurred_at isn't reliable when many rows share the same\nmillisecond timestamp (ClickHouse doesn't guarantee stable tie-breaking\nacross pages under parallel execution), which caused the 2026-08-04 OOM\nby re-selecting the same backlog dozens of times.",
+      "is_async": false,
+      "line_start": 36,
+      "line_end": 92
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 95,
+      "line_end": 105
+    }
+  ],
+  "sha256": "c4e3e1add4b6f1c3b19d4542bb056fc46de481585f0097a84591b28ee074a80d"
+}

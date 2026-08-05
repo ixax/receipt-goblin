@@ -1,0 +1,68 @@
+{
+  "path": "services/loadtest-fixtures/src/config.py",
+  "line_count": 26,
+  "module_docstring": "Env-derived connection settings plus fixture-extraction tuning from\nconfig.yml. This service is deliberately isolated from services/webhook -\nits own image, own dependency set, own config module (see AGENTS.md) - so\nevery env var it reads is prefixed LOADTEST_FIXTURES_, never the bare\nCLICKHOUSE_*/etc. names webhook's own config.py uses, to keep the two\ncontainers' environments from silently colliding or being confused for one\nanother.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 10
+    },
+    {
+      "kind": "import",
+      "module": "yaml",
+      "names": [],
+      "line": 12
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "CLICKHOUSE_HOST",
+      "line": 14
+    },
+    {
+      "name": "CLICKHOUSE_PORT",
+      "line": 15
+    },
+    {
+      "name": "CLICKHOUSE_USER",
+      "line": 16
+    },
+    {
+      "name": "CLICKHOUSE_PASSWORD",
+      "line": 17
+    },
+    {
+      "name": "CLICKHOUSE_DATABASE",
+      "line": 18
+    },
+    {
+      "name": "FIXTURES_DIR",
+      "line": 22
+    },
+    {
+      "name": "_config",
+      "line": 24
+    },
+    {
+      "name": "FIXTURES_CHUNK_SIZE",
+      "line": 25
+    },
+    {
+      "name": "FIXTURES_TTL_HOURS",
+      "line": 26
+    }
+  ],
+  "classes": [],
+  "functions": [],
+  "sha256": "aa71b756bbf3569f4631516eb5abee64ed575979bf191285966b8f3e875a1d20"
+}

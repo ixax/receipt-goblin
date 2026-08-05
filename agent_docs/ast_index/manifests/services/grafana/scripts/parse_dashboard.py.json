@@ -1,0 +1,233 @@
+{
+  "path": "services/grafana/scripts/parse_dashboard.py",
+  "line_count": 171,
+  "module_docstring": "Parse a Grafana v2beta1 dashboard JSON file.\n\nSchema recap: top-level apiVersion/kind/metadata/spec. spec.elements maps\n\"panel-<id>\" -> {kind: \"Panel\", spec: {id, title, description, data: {\nspec: {queries: [...]}}, vizConfig: {kind: <panel type>}}}. spec.layout is a\nTabsLayout of tabs, each a GridLayout of items referencing elements by name.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "argparse",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 10
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 11
+    }
+  ],
+  "module_constants": [],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "load",
+      "signature": "(path)",
+      "args": [
+        {
+          "name": "path",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 14,
+      "line_end": 16
+    },
+    {
+      "qualname": "_iter_leaf_tabs",
+      "signature": "(layout, title=None)",
+      "args": [
+        {
+          "name": "layout",
+          "annotation": null
+        },
+        {
+          "name": "title",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 19,
+      "line_end": 35
+    },
+    {
+      "qualname": "iter_tabs",
+      "signature": "(spec)",
+      "args": [
+        {
+          "name": "spec",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 38,
+      "line_end": 39
+    },
+    {
+      "qualname": "iter_panel_refs",
+      "signature": "(tab_layout)",
+      "args": [
+        {
+          "name": "tab_layout",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 42,
+      "line_end": 49
+    },
+    {
+      "qualname": "panel_by_ref",
+      "signature": "(spec, ref)",
+      "args": [
+        {
+          "name": "spec",
+          "annotation": null
+        },
+        {
+          "name": "ref",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 52,
+      "line_end": 53
+    },
+    {
+      "qualname": "cmd_list_tabs",
+      "signature": "(args)",
+      "args": [
+        {
+          "name": "args",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 56,
+      "line_end": 60
+    },
+    {
+      "qualname": "cmd_list_panels",
+      "signature": "(args)",
+      "args": [
+        {
+          "name": "args",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 63,
+      "line_end": 75
+    },
+    {
+      "qualname": "find_panel",
+      "signature": "(spec, id_=None, title=None)",
+      "args": [
+        {
+          "name": "spec",
+          "annotation": null
+        },
+        {
+          "name": "id_",
+          "annotation": null
+        },
+        {
+          "name": "title",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 78,
+      "line_end": 85
+    },
+    {
+      "qualname": "cmd_show_panel",
+      "signature": "(args)",
+      "args": [
+        {
+          "name": "args",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 88,
+      "line_end": 103
+    },
+    {
+      "qualname": "cmd_show_variable",
+      "signature": "(args)",
+      "args": [
+        {
+          "name": "args",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 106,
+      "line_end": 113
+    },
+    {
+      "qualname": "cmd_summary",
+      "signature": "(args)",
+      "args": [
+        {
+          "name": "args",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 116,
+      "line_end": 133
+    },
+    {
+      "qualname": "main",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 136,
+      "line_end": 167
+    }
+  ],
+  "sha256": "5ecff3d2c8f70e5811a9ec1a79a1d4c7ffb749d48bb5ab715eabb7316ebc9b69"
+}

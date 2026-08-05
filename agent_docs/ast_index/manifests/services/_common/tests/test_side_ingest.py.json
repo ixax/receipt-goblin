@@ -1,0 +1,236 @@
+{
+  "path": "services/_common/tests/test_side_ingest.py",
+  "line_count": 116,
+  "module_docstring": "Unit tests for side_ingest.py - the row-builders and batch-inserters\nbehind the side-channel stream (session-git-branch, plan-proposal, LiteLLM\nnative alerts).\n_issue_id_from_branch cases moved from the now-deleted\nservices/webhook/tests/test_ingest.py when ingest.py's logic relocated to\ncommon/ - see plans/side-channel-redis-and-describe-fix.md.",
+  "imports": [
+    {
+      "kind": "from",
+      "module": "datetime",
+      "names": [
+        "datetime",
+        "timezone"
+      ],
+      "line": 8
+    },
+    {
+      "kind": "from",
+      "module": "common",
+      "names": [
+        "side_ingest"
+      ],
+      "line": 10
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "_NOW",
+      "line": 21
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "_FakeClient",
+      "line_start": 13,
+      "line_end": 18,
+      "decorators": [],
+      "bases": [],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "_FakeClient.__init__",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 14,
+          "line_end": 15
+        },
+        {
+          "qualname": "_FakeClient.insert",
+          "signature": "(self, table, rows, column_names, column_type_names=None)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "table",
+              "annotation": null
+            },
+            {
+              "name": "rows",
+              "annotation": null
+            },
+            {
+              "name": "column_names",
+              "annotation": null
+            },
+            {
+              "name": "column_type_names",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 17,
+          "line_end": 18
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "test_issue_id_from_branch_success_ticket_at_start",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 28,
+      "line_end": 29
+    },
+    {
+      "qualname": "test_issue_id_from_branch_success_ticket_at_end",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 32,
+      "line_end": 33
+    },
+    {
+      "qualname": "test_issue_id_from_branch_success_normalizes_case",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 36,
+      "line_end": 37
+    },
+    {
+      "qualname": "test_issue_id_from_branch_unsuccess_no_ticket_returns_empty",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 40,
+      "line_end": 41
+    },
+    {
+      "qualname": "test_git_branch_row_success_builds_row_with_issue_id",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 48,
+      "line_end": 50
+    },
+    {
+      "qualname": "test_git_branch_row_success_missing_fields_default_to_empty_string",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 53,
+      "line_end": 54
+    },
+    {
+      "qualname": "test_plan_proposal_row_success_builds_row",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 57,
+      "line_end": 59
+    },
+    {
+      "qualname": "test_litellm_alert_row_success_builds_row_and_keeps_raw_payload",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 62,
+      "line_end": 72
+    },
+    {
+      "qualname": "test_litellm_alert_row_success_missing_fields_default_sensibly",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 75,
+      "line_end": 77
+    },
+    {
+      "qualname": "test_insert_git_branch_batch_success_inserts_rows",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 84,
+      "line_end": 90
+    },
+    {
+      "qualname": "test_insert_git_branch_batch_unsuccess_empty_rows_skips_insert",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 93,
+      "line_end": 98
+    },
+    {
+      "qualname": "test_insert_plan_proposal_batch_success_inserts_rows",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 101,
+      "line_end": 107
+    },
+    {
+      "qualname": "test_insert_litellm_alert_batch_success_inserts_rows",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 110,
+      "line_end": 116
+    }
+  ],
+  "sha256": "cac0ef84c00c32e090c976b22de4b52fbe10490422055ad960a5f288e059f862"
+}

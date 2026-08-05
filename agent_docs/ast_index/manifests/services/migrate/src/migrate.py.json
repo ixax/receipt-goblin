@@ -1,0 +1,255 @@
+{
+  "path": "services/migrate/src/migrate.py",
+  "line_count": 278,
+  "module_docstring": "Idempotent ClickHouse migration runner - applies every\nservices/clickhouse/migrations/*.sql file at most once, then exits.\nGated behind the `tools` compose profile, so a plain `docker compose up`\nnever starts it and no other service `depends_on` it.\nRuns automatically at the end of `make init` on a fresh setup.\nCan also be run standalone via `make migrate` after adding a new migration file.\n\nThis module never touches ClickHouse users/roles/grants - that's `make\ninit`'s job alone (services/init/init_clickhouse_users.py, reading\nservices/init/config.yml), run once, explicitly, not on every stack start.\nA fresh volume's `docker compose up` without having run `make init` first\nfails loudly (ACCESS_DENIED/AUTHENTICATION_FAILED from whichever service\ncan't authenticate) - that's expected, not a case this module works around.\n\nApplied migrations are recorded in schema_migrations and never re-executed.\nDestructive recreate+swap migrations (like 001_replacing_mergetree.sql) also\nget a SKIP_CHECKS guard so a fresh volume - already matching the\npost-migration shape via schema.sql - skips running that SQL at all.\n\nrun_migration() passes CLICKHOUSE_DATABASE as a query parameter to every\nstatement in every migrations/*.sql file, so a migration can reference\n{clickhouse_database:String} directly in an ordinary expression position\n(e.g. a WHERE clause).\nA statement that doesn't reference it is unaffected - unused named\nparameters are just ignored.\n\nThat substitution does NOT work everywhere, though - confirmed against a\nlive server: `{name:Type}` is rejected with a SYNTAX_ERROR\n(\"Expected substitution type (identifier)\") anywhere inside a Dictionary's\nSOURCE(CLICKHOUSE(...)) clause, even for something as simple as its DB\nparameter - that clause's USER/PASSWORD/DB/QUERY sub-grammar only accepts\nliterals, not the general expression position {name:Type} hooks into\n(unlike e.g. CREATE USER ... IDENTIFIED BY {password:String}, which does\nwork - not used in this file, but relevant if you're comparing this against\ninit_clickhouse_users.py's own CREATE USER statements).\nSo _create_dictionaries_once() below builds its CREATE DICTIONARY statements as\nan f-string with the ingest role's credentials embedded directly (via\n_sql_string_literal()'s escaping, not client.query's parameters=) rather\nthan going through a migrations/*.sql file at all.\n\n_create_dictionaries_once() uses its own bootstrap-superuser connection, the\nsame one this module uses for every other statement - schema/migrations\nbookkeeping needs DDL rights no least-privilege role should hold, and this\nmodule doesn't have (nor need) an ingest-role client of its own at all; it\nonly reads CLICKHOUSE_INGEST_USER/_PASSWORD as plain strings to embed in the\nDictionary's SOURCE(CLICKHOUSE(...)) clause.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 48
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 49
+    },
+    {
+      "kind": "import",
+      "module": "clickhouse_connect",
+      "names": [],
+      "line": 51
+    },
+    {
+      "kind": "from",
+      "module": "common.config.clickhouse",
+      "names": [
+        "CLICKHOUSE_DATABASE",
+        "CLICKHOUSE_HOST",
+        "CLICKHOUSE_PORT"
+      ],
+      "line": 52
+    },
+    {
+      "kind": "from",
+      "module": "common.logging_config",
+      "names": [
+        "create_logger"
+      ],
+      "line": 57
+    },
+    {
+      "kind": "from",
+      "module": ".config",
+      "names": [
+        "CLICKHOUSE_BOOTSTRAP_PASSWORD",
+        "CLICKHOUSE_BOOTSTRAP_USER",
+        "MIGRATIONS_DIR"
+      ],
+      "line": 59
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "logger",
+      "line": 65
+    },
+    {
+      "name": "SKIP_CHECKS",
+      "line": 117
+    },
+    {
+      "name": "_MIGRATION_PARAMETERS",
+      "line": 128
+    },
+    {
+      "name": "_DICTIONARIES",
+      "line": 194
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_bootstrap_client",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 68,
+      "line_end": 74
+    },
+    {
+      "qualname": "_already_replacing_mergetree",
+      "signature": "(client) -> bool",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": "True once agent_events is already ReplacingMergeTree (migrated\nalready, or created that way by schema.sql on a fresh volume).",
+      "is_async": false,
+      "line_start": 77,
+      "line_end": 83
+    },
+    {
+      "qualname": "_ingest_dlq_already_partitioned",
+      "signature": "(client) -> bool",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": "True once ingest_dlq already has a partition key (migrated already,\nor created that way by schema.sql on a fresh volume) - guards against\n011_ingest_dlq_partition_by.sql's recreate+rename running again on a\nstack that already has the target shape.",
+      "is_async": false,
+      "line_start": 86,
+      "line_end": 94
+    },
+    {
+      "qualname": "_event_sources_already_renamed",
+      "signature": "(client) -> bool",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": "True when event_sources doesn't exist under its old name - either a\nfresh volume (schema.sql already creates ingest_raw/ingest_dlq directly,\nthe old name never existed) or a stack that already ran\n007_rename_ingest_tables.\nBoth 006 (ALTER TABLE event_sources ...) and 007 (RENAME TABLE\nevent_sources TO ...) target the pre-rename name, so both fail outright\non a fresh volume without this guard - confirmed via\na from-scratch clickhouse-data volume: 006 raised UNKNOWN_TABLE on\nevent_sources and blocked every migration after it, 007 included.",
+      "is_async": false,
+      "line_start": 97,
+      "line_end": 110
+    },
+    {
+      "qualname": "_statements",
+      "signature": "(sql_text: str) -> list[str]",
+      "args": [
+        {
+          "name": "sql_text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "list[str]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 133,
+      "line_end": 138
+    },
+    {
+      "qualname": "_mark_applied",
+      "signature": "(client, version: str) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "version",
+          "annotation": "str"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 141,
+      "line_end": 142
+    },
+    {
+      "qualname": "_is_recorded",
+      "signature": "(client, version: str) -> bool",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "version",
+          "annotation": "str"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 145,
+      "line_end": 150
+    },
+    {
+      "qualname": "run_migration",
+      "signature": "(client, path: Path) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "path",
+          "annotation": "Path"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 153,
+      "line_end": 170
+    },
+    {
+      "qualname": "_sql_string_literal",
+      "signature": "(value: str) -> str",
+      "args": [
+        {
+          "name": "value",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Escapes value for embedding directly in SQL text as '...' - only\nneeded where {name:Type} substitution doesn't parse (SOURCE(CLICKHOUSE(\n...)) - see this module's docstring); everywhere else, prefer\nparameters= instead of this.",
+      "is_async": false,
+      "line_start": 173,
+      "line_end": 178
+    },
+    {
+      "qualname": "_create_dictionaries_once",
+      "signature": "(client) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "One-time: creates the Dictionaries listed in _DICTIONARIES above.\nHOST/PORT are deliberately omitted from SOURCE(CLICKHOUSE(...)) - with\nthem unset, ClickHouse reads its own local table directly instead of\nopening a native-protocol TCP connection to itself.\nUSER/PASSWORD are still required even for that local path (confirmed: a\nplain SOURCE(CLICKHOUSE(QUERY '...')) with neither tries to connect as\n`default` with an empty password and fails AUTHENTICATION_FAILED\nagainst this stack's password-protected `default` user) - and, per this\nmodule's docstring, {name:Type} substitution isn't usable inside\nSOURCE(CLICKHOUSE(...)) at all, so they're embedded as escaped string\nliterals instead.\nThe embedded identity is the `ingest` role - the only role with SELECT\non all three source tables (session_git_branch, ai_gateway_users,\nai_gateway_groups).\n\nIF NOT EXISTS (not CREATE OR REPLACE): a dictionary already serving\ndashboard queries shouldn't be silently swapped by a migration re-run.",
+      "is_async": false,
+      "line_start": 221,
+      "line_end": 258
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 261,
+      "line_end": 274
+    }
+  ],
+  "sha256": "dabecb8737234d5df35528ba4662d591829cbf1a3c535d9f8a25acba78740975"
+}

@@ -1,0 +1,207 @@
+{
+  "path": "services/_common/src/side_ingest.py",
+  "line_count": 92,
+  "module_docstring": "Session-metadata hooks (session-git-branch, plan-proposal) and LiteLLM's\nnative alerting webhook - the low-volume \"side channel\" queued onto\nwebhook:side-events (see services/_common/queue.yml) rather than\nwebhook:events.\nLives in common/ (not webhook/src/ or worker/src/) because both webhook\n(server.py, to build the payload dict it enqueues) and worker (worker.py, to\nbuild/insert the row on the way back out) need it - see\nplans/side-channel-redis-and-describe-fix.md.\n\nRow-builders are pure (no client, no I/O); the *_batch functions below are\nthe only part that touches ClickHouse, one multi-row client.insert() per\ntable per flush.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "re",
+      "names": [],
+      "line": 14
+    },
+    {
+      "kind": "from",
+      "module": "datetime",
+      "names": [
+        "datetime"
+      ],
+      "line": 15
+    },
+    {
+      "kind": "from",
+      "module": "common",
+      "names": [
+        "fastjson"
+      ],
+      "line": 17
+    },
+    {
+      "kind": "from",
+      "module": "common.ingest_db",
+      "names": [
+        "insert_rows_with_dlq_fallback"
+      ],
+      "line": 18
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "_GIT_BRANCH_COLUMNS",
+      "line": 20
+    },
+    {
+      "name": "_GIT_BRANCH_COLUMN_TYPES",
+      "line": 21
+    },
+    {
+      "name": "_PLAN_PROPOSAL_COLUMNS",
+      "line": 22
+    },
+    {
+      "name": "_PLAN_PROPOSAL_COLUMN_TYPES",
+      "line": 23
+    },
+    {
+      "name": "_LITELLM_ALERT_COLUMNS",
+      "line": 24
+    },
+    {
+      "name": "_LITELLM_ALERT_COLUMN_TYPES",
+      "line": 28
+    },
+    {
+      "name": "_ISSUE_ID_RE",
+      "line": 33
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_issue_id_from_branch",
+      "signature": "(git_branch: str) -> str",
+      "args": [
+        {
+          "name": "git_branch",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Ticket ID embedded in a branch name, e.g. \"VIEW-12345\", matched\ncase-insensitively and uppercased.\nTrailing boundary is a negative lookahead, not \\b: \\b treats\ndigit/underscore as the same word class and would miss\n\"VIEW-100500_my-branch\".",
+      "is_async": false,
+      "line_start": 36,
+      "line_end": 43
+    },
+    {
+      "qualname": "_git_branch_row",
+      "signature": "(payload: dict, now: datetime) -> list",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        },
+        {
+          "name": "now",
+          "annotation": "datetime"
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 46,
+      "line_end": 50
+    },
+    {
+      "qualname": "_plan_proposal_row",
+      "signature": "(payload: dict, now: datetime) -> list",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        },
+        {
+          "name": "now",
+          "annotation": "datetime"
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 53,
+      "line_end": 54
+    },
+    {
+      "qualname": "_litellm_alert_row",
+      "signature": "(payload: dict, now: datetime) -> list",
+      "args": [
+        {
+          "name": "payload",
+          "annotation": "dict"
+        },
+        {
+          "name": "now",
+          "annotation": "datetime"
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": "Only the budget-event shape is fully documented by LiteLLM's own\ndocs - other alert types (llm_exceptions/outage_alerts/db_exceptions/...)\nlikely carry different fields, so raw_payload keeps the full body\nregardless of which fields above happen to be present.",
+      "is_async": false,
+      "line_start": 57,
+      "line_end": 73
+    },
+    {
+      "qualname": "insert_git_branch_batch",
+      "signature": "(client, rows: list[list]) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "rows",
+          "annotation": "list[list]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "session_id is column 0 - see _git_branch_row.",
+      "is_async": false,
+      "line_start": 76,
+      "line_end": 80
+    },
+    {
+      "qualname": "insert_plan_proposal_batch",
+      "signature": "(client, rows: list[list]) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "rows",
+          "annotation": "list[list]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "session_id is column 0 - see _plan_proposal_row.",
+      "is_async": false,
+      "line_start": 83,
+      "line_end": 87
+    },
+    {
+      "qualname": "insert_litellm_alert_batch",
+      "signature": "(client, rows: list[list]) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "rows",
+          "annotation": "list[list]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "No call_id/session_id on an alert row - see _litellm_alert_row.",
+      "is_async": false,
+      "line_start": 90,
+      "line_end": 92
+    }
+  ],
+  "sha256": "160a39bdc9a1ce782908f05c34c3ba81b5c4bb43d488904a8ec400b25e6338ad"
+}

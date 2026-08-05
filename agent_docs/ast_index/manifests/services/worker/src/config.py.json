@@ -1,0 +1,15 @@
+{
+  "path": "services/worker/src/config.py",
+  "line_count": 7,
+  "module_docstring": null,
+  "imports": [],
+  "module_constants": [
+    {
+      "name": "WORKER_METRICS_PORT",
+      "line": 7
+    }
+  ],
+  "classes": [],
+  "functions": [],
+  "sha256": "ebf6eb8ce029268e3c50c4dcb329ef43f8f5f566c0f4ed3e27e8a49e32ce73eb"
+}

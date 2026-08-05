@@ -1,0 +1,520 @@
+{
+  "path": "hooks/harness_audit/tests/test_md_format_skill_gate.py",
+  "line_count": 189,
+  "module_docstring": "Unit tests for hooks/harness_audit/md_format_skill_gate.py.\nStdlib unittest only.\n\nRun: python3 -m unittest discover -s hooks/harness_audit/tests",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "importlib",
+      "names": [],
+      "line": 7
+    },
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 8
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "tempfile",
+      "names": [],
+      "line": 10
+    },
+    {
+      "kind": "import",
+      "module": "unittest",
+      "names": [],
+      "line": 11
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 12
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "HOOK_DIR",
+      "line": 14
+    },
+    {
+      "name": "gate",
+      "line": 16
+    },
+    {
+      "name": "SKILL_READ_ENTRY",
+      "line": 27
+    },
+    {
+      "name": "SKILL_FILE_READ_ENTRY",
+      "line": 31
+    },
+    {
+      "name": "OTHER_TOOL_ENTRY",
+      "line": 39
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "TestAlreadyRead",
+      "line_start": 45,
+      "line_end": 111,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestAlreadyRead.test_true_when_skill_invoked",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 46,
+          "line_end": 48
+        },
+        {
+          "qualname": "TestAlreadyRead.test_true_when_skill_file_read_directly",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 50,
+          "line_end": 54
+        },
+        {
+          "qualname": "TestAlreadyRead.test_true_for_absolute_skill_file_path",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 56,
+          "line_end": 70
+        },
+        {
+          "qualname": "TestAlreadyRead.test_false_when_skill_not_invoked",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 72,
+          "line_end": 74
+        },
+        {
+          "qualname": "TestAlreadyRead.test_false_for_missing_file",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 76,
+          "line_end": 77
+        },
+        {
+          "qualname": "TestAlreadyRead.test_false_for_different_skill",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 79,
+          "line_end": 85
+        },
+        {
+          "qualname": "TestAlreadyRead.test_false_for_reading_unrelated_md_file",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 87,
+          "line_end": 93
+        },
+        {
+          "qualname": "TestAlreadyRead.test_true_when_only_subagent_transcript_has_the_read",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 95,
+          "line_end": 107
+        },
+        {
+          "qualname": "TestAlreadyRead.test_false_when_no_subagent_dir_exists",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 109,
+          "line_end": 111
+        }
+      ]
+    },
+    {
+      "qualname": "TestQualifies",
+      "line_start": 114,
+      "line_end": 140,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestQualifies.test_md_file_always_qualifies",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 115,
+          "line_end": 116
+        },
+        {
+          "qualname": "TestQualifies.test_py_file_single_line_comment_does_not_qualify",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 118,
+          "line_end": 120
+        },
+        {
+          "qualname": "TestQualifies.test_py_file_multiline_docstring_qualifies",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 122,
+          "line_end": 124
+        },
+        {
+          "qualname": "TestQualifies.test_unrelated_extension_does_not_qualify",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 126,
+          "line_end": 127
+        },
+        {
+          "qualname": "TestQualifies.test_plans_dir_md_file_does_not_qualify",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 129,
+          "line_end": 130
+        },
+        {
+          "qualname": "TestQualifies.test_plans_dir_nested_md_file_does_not_qualify",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 132,
+          "line_end": 133
+        },
+        {
+          "qualname": "TestQualifies.test_plans_dir_absolute_path_does_not_qualify",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 135,
+          "line_end": 136
+        },
+        {
+          "qualname": "TestQualifies.test_plans_like_filename_outside_plans_dir_still_qualifies",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 138,
+          "line_end": 140
+        }
+      ]
+    },
+    {
+      "qualname": "TestUnderExcludedDir",
+      "line_start": 143,
+      "line_end": 148,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestUnderExcludedDir.test_plans_dir_matches",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 144,
+          "line_end": 145
+        },
+        {
+          "qualname": "TestUnderExcludedDir.test_non_plans_dir_does_not_match",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 147,
+          "line_end": 148
+        }
+      ]
+    },
+    {
+      "qualname": "TestMain",
+      "line_start": 151,
+      "line_end": 185,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestMain._run",
+          "signature": "(self, tool_name, file_path, text, transcript_lines)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "tool_name",
+              "annotation": null
+            },
+            {
+              "name": "file_path",
+              "annotation": null
+            },
+            {
+              "name": "text",
+              "annotation": null
+            },
+            {
+              "name": "transcript_lines",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 152,
+          "line_end": 173
+        },
+        {
+          "qualname": "TestMain.test_denies_when_unread",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 175,
+          "line_end": 177
+        },
+        {
+          "qualname": "TestMain.test_allows_when_already_read",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 179,
+          "line_end": 181
+        },
+        {
+          "qualname": "TestMain.test_allows_non_qualifying_file",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 183,
+          "line_end": 185
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "write_transcript",
+      "signature": "(lines) -> str",
+      "args": [
+        {
+          "name": "lines",
+          "annotation": null
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 19,
+      "line_end": 24
+    }
+  ],
+  "sha256": "b0d0ef276034509e8b1f63a9016547b70a4d14be0eb496f954db044543619e3a"
+}

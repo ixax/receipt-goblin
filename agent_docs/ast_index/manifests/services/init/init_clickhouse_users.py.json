@@ -1,0 +1,315 @@
+{
+  "path": "services/init/init_clickhouse_users.py",
+  "line_count": 293,
+  "module_docstring": "Interactive first-run ClickHouse provisioning for a fresh clone. Run via\n`make init` (or directly: `python3 services/init/init_clickhouse_users.py -f\ndocker-compose.yml -f docker-compose.dev.yml`).\n\nStdlib-only, no venv/pip install needed - loads services/init/ch_roles.py\n(the single source of truth for the role/grant model, itself reading\nservices/init/config.yml) via importlib.util.spec_from_file_location rather\nthan a package import, since this script runs on the host, outside any\ncontainer.\n\nThis is the *only* place ClickHouse users/roles/grants get created - not on\nevery `docker compose up` (see services/migrate/src/migrate.py's own\ndocstring for why that changed). Re-running this script is always safe\n(existing usernames/passwords already in .env are reused, not regenerated;\nevery `CREATE USER`/`GRANT` statement it issues is idempotent).\n\nFlow: ask every question first (database name, bootstrap creds, then per\nrole - a database name too for any role whose database isn't the main one,\ne.g. loadtest - username, password), THEN touch .env (copy from .env.example\nif missing, rewrite in place), bring up just the `clickhouse` service, create\nevery role via `docker compose exec clickhouse clickhouse-client` (the exact\nGRANT bodies services/init/config.yml defines), then hand control back to\n`make up`.\n\n`clickhouse` is only stopped again on the way out if this script is the one\nthat started it (a fresh clone's first run). Re-running this script later\nagainst an already-up stack - e.g. to pick up a new grant added to\nconfig.yml - leaves `clickhouse` running afterward instead of stopping it\nout from under the rest of the running stack.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "getpass",
+      "names": [],
+      "line": 32
+    },
+    {
+      "kind": "import",
+      "module": "importlib.util",
+      "names": [],
+      "line": 33
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 34
+    },
+    {
+      "kind": "import",
+      "module": "pathlib",
+      "names": [],
+      "line": 35
+    },
+    {
+      "kind": "import",
+      "module": "secrets",
+      "names": [],
+      "line": 36
+    },
+    {
+      "kind": "import",
+      "module": "subprocess",
+      "names": [],
+      "line": 37
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 38
+    },
+    {
+      "kind": "import",
+      "module": "time",
+      "names": [],
+      "line": 39
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "REPO_ROOT",
+      "line": 41
+    },
+    {
+      "name": "CH_ROLES_PATH",
+      "line": 42
+    },
+    {
+      "name": "ENV_PATH",
+      "line": 43
+    },
+    {
+      "name": "ENV_EXAMPLE_PATH",
+      "line": 44
+    },
+    {
+      "name": "SCHEMA_PATH",
+      "line": 51
+    },
+    {
+      "name": "DEFAULT_COMPOSE_FILES",
+      "line": 53
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_load_ch_roles",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 56,
+      "line_end": 60
+    },
+    {
+      "qualname": "_prompt",
+      "signature": "(label: str, default: str='') -> str",
+      "args": [
+        {
+          "name": "label",
+          "annotation": "str"
+        },
+        {
+          "name": "default",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 63,
+      "line_end": 66
+    },
+    {
+      "qualname": "_prompt_password",
+      "signature": "(label: str) -> str",
+      "args": [
+        {
+          "name": "label",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 69,
+      "line_end": 75
+    },
+    {
+      "qualname": "_read_existing_env",
+      "signature": "(path: pathlib.Path) -> dict[str, str]",
+      "args": [
+        {
+          "name": "path",
+          "annotation": "pathlib.Path"
+        }
+      ],
+      "returns": "dict[str, str]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 78,
+      "line_end": 88
+    },
+    {
+      "qualname": "_write_env",
+      "signature": "(path: pathlib.Path, updates: dict[str, str]) -> None",
+      "args": [
+        {
+          "name": "path",
+          "annotation": "pathlib.Path"
+        },
+        {
+          "name": "updates",
+          "annotation": "dict[str, str]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 91,
+      "line_end": 111
+    },
+    {
+      "qualname": "_compose",
+      "signature": "(compose_files: list[str], *args: str, check: bool=True, timeout: float=120) -> subprocess.CompletedProcess",
+      "args": [
+        {
+          "name": "compose_files",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "*args",
+          "annotation": "str"
+        },
+        {
+          "name": "check",
+          "annotation": "bool"
+        },
+        {
+          "name": "timeout",
+          "annotation": "float"
+        }
+      ],
+      "returns": "subprocess.CompletedProcess",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 114,
+      "line_end": 124
+    },
+    {
+      "qualname": "_clickhouse_already_running",
+      "signature": "(compose_files: list[str]) -> bool",
+      "args": [
+        {
+          "name": "compose_files",
+          "annotation": "list[str]"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 127,
+      "line_end": 132
+    },
+    {
+      "qualname": "_wait_for_clickhouse_healthy",
+      "signature": "(compose_files: list[str], timeout_s: int=90) -> None",
+      "args": [
+        {
+          "name": "compose_files",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "timeout_s",
+          "annotation": "int"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 135,
+      "line_end": 148
+    },
+    {
+      "qualname": "_sql_string_literal",
+      "signature": "(value: str) -> str",
+      "args": [
+        {
+          "name": "value",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 151,
+      "line_end": 152
+    },
+    {
+      "qualname": "_clickhouse_client",
+      "signature": "(compose_files: list[str], user: str, password: str, query: str) -> None",
+      "args": [
+        {
+          "name": "compose_files",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "user",
+          "annotation": "str"
+        },
+        {
+          "name": "password",
+          "annotation": "str"
+        },
+        {
+          "name": "query",
+          "annotation": "str"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 155,
+      "line_end": 160
+    },
+    {
+      "qualname": "_apply_schema",
+      "signature": "(compose_files: list[str], user: str, password: str, database: str) -> None",
+      "args": [
+        {
+          "name": "compose_files",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "user",
+          "annotation": "str"
+        },
+        {
+          "name": "password",
+          "annotation": "str"
+        },
+        {
+          "name": "database",
+          "annotation": "str"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 163,
+      "line_end": 174
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 177,
+      "line_end": 277
+    }
+  ],
+  "sha256": "c1fc55bcd752b854bd499e59449894fd64e63c9adb9e0625b0937f07a4db0f02"
+}

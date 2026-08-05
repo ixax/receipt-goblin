@@ -1,0 +1,26 @@
+{
+  "path": "services/_common/src/config/redis.py",
+  "line_count": 4,
+  "module_docstring": null,
+  "imports": [
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 1
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "REDIS_HOST",
+      "line": 3
+    },
+    {
+      "name": "REDIS_PORT",
+      "line": 4
+    }
+  ],
+  "classes": [],
+  "functions": [],
+  "sha256": "ad77a9a3ac5c122ff55673907ba96b75412b4ad5bf1594a569b5b24601c91850"
+}

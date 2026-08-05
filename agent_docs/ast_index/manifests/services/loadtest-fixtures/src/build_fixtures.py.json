@@ -1,0 +1,231 @@
+{
+  "path": "services/loadtest-fixtures/src/build_fixtures.py",
+  "line_count": 252,
+  "module_docstring": "Standalone extraction tool - pulls real, already-ingested traffic\nstraight out of the agent-tracking stack's ClickHouse (agent_events +\ningest_raw) into JSON fixture files under FIXTURES_DIR, sized by VOLUME\n(small/medium/large), so `make loadtest` has a corpus to replay even on a\nfresh clone. Run via `make loadtest-fixtures` or `python -m\nsrc.build_fixtures`; no HTTP API, one-shot only. Deliberately its own\nisolated service (own image, own ClickHouse client) rather than another role\nsharing services/webhook's codebase - see AGENTS.md.\n\nTwo-phase query, mirroring services/reparse/src/reparse.py's keyset-\npagination precedent for reading ingest_raw in bounded chunks rather than\none unbounded query:\n\n1. Row selection - agent_events has both a `status` column and an ORDER BY\n   (timestamp, session_id, litellm_call_id) with timestamp leading, so\n   `WHERE status = 'success' ... ORDER BY timestamp DESC LIMIT <n>` is cheap.\n2. Payload fetch - ingest_raw has no status column and no time-ordered sort\n   key (ORDER BY (litellm_call_id) only - schema.sql notes it's never read\n   by time range scan), so the litellm_call_ids from step 1 are looked up\n   FIXTURES_CHUNK_SIZE at a time via `WHERE litellm_call_id IN\n   {ids:Array(String)}`, which still lets ClickHouse prune granules via the\n   primary key instead of a full-table scan.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "argparse",
+      "names": [],
+      "line": 24
+    },
+    {
+      "kind": "import",
+      "module": "hashlib",
+      "names": [],
+      "line": 25
+    },
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 26
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 27
+    },
+    {
+      "kind": "import",
+      "module": "re",
+      "names": [],
+      "line": 28
+    },
+    {
+      "kind": "import",
+      "module": "shutil",
+      "names": [],
+      "line": 29
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 30
+    },
+    {
+      "kind": "import",
+      "module": "uuid",
+      "names": [],
+      "line": 31
+    },
+    {
+      "kind": "from",
+      "module": "datetime",
+      "names": [
+        "datetime",
+        "timezone"
+      ],
+      "line": 32
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 33
+    },
+    {
+      "kind": "from",
+      "module": "common.logging_config",
+      "names": [
+        "create_logger"
+      ],
+      "line": 35
+    },
+    {
+      "kind": "from",
+      "module": ".clickhouse_client",
+      "names": [
+        "get_client"
+      ],
+      "line": 37
+    },
+    {
+      "kind": "from",
+      "module": ".config",
+      "names": [
+        "FIXTURES_CHUNK_SIZE",
+        "FIXTURES_DIR"
+      ],
+      "line": 38
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "logger",
+      "line": 40
+    },
+    {
+      "name": "VOLUME_EVENT_COUNTS",
+      "line": 42
+    },
+    {
+      "name": "_UNSAFE_SESSION_ID_CHARS",
+      "line": 44
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_safe_session_dir_name",
+      "signature": "(session_id: str) -> str",
+      "args": [
+        {
+          "name": "session_id",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 47,
+      "line_end": 52
+    },
+    {
+      "qualname": "_select_rows",
+      "signature": "(client, volume: str) -> list",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "volume",
+          "annotation": "str"
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 55,
+      "line_end": 63
+    },
+    {
+      "qualname": "_fetch_payloads",
+      "signature": "(client, call_ids: list) -> dict",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "call_ids",
+          "annotation": "list"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 66,
+      "line_end": 85
+    },
+    {
+      "qualname": "_acquire_lock",
+      "signature": "() -> Path",
+      "args": [],
+      "returns": "Path",
+      "decorators": [],
+      "docstring": "One build_fixtures() run at a time - two runs racing on the same\nFIXTURES_DIR swap (see build_fixtures below) would corrupt each other's\noutput. Lock file is named after the acquiring timestamp, not the PID -\neach `make loadtest-fixtures` run is a fresh container, so its process\nis always PID 1, which would collide with any earlier run's own PID 1\nand make a stale lock indistinguishable from the current one. The PID\n(still meaningful as *this container's* own top-level process) is kept\nas the lock file's content instead, and printed to the console.",
+      "is_async": false,
+      "line_start": 88,
+      "line_end": 113
+    },
+    {
+      "qualname": "build_fixtures",
+      "signature": "(volume: str) -> dict",
+      "args": [
+        {
+          "name": "volume",
+          "annotation": "str"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 116,
+      "line_end": 192
+    },
+    {
+      "qualname": "print_status",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": "Reads and prints FIXTURES_DIR/manifest.json verbatim, without\ntouching ClickHouse - what loadtest-runner calls to check freshness\nbefore deciding whether to regenerate.",
+      "is_async": false,
+      "line_start": 195,
+      "line_end": 203
+    },
+    {
+      "qualname": "_prompt_volume",
+      "signature": "() -> str",
+      "args": [],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 206,
+      "line_end": 212
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 215,
+      "line_end": 248
+    }
+  ],
+  "sha256": "9ca786af155bfca82a095c0702e725f65365b51fb5e8817cb71e080e7a415e94"
+}

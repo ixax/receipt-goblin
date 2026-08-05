@@ -1,0 +1,26 @@
+{
+  "path": "services/_common/src/config/litellm.py",
+  "line_count": 6,
+  "module_docstring": null,
+  "imports": [
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 1
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "LITELLM_MASTER_KEY",
+      "line": 5
+    },
+    {
+      "name": "LITELLM_BASE_URL",
+      "line": 6
+    }
+  ],
+  "classes": [],
+  "functions": [],
+  "sha256": "b75bdad4a04d94a73b8bcd424e516a3a7e8b282e76c5cb8c4b718263cc312e21"
+}

@@ -1,0 +1,114 @@
+{
+  "path": "services/init/ch_roles.py",
+  "line_count": 136,
+  "module_docstring": "Loads the ClickHouse role/grant definitions from config.yml (same\ndirectory) - the single source of truth for `make init`\n(init_clickhouse_users.py, this directory) to provision every role from.\nNothing else reads this - services/migrate/src/migrate.py never touches\nusers/roles/grants at all (see its own module docstring).\n\nThe parser below is intentionally NOT a general YAML parser - it supports\nexactly the one shape config.yml uses and nothing else:\n\n    roles:\n      - name: <scalar>\n        <field>: <scalar>\n        ...\n        grants:\n          - \"<scalar>\"\n          - \"<scalar>\"\n      - name: <scalar>\n        ...\n\nConcretely: a single top-level `roles:` key: a list of mappings, each\nintroduced by `  - name: ...` (2-space indent), with further scalar fields\nat 4-space indent (`key: value`, quotes optional and stripped if present),\nand exactly one list-valued field, `grants:`, whose items are 6-space-indent\n`- \"...\"` lines. No flow style (`{...}`/`[...]`), no multi-line scalars, no\nanchors/references, no second nested list. Comments (`#`) are only\nrecognized on their own line, not stripped mid-line, so a value string is\nnever accidentally truncated.\n\nIf config.yml ever needs more than this shape, extend this parser\ndeliberately (or accept a real YAML dependency at that point) - don't rely\non syntax this parser doesn't actually support; it will misparse silently\nrather than reject unknown shapes.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "pathlib",
+      "names": [],
+      "line": 34
+    },
+    {
+      "kind": "import",
+      "module": "re",
+      "names": [],
+      "line": 35
+    },
+    {
+      "kind": "from",
+      "module": "dataclasses",
+      "names": [
+        "dataclass",
+        "field"
+      ],
+      "line": 36
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "CONFIG_PATH",
+      "line": 38
+    },
+    {
+      "name": "_ROLE_START_RE",
+      "line": 40
+    },
+    {
+      "name": "_FIELD_RE",
+      "line": 41
+    },
+    {
+      "name": "_GRANT_ITEM_RE",
+      "line": 42
+    },
+    {
+      "name": "ROLES",
+      "line": 136
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "Role",
+      "line_start": 104,
+      "line_end": 116,
+      "decorators": [
+        "dataclass(frozen=True)"
+      ],
+      "bases": [],
+      "docstring": null,
+      "methods": []
+    }
+  ],
+  "functions": [
+    {
+      "qualname": "_strip_quotes",
+      "signature": "(value: str) -> str",
+      "args": [
+        {
+          "name": "value",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 45,
+      "line_end": 49
+    },
+    {
+      "qualname": "_parse_roles_yaml",
+      "signature": "(text: str) -> list[dict]",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "list[dict]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 52,
+      "line_end": 100
+    },
+    {
+      "qualname": "_build_roles",
+      "signature": "(raw_roles: list[dict]) -> list[Role]",
+      "args": [
+        {
+          "name": "raw_roles",
+          "annotation": "list[dict]"
+        }
+      ],
+      "returns": "list[Role]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 119,
+      "line_end": 133
+    }
+  ],
+  "sha256": "319e87863fee2fee2b1a9beecc79c39888760da7912d9496ad544950fad75245"
+}

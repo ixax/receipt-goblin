@@ -1,0 +1,120 @@
+{
+  "path": "services/reparse/src/reparse.py",
+  "line_count": 99,
+  "module_docstring": "CLI-only reparse tool - recomputes agent_events/agent_usage/agent_messages/\nagent_invocations/ai_gateway_users/ai_gateway_groups for events already in\ningest_raw, reusing common.ingest_db's reparse_event() classification logic\ndirectly.\nRun via `make reparse-all` or `make reparse SESSION=<session_id>`; no HTTP\nAPI, one-shot `python -m src.reparse` only.\n\ningest_raw is the only source read; .capture/*.json is out of scope\n(see AGENTS.md).\n\nSafe to re-run any number of times: the target tables are all\nReplacingMergeTree, keyed so this run's now() always wins.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "argparse",
+      "names": [],
+      "line": 14
+    },
+    {
+      "kind": "from",
+      "module": "datetime",
+      "names": [
+        "datetime",
+        "timezone"
+      ],
+      "line": 15
+    },
+    {
+      "kind": "from",
+      "module": "common",
+      "names": [
+        "fastjson"
+      ],
+      "line": 17
+    },
+    {
+      "kind": "from",
+      "module": "common.ingest_db",
+      "names": [
+        "get_client",
+        "reparse_event"
+      ],
+      "line": 18
+    },
+    {
+      "kind": "from",
+      "module": "common.logging_config",
+      "names": [
+        "create_logger"
+      ],
+      "line": 19
+    },
+    {
+      "kind": "from",
+      "module": ".config",
+      "names": [
+        "REPARSE_CHUNK_SIZE"
+      ],
+      "line": 21
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "logger",
+      "line": 23
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_reparse_one",
+      "signature": "(client, litellm_call_id: str, source_session_id: str, raw_payload_full: str) -> None",
+      "args": [
+        {
+          "name": "client",
+          "annotation": null
+        },
+        {
+          "name": "litellm_call_id",
+          "annotation": "str"
+        },
+        {
+          "name": "source_session_id",
+          "annotation": "str"
+        },
+        {
+          "name": "raw_payload_full",
+          "annotation": "str"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 26,
+      "line_end": 37
+    },
+    {
+      "qualname": "reparse",
+      "signature": "(session_id: str='') -> int",
+      "args": [
+        {
+          "name": "session_id",
+          "annotation": "str"
+        }
+      ],
+      "returns": "int",
+      "decorators": [],
+      "docstring": "session_id=\"\" reparses every row in ingest_raw.\nReturns rows processed.\n\nPages REPARSE_CHUNK_SIZE rows at a time (keyset pagination on\nlitellm_call_id) instead of pulling every raw_payload_full in one\nquery, which used to OOM-kill the container.",
+      "is_async": false,
+      "line_start": 40,
+      "line_end": 82
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 85,
+      "line_end": 95
+    }
+  ],
+  "sha256": "0921a04eb833c48b1c0c111d2899cfdeab883df11796021689b7890aac2b5cbd"
+}

@@ -1,0 +1,60 @@
+{
+  "path": "hooks/report_plan_proposal.py",
+  "line_count": 49,
+  "module_docstring": "PreToolUse hook (Claude Code only, matcher: ExitPlanMode). Reports the\nproposed plan text to the webhook. Exists because LiteLLM's\nStandardLoggingPayload arguments come back empty \"{}\" for ExitPlanMode, so\nthe plan must be read from this hook's own tool_input instead. Must never\nraise on network failures or block the tool call, but missing tracking env\nvars are a misconfiguration and are allowed to crash the hook.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 10
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 11
+    },
+    {
+      "kind": "import",
+      "module": "urllib.request",
+      "names": [],
+      "line": 12
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "INGEST_API_URL",
+      "line": 14
+    },
+    {
+      "name": "LITELLM_VIRTUAL_KEY",
+      "line": 16
+    },
+    {
+      "name": "REQUEST_TIMEOUT",
+      "line": 17
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "main",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 20,
+      "line_end": 44
+    }
+  ],
+  "sha256": "04a469044ff8bd8465e10b5250ced23427dfded0c1f3a6891acbfb452e698874"
+}

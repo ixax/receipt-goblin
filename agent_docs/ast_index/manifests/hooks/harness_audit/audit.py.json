@@ -1,0 +1,361 @@
+{
+  "path": "hooks/harness_audit/audit.py",
+  "line_count": 289,
+  "module_docstring": "Audit harness md-files for token budget violations. Stdlib only.\n\nUsage: uv run python3 audit.py [repo_root]\nExit 0 = clean, 1 = violations found.\n\nDual-harness aware: this repo tracks both Claude Code (.claude/) and Codex\n(.agents/, .codex/) equally.\nSkills/rules are matched by filename/path pattern, not a single CLI's\ndirectory.\nSkill content lives under .agents/skills/<name>/SKILL.md, the one real\ncopy; .claude/skills is a directory-level symlink to it, so os.walk()\n(followlinks=False) never descends into .claude/skills and each SKILL.md\nis only ever reached via the .agents/skills/ path.\nThe realpath dedup below stays in place for other symlink cases (e.g.\n.codex/ config), even though it's no longer load-bearing for skills\nspecifically.\nSubagents stay .claude-only - Codex has no Task-tool/subagent\nequivalent, so there's no .codex/agents to scan.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 21
+    },
+    {
+      "kind": "import",
+      "module": "re",
+      "names": [],
+      "line": 22
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 23
+    },
+    {
+      "kind": "from",
+      "module": "collections",
+      "names": [
+        "defaultdict"
+      ],
+      "line": 24
+    },
+    {
+      "kind": "from",
+      "module": "budgets",
+      "names": [
+        "BUDGETS"
+      ],
+      "line": 27
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "ROOT",
+      "line": 29
+    },
+    {
+      "name": "STRIP_COMMENTS",
+      "line": 31
+    },
+    {
+      "name": "VOLATILE_PATTERN",
+      "line": 32
+    },
+    {
+      "name": "REF_PATTERN",
+      "line": 36
+    },
+    {
+      "name": "MULTI_SENTENCE_PATTERN",
+      "line": 37
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "multi_sentence_lines",
+      "signature": "(text: str)",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": "Heuristic for md-format's one-sentence-per-line rule: a prose line\ncontaining '. X' mid-line is probably two sentences hard-wrapped\ntogether. Skips frontmatter, code fences, list/table/blockquote lines\n(blockquotes may be deliberate before/after examples of bad style).",
+      "is_async": false,
+      "line_start": 40,
+      "line_end": 64
+    },
+    {
+      "qualname": "tokens",
+      "signature": "(text: str) -> int",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 67,
+      "line_end": 68
+    },
+    {
+      "qualname": "description_words",
+      "signature": "(text: str) -> int",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 71,
+      "line_end": 76
+    },
+    {
+      "qualname": "check_token_budget",
+      "signature": "(rel: str, kind: str, text: str) -> list",
+      "args": [
+        {
+          "name": "rel",
+          "annotation": "str"
+        },
+        {
+          "name": "kind",
+          "annotation": "str"
+        },
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 84,
+      "line_end": 90
+    },
+    {
+      "qualname": "check_skill_line_budget",
+      "signature": "(rel: str, kind: str, text: str) -> list",
+      "args": [
+        {
+          "name": "rel",
+          "annotation": "str"
+        },
+        {
+          "name": "kind",
+          "annotation": "str"
+        },
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 93,
+      "line_end": 99
+    },
+    {
+      "qualname": "check_description_word_budget",
+      "signature": "(rel: str, kind: str, text: str) -> list",
+      "args": [
+        {
+          "name": "rel",
+          "annotation": "str"
+        },
+        {
+          "name": "kind",
+          "annotation": "str"
+        },
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 102,
+      "line_end": 108
+    },
+    {
+      "qualname": "check_volatile_content",
+      "signature": "(rel: str, kind: str, text: str, is_symlink: bool) -> list",
+      "args": [
+        {
+          "name": "rel",
+          "annotation": "str"
+        },
+        {
+          "name": "kind",
+          "annotation": "str"
+        },
+        {
+          "name": "text",
+          "annotation": "str"
+        },
+        {
+          "name": "is_symlink",
+          "annotation": "bool"
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 111,
+      "line_end": 118
+    },
+    {
+      "qualname": "check_one_sentence_per_line",
+      "signature": "(rel: str, kind: str, text: str) -> list",
+      "args": [
+        {
+          "name": "rel",
+          "annotation": "str"
+        },
+        {
+          "name": "kind",
+          "annotation": "str"
+        },
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 121,
+      "line_end": 124
+    },
+    {
+      "qualname": "check_dead_references",
+      "signature": "(rel: str, text: str, exists_fn) -> list",
+      "args": [
+        {
+          "name": "rel",
+          "annotation": "str"
+        },
+        {
+          "name": "text",
+          "annotation": "str"
+        },
+        {
+          "name": "exists_fn",
+          "annotation": null
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": "exists_fn(ref) -> bool is injected so this stays a pure function of\nits inputs instead of reaching into the filesystem itself.",
+      "is_async": false,
+      "line_start": 127,
+      "line_end": 136
+    },
+    {
+      "qualname": "rule_candidate_lines",
+      "signature": "(kind: str, text: str) -> list",
+      "args": [
+        {
+          "name": "kind",
+          "annotation": "str"
+        },
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": "List-item lines from this file eligible for the duplicate-rule check\nbelow, or [] for kinds that don't carry token-budgeted rules.",
+      "is_async": false,
+      "line_start": 139,
+      "line_end": 147
+    },
+    {
+      "qualname": "check_duplicate_rules",
+      "signature": "(line_index: dict) -> list",
+      "args": [
+        {
+          "name": "line_index",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 153,
+      "line_end": 158
+    },
+    {
+      "qualname": "check_agents_chain_budget",
+      "signature": "(files: dict, is_symlink_fn) -> list",
+      "args": [
+        {
+          "name": "files",
+          "annotation": "dict"
+        },
+        {
+          "name": "is_symlink_fn",
+          "annotation": null
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 161,
+      "line_end": 168
+    },
+    {
+      "qualname": "check_claude_agents_pairing",
+      "signature": "(files: dict, is_symlink_fn) -> list",
+      "args": [
+        {
+          "name": "files",
+          "annotation": "dict"
+        },
+        {
+          "name": "is_symlink_fn",
+          "annotation": null
+        }
+      ],
+      "returns": "list",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 171,
+      "line_end": 180
+    },
+    {
+      "qualname": "collect",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 183,
+      "line_end": 230
+    },
+    {
+      "qualname": "main",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 233,
+      "line_end": 285
+    }
+  ],
+  "sha256": "935b43e0bddd6919f579b9cef8f84ba793d4d9d11268244356dbe663e4f0af28"
+}

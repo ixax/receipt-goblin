@@ -1,0 +1,38 @@
+{
+  "path": "services/migrate/src/config.py",
+  "line_count": 10,
+  "module_docstring": null,
+  "imports": [
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 1
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 2
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "MIGRATIONS_DIR",
+      "line": 4
+    },
+    {
+      "name": "CLICKHOUSE_BOOTSTRAP_USER",
+      "line": 9
+    },
+    {
+      "name": "CLICKHOUSE_BOOTSTRAP_PASSWORD",
+      "line": 10
+    }
+  ],
+  "classes": [],
+  "functions": [],
+  "sha256": "066b4fd255eabcad1de067651c4ddf8a8fd932b9d5b2b0c97e8b19cddba8bd31"
+}

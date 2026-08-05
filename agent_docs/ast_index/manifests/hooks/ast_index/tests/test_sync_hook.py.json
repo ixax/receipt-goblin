@@ -1,0 +1,313 @@
+{
+  "path": "hooks/ast_index/tests/test_sync_hook.py",
+  "line_count": 100,
+  "module_docstring": "Unit tests for hooks/ast_index/sync_hook.py.\nStdlib unittest only.\n\nRun: python3 -m unittest discover -s hooks/ast_index/tests",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "importlib",
+      "names": [],
+      "line": 7
+    },
+    {
+      "kind": "import",
+      "module": "io",
+      "names": [],
+      "line": 8
+    },
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 10
+    },
+    {
+      "kind": "import",
+      "module": "stat",
+      "names": [],
+      "line": 11
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 12
+    },
+    {
+      "kind": "import",
+      "module": "tempfile",
+      "names": [],
+      "line": 13
+    },
+    {
+      "kind": "import",
+      "module": "unittest",
+      "names": [],
+      "line": 14
+    },
+    {
+      "kind": "from",
+      "module": "contextlib",
+      "names": [
+        "redirect_stderr"
+      ],
+      "line": 15
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 16
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "HOOK_DIR",
+      "line": 18
+    },
+    {
+      "name": "sync_hook",
+      "line": 20
+    }
+  ],
+  "classes": [
+    {
+      "qualname": "TestIsTrackedSource",
+      "line_start": 23,
+      "line_end": 37,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestIsTrackedSource.test_py_file_matches",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 24,
+          "line_end": 25
+        },
+        {
+          "qualname": "TestIsTrackedSource.test_non_py_file_does_not_match",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 27,
+          "line_end": 28
+        },
+        {
+          "qualname": "TestIsTrackedSource.test_venv_file_does_not_match",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 30,
+          "line_end": 31
+        },
+        {
+          "qualname": "TestIsTrackedSource.test_pycache_file_does_not_match",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 33,
+          "line_end": 34
+        },
+        {
+          "qualname": "TestIsTrackedSource.test_node_modules_file_does_not_match",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 36,
+          "line_end": 37
+        }
+      ]
+    },
+    {
+      "qualname": "TestMainEndToEnd",
+      "line_start": 40,
+      "line_end": 96,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": "Patches AST_INDEX_SCRIPT to a fake script - never invokes the real scripts/ast_index.py.\nThese tests never touch this repo's own agent_docs/ast_index/.",
+      "methods": [
+        {
+          "qualname": "TestMainEndToEnd.setUp",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 45,
+          "line_end": 50
+        },
+        {
+          "qualname": "TestMainEndToEnd.tearDown",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 52,
+          "line_end": 55
+        },
+        {
+          "qualname": "TestMainEndToEnd.write_fake_script",
+          "signature": "(self, exit_code: int, stderr: str='') -> Path",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "exit_code",
+              "annotation": "int"
+            },
+            {
+              "name": "stderr",
+              "annotation": "str"
+            }
+          ],
+          "returns": "Path",
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 57,
+          "line_end": 67
+        },
+        {
+          "qualname": "TestMainEndToEnd.run_hook",
+          "signature": "(self, file_path: str)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            },
+            {
+              "name": "file_path",
+              "annotation": "str"
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 69,
+          "line_end": 79
+        },
+        {
+          "qualname": "TestMainEndToEnd.test_non_tracked_source_exits_zero_without_invoking_script",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 81,
+          "line_end": 84
+        },
+        {
+          "qualname": "TestMainEndToEnd.test_py_edit_invokes_script_success",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 86,
+          "line_end": 90
+        },
+        {
+          "qualname": "TestMainEndToEnd.test_py_edit_invokes_script_failure",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 92,
+          "line_end": 96
+        }
+      ]
+    }
+  ],
+  "functions": [],
+  "sha256": "4b45c90a33cbd58f6b55fe471ab097b91c899355e7da78a322ca25573b13df65"
+}

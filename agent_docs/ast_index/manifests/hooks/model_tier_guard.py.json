@@ -1,0 +1,44 @@
+{
+  "path": "hooks/model_tier_guard.py",
+  "line_count": 61,
+  "module_docstring": "SessionStart hook.\nInjects the Opus/Fable cascading-delegation workflow into context, but only\nwhen the session's model is Opus or Fable.\nSonnet/Haiku sessions get no additionalContext, so AGENTS.md stays lean for\nthe common case.\npayload[\"model\"] is not documented as guaranteed by Claude Code.\nAbsence is treated as \"not expensive\", i.e. the rule is skipped rather than\napplied by default.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 11
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 12
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "EXPENSIVE_MODEL_MARKERS",
+      "line": 14
+    },
+    {
+      "name": "CASCADE_WORKFLOW",
+      "line": 16
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "main",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 41,
+      "line_end": 56
+    }
+  ],
+  "sha256": "2982fe15fe81e1fe3bb0f4ae2dbac85ca9d5820c3f491d856bd5281587631354"
+}
