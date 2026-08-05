@@ -4,7 +4,7 @@ description: >
   Owner and sole editor of the harness: every Subagent/Skill description/frontmatter/body, AGENTS.md, and agent_docs/*.md - creation, edits, reviews, audits, token-economy and versioning decisions.
   MUST BE USED PROACTIVELY whenever any of those needs creating, editing, reviewing, or auditing - even unrequested.
   Also the delegate for any question about their content before an inline Read/grep.
-  v1.22.0
+  v1.23.0
 tools: Read, Write, Edit, Grep, Glob, Agent, Skill
 model: claude-sonnet-5
 ---
@@ -119,6 +119,23 @@ Touched a description at all: check it against `budgets.py` `description_words`;
   - no 3+-item inline enumeration
 - The PostToolUse hook `hooks/harness_audit/audit_hook.py` enforces one-sentence-per-line after the edit lands.
   Either hook's violation report is authoritative - fix in the same task, never bypass.
+
+## Self-delegation gate
+
+- `hooks/harness_audit/self_delegation_gate.py` denies inline Grep/Glob and investigation-shaped Bash from the main agent, redirecting it to `code-locator`/`Explore`/`script-ops`:
+  - `git log/diff/show/blame`
+  - `find`, `grep`/`rg`
+  - recursive `ls -R`
+  - multi-file `cat`
+  - `docker logs/ps/inspect`
+- Exempt (stays allowed inline): subagent-issued calls, detected via the `agent_id`/`agent_type` payload field present only on Task/Agent-tool-spawned calls - this is why the gate doesn't restrict this agent's own Grep/Glob use.
+  Also exempt, as safety-mandated:
+  - bare `git status`/`git branch --show-current`
+  - plain `ls`
+  - single-file `cat`
+- Mandatory, like the md-format gate above: the denial is authoritative, fix by delegating in the same task, never bypass.
+- Lives in `hooks/`, outside this agent's write scope.
+  `AGENTS.md`'s "Check for an owning agent" bullet is the only other prose describing it - keep both in sync with the hook's actual denylist.
 
 ## Token economy (every edit)
 

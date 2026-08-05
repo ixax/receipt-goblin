@@ -79,7 +79,7 @@ Root-level:
 ## Agent & skill routing
 
 Trigger conditions live in each entity's own frontmatter `description` - Claude Code lists them natively; Codex CLI reads `agent_docs/harness-index.md` instead (adapter notes: `agent_docs/architecture.md`).
-Check for an owning agent before inline Bash/Read/Grep.
+Check for an owning agent before inline Bash/Read/Grep - hook-enforced for Grep/Glob and investigation-shaped Bash (denylist: `harness-expert`); `Read` stays advisory.
 
 PROACTIVE (dispatch without being asked):
 
