@@ -5,7 +5,7 @@ comments/docstrings in an edited .py/.yml/.yaml file. Stdlib only.
 Wire in .claude/settings.json:
   "PostToolUse": [{"matcher": "Edit|Write",
     "hooks": [{"type": "command",
-               "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/comment_format_hook.py\""}]}]
+               "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/comment_format_hook.py\""}]}]
 Exit 2 feeds violations back to the editing agent (works for agents without Bash).
 
 Scoped to what the agent just wrote, not the whole file: for Edit, only

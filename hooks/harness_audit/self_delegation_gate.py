@@ -16,10 +16,10 @@ Wire in .claude/settings.json:
   "PreToolUse": [
     {"matcher": "Grep|Glob",
      "hooks": [{"type": "command",
-                "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/self_delegation_gate.py\""}]},
+                "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/self_delegation_gate.py\""}]},
     {"matcher": "Bash",
      "hooks": [..., {"type": "command",
-                "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/self_delegation_gate.py\""}]}
+                "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/self_delegation_gate.py\""}]}
   ]
 
 Scope guard: fires only for the main agent's own tool calls.

@@ -76,7 +76,7 @@ VKEY := $(if $(strip $(LITELLM_VIRTUAL_KEY)),$(LITELLM_VIRTUAL_KEY),<virtual key
 # separately (confirmed: only the first var ever came through, the rest
 # silently got swallowed as extra tokens in its value). `include`ing a
 # real file has no such collapsing - each line is its own statement.
-$(shell python3 scripts/resolve_image_version.py > .image-tags.mk)
+$(shell uv run python3 scripts/resolve_image_version.py > .image-tags.mk)
 include .image-tags.mk
 
 # Python version pinned at repo root - reads from .python-version, exported
@@ -85,7 +85,7 @@ include .image-tags.mk
 PYTHON_VERSION := $(shell cat .python-version)
 export PYTHON_VERSION
 
-.PHONY: check-env git-hooks-install install-uv init start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit lock harness-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all reparse-dlq print-reparse-final-hint \
+.PHONY: check-env git-hooks-install install-uv init start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit lock harness-index ast-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all reparse-dlq print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	archive-prometheus archive-clickhouse-logs \
@@ -109,7 +109,7 @@ OBSERVABILITY_SERVICES := prometheus blackbox redis-exporter loki alloy cadvisor
 # vice versa), so this can't be easy to miss.
 check-env:
 	@echo "⚠️  ENVIRONMENT=$(ENVIRONMENT)"
-	@python3 scripts/resolve_image_version.py | sed 's/^export /⚠️  /'
+	@uv run python3 scripts/resolve_image_version.py | sed 's/^export /⚠️  /'
 
 git-hooks-install:
 	sh scripts/install-git-hooks.sh
@@ -118,7 +118,7 @@ install-uv:
 	curl -LsSf https://astral.sh/uv/install.sh | sh
 
 init: check-env git-hooks-install
-	python3 services/init/init_clickhouse_users.py $(COMPOSE_FILES)
+	uv run python3 services/init/init_clickhouse_users.py $(COMPOSE_FILES)
 	$(MAKE) migrate
 
 # `start`: Brings up containers with existing images (no rebuild/recreate).
@@ -162,7 +162,7 @@ build: check-env
 	docker compose $(COMPOSE_FILES) build $(SERVICE)
 
 status: check-env
-	python3 scripts/wait_for_stack_healthy.py $(COMPOSE_FILES)
+	uv run python3 scripts/wait_for_stack_healthy.py $(COMPOSE_FILES)
 
 # Applies ClickHouse migrations (services/clickhouse/migrations/*.sql
 # + one-time dashboard Dictionaries). Runs automatically at the end of `make init`
@@ -249,11 +249,13 @@ test-services: check-env
 	  if [ -n "$$summary" ]; then echo "$$svc: $$summary"; fi; \
 	done
 
-# Runs hooks/harness_audit/tests (pure Python unittest, no dependencies).
+# Runs hooks/harness_audit/tests and hooks/ast_index/tests (pure Python unittest, no dependencies).
 test-hooks:
-	@out=$$(python3 -m unittest discover -s hooks/harness_audit/tests 2>&1); code=$$?; \
-	if [ $$code -ne 0 ]; then echo "$$out"; exit $$code; fi; \
-	echo "hooks: $$(echo "$$out" | grep -v '^$$' | tail -n 2 | tr '\n' ' ')"
+	@out=$$(uv run python3 -m unittest discover -s hooks/harness_audit/tests 2>&1); code=$$?; \
+	out2=$$(uv run python3 -m unittest discover -s hooks/ast_index/tests 2>&1); code2=$$?; \
+	if [ $$code -ne 0 ] || [ $$code2 -ne 0 ]; then echo "$$out"; echo "$$out2"; exit 1; fi; \
+	echo "hooks: $$(echo "$$out" | grep -v '^$$' | tail -n 2 | tr '\n' ' ')"; \
+	echo "ast-index: $$(echo "$$out2" | grep -v '^$$' | tail -n 2 | tr '\n' ' ')"
 
 # Umbrella target that runs both service and hook tests.
 test: test-services test-hooks
@@ -288,7 +290,11 @@ lock:
 # skill/agent's name+description+path, derived from frontmatter, for
 # Codex CLI discovery).
 harness-index:
-	python3 scripts/sync_harness.py
+	uv run python3 scripts/sync_harness.py
+
+# Rebuilds agent_docs/ast_index/ from scratch via Python AST structural analysis.
+ast-index:
+	uv run python3 scripts/ast_index.py build --all
 
 # Prints export statements to route Claude Code, Codex, and other OpenAI/
 # Anthropic-SDK-based tools through the local LiteLLM proxy, plus

@@ -20,7 +20,7 @@ qualifying edit lands.
 Wire in .claude/settings.json:
   "PreToolUse": [{"matcher": "Edit|Write",
     "hooks": [{"type": "command",
-               "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/md_format_skill_gate.py\""}]}]
+               "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/md_format_skill_gate.py\""}]}]
 
 Detects a prior read two ways, since not every agent has the Skill tool -
 most Subagents don't (`tools:` in their frontmatter omits it) and instead

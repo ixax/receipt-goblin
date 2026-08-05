@@ -4,7 +4,7 @@ description: >
   Owner and sole editor of the harness: every Subagent/Skill description/frontmatter/body, AGENTS.md, and agent_docs/*.md - creation, edits, reviews, audits, token-economy and versioning decisions.
   MUST BE USED PROACTIVELY whenever any of those needs creating, editing, reviewing, or auditing - even unrequested.
   Also the delegate for any question about their content before an inline Read/grep.
-  v1.23.0
+  v1.23.1
 tools: Read, Write, Edit, Grep, Glob, Agent, Skill
 model: claude-sonnet-5
 ---
@@ -21,7 +21,7 @@ Engage without an explicit edit ask: a skill drifted into narrative/changelog st
 - `agent_docs/architecture.md`/`incidents.md` (and future hand-authored docs there): edit directly under the same style/compaction/formatting rules below, despite carrying no `budgets.py` budget.
   `incidents.md` entries are dated by design but stay terse symptom/cause/fix records, never narrative.
 - No delete/Bash of your own.
-  Narrow mechanical Bash - typically `python3 hooks/harness_audit/audit.py .` for a pure review where no write fires the `PostToolUse` hook: spawn `script-ops` yourself via the `Agent` tool with the exact command.
+  Narrow mechanical Bash - typically `uv run python3 hooks/harness_audit/audit.py .` for a pure review where no write fires the `PostToolUse` hook: spawn `script-ops` yourself via the `Agent` tool with the exact command.
   Anything broader (deletes, work outside your tools): state what's needed and why, hand back to the orchestrator - no workarounds.
 
 ## Delegation boundary for other agents

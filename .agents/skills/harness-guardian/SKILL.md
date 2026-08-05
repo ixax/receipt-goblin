@@ -9,7 +9,7 @@ description: >
   pass.
   SKIP for routine per-edit budget checks - the PostToolUse hook runs
   those automatically.
-  v1.5.0
+  v1.5.1
 ---
 
 Keep the always-loaded context layer minimal.
@@ -20,7 +20,7 @@ Per-edit standing rules (classification default, one-rule-one-file, volatility b
 
 Budgets (token estimate: `bytes / 4`) live in `hooks/harness_audit/budgets.py` - never restate numbers.
 The PostToolUse hook (`hooks/harness_audit/audit_hook.py`, wired in `.claude/settings.json`) runs `hooks/harness_audit/audit.py` after any Edit/Write touching the harness and feeds violations back to the editing agent (exit 2).
-Full standalone audit: `python3 hooks/harness_audit/audit.py .` from the repo root - any Bash-capable agent; harness-expert spawns `script-ops` for it.
+Full standalone audit: `uv run python3 hooks/harness_audit/audit.py .` from the repo root - any Bash-capable agent; harness-expert spawns `script-ops` for it.
 Exit code 1 means violations found.
 
 ## 2. Classify
@@ -49,7 +49,7 @@ An under-triggered skill costs one missed load; a bloated AGENTS.md costs every 
 ## 4. Verify
 
 Re-run `hooks/harness_audit/audit.py` - must exit 0.
-Run `python3 scripts/sync_harness.py --check`; nonzero means `agent_docs/harness-index.md` is stale - regenerate via `make harness-index`.
+Run `uv run python3 scripts/sync_harness.py --check`; nonzero means `agent_docs/harness-index.md` is stale - regenerate via `make harness-index`.
 For each ENFORCEABLE rule converted to a hook: trigger it once, confirm the hook blocks/fixes as the prose used to instruct.
 
 ## 5. Report

@@ -15,7 +15,7 @@ Wire in .claude/settings.json, as a second hook under the existing "Bash"
 PreToolUse matcher:
   "PreToolUse": [{"matcher": "Bash",
     "hooks": [..., {"type": "command",
-               "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/md_format_bash_gate.py\""}]}]
+               "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/md_format_bash_gate.py\""}]}]
 
 Heuristic only, deliberately narrow: it looks for an explicit redirection
 target (`>`, `>>`, or `tee`) ending in one of the four extensions, and for

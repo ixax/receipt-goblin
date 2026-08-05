@@ -2,7 +2,7 @@
 """Waits for every service `docker compose up`/`start` brings up to finish
 starting, then reports pass/fail - what `make status` runs instead of a bare
 `docker ps` (see Makefile). Run directly any time, not just from `make
-status`: `python3 scripts/wait_for_stack_healthy.py -f docker-compose.yml -f
+status`: `uv run python3 scripts/wait_for_stack_healthy.py -f docker-compose.yml -f
 docker-compose.dev.yml`.
 
 Stdlib-only, no venv/pip install needed - same convention as

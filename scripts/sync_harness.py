@@ -13,8 +13,8 @@ Skills are not indexed here: both harnesses discover them natively from
 the .claude/skills symlink).
 
 Usage:
-  python3 scripts/sync_harness.py           # (re)write the index
-  python3 scripts/sync_harness.py --check   # exit 1 if the index is stale (CI/guardian)
+  uv run python3 scripts/sync_harness.py           # (re)write the index
+  uv run python3 scripts/sync_harness.py --check   # exit 1 if the index is stale (CI/guardian)
 """
 
 import re

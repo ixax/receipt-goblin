@@ -15,12 +15,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/report_git_branch.py\"",
+            "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/report_git_branch.py\"",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/model_tier_guard.py\"",
+            "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/model_tier_guard.py\"",
             "timeout": 5
           }
         ]
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/report_git_branch.py\"",
+            "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/report_git_branch.py\"",
             "timeout": 5
           }
         ]
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/goal_scope_guard.py\"",
+            "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/goal_scope_guard.py\"",
             "timeout": 5
           }
         ]
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/report_plan_proposal.py\"",
+            "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/report_plan_proposal.py\"",
             "timeout": 5
           }
         ]
@@ -64,17 +64,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/guard_destructive.py\"",
+            "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/guard_destructive.py\"",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/md_format_bash_gate.py\"",
+            "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/md_format_bash_gate.py\"",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/self_delegation_gate.py\"",
+            "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/self_delegation_gate.py\"",
             "timeout": 5
           }
         ]
@@ -84,7 +84,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/md_format_skill_gate.py\"",
+            "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/md_format_skill_gate.py\"",
             "timeout": 5
           }
         ]
@@ -94,7 +94,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/self_delegation_gate.py\"",
+            "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/self_delegation_gate.py\"",
             "timeout": 5
           }
         ]
@@ -106,17 +106,22 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/audit_hook.py\"",
+            "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/audit_hook.py\"",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/sync_hook.py\"",
+            "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/sync_hook.py\"",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/comment_format_hook.py\"",
+            "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/comment_format_hook.py\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/ast_index/sync_hook.py\"",
             "timeout": 10
           }
         ]

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Audit harness md-files for token budget violations. Stdlib only.
 
-Usage: python3 audit.py [repo_root]
+Usage: uv run python3 audit.py [repo_root]
 Exit 0 = clean, 1 = violations found.
 
 Dual-harness aware: this repo tracks both Claude Code (.claude/) and Codex

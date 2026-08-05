@@ -4,7 +4,7 @@ md-format's one-sentence-per-line rule (two sentences hard-wrapped onto
 the same line). Stdlib only. Same heuristic as audit.py's markdown check,
 applied to code comments instead of markdown prose.
 
-Usage: python3 comment_format.py <file> [<file> ...]
+Usage: uv run python3 comment_format.py <file> [<file> ...]
 Exit 0 = clean, 1 = violations found.
 """
 import re

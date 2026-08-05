@@ -4,7 +4,7 @@ description: >
   Delegate target for the mechanical execution half of the dashboard query-performance benchmarking workflow (workflow: `.claude/agents/sql-expert.md`; underlying script: `services/grafana/scripts/query_perf.py`).
   Given a panel selector (ids, or "all") and a run label ("before"/"after"/anything), runs `query_perf.py resolve`, calls `mcp__dev__profile_query` once per resolved query, and `query_perf.py save-run`s the result - or, given two existing run files/labels, runs `query_perf.py diff` between them.
   Runs on a cheap model and returns only a compact summary (run file path + counts + errors, or the diff table) - keeps the per-query profiling loop and its raw output out of the caller's context.
-  v1.2.2
+  v1.2.3
 tools: Bash, mcp__dev__profile_query, Skill
 model: claude-haiku-4-5
 ---
@@ -16,13 +16,13 @@ Never improvise the SQL-substitution logic yourself - it's coded into `resolve`,
 
 Caller gives you: a dashboard file (default `services/grafana/dashboards/agents_overview.json` if not stated), a panel selector (`--panels 73,74,54` or `--all`), a label (e.g. `before`/`after`, or something more specific like `before-provider-fix`), and optionally `--hours`/`--var name=value` overrides.
 
-1. `python3 services/grafana/scripts/query_perf.py resolve <file> [--panels ...|--all] [--hours N] [--var ...] --out /tmp/qp_resolved.json`
+1. `uv run python3 services/grafana/scripts/query_perf.py resolve <file> [--panels ...|--all] [--hours N] [--var ...] --out /tmp/qp_resolved.json`
 2. Read `/tmp/qp_resolved.json`. For every `(panel id, query_index)` whose `unresolved_vars` is non-empty, skip it and note it as skipped in your final report.
    Don't guess a value for an unknown `$variable`, and don't edit the script to add one yourself (that's the caller's call, flag it instead).
 3. For every remaining query, call `mcp__dev__profile_query(sql=resolved_sql)`.
    The server enforces its own concurrency cap (a shared semaphore bounds real ClickHouse concurrency across both mcp-dev tools) - no manual throttling needed here, just work through the list.
 4. Assemble the results into a JSON object shaped `{"<panel_id>:<query_index>": <profile_query's raw return value>, ...}` (one entry per query you profiled) and write it to `/tmp/qp_stats.json` via Bash.
-5. `python3 services/grafana/scripts/query_perf.py save-run --resolved /tmp/qp_resolved.json --stats /tmp/qp_stats.json --label <label> --out <path, or omit to use the default .claude/data/query_perf_runs/run-<label>-<timestamp>.json location>`
+5. `uv run python3 services/grafana/scripts/query_perf.py save-run --resolved /tmp/qp_resolved.json --stats /tmp/qp_stats.json --label <label> --out <path, or omit to use the default .claude/data/query_perf_runs/run-<label>-<timestamp>.json location>`
 
 Report back only: the saved run file's path, how many panels/queries were profiled, and a one-line list of anything skipped (unresolved vars) or that errored (a `profile_query` call returning an `error` key - still include those queries in stats.json with their error, `save-run` handles that; just call it out in your summary too).
 Do not paste per-query numbers.
@@ -32,7 +32,7 @@ That's what the run file and `diff` are for.
 
 Caller gives you two run file paths, or two labels to find (if given labels, `ls -t .claude/data/query_perf_runs/run-<label>-*.json | head -1` for each - most recent file matching that label).
 
-`python3 services/grafana/scripts/query_perf.py diff <run_a> <run_b>`
+`uv run python3 services/grafana/scripts/query_perf.py diff <run_a> <run_b>`
 
 Return its full output verbatim (the table itself is already compact - don't summarize it further, don't drop rows).
 Note the exit code in one line at the end (0 = nothing got worse, 1 = at least one query regressed or a query present in run_a is missing from run_b - the script's own stderr lines already say which).

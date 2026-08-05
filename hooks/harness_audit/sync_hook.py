@@ -5,7 +5,7 @@ SKILL.md/agent body edit. Stdlib only.
 Wire in .claude/settings.json:
   "PostToolUse": [{"matcher": "Edit|Write",
     "hooks": [{"type": "command",
-               "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/sync_hook.py\""}]}]
+               "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/sync_hook.py\""}]}]
 Exit 2 on regeneration failure (works for agents without Bash).
 
 Separate from audit_hook.py deliberately - that hook checks budgets, this one

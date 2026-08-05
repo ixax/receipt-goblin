@@ -4,7 +4,7 @@
 Wire in .claude/settings.json:
   "PostToolUse": [{"matcher": "Edit|Write",
     "hooks": [{"type": "command",
-               "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/audit_hook.py\""}]}]
+               "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/audit_hook.py\""}]}]
 Exit 2 feeds violations back to the editing agent (works for agents without Bash).
 
 Index regeneration (agent_docs/harness-index.md) is a separate concern, its

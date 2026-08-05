@@ -20,15 +20,15 @@ Dev/prod split: `agent_docs/architecture.md`; per-service detail: `agent_docs/se
 - `make loadtest-fixtures [VOLUME=small|medium|large]` - build fixtures from ClickHouse.
 - `make lock` - regenerate every `services/*/requirements.lock` after a `requirements.txt` edit.
 - `make harness-index` - regenerate `agent_docs/harness-index.md` after any frontmatter change.
+- `make ast-index` - rebuild `agent_docs/ast_index/` from scratch.
 
 ## Python
 
 - Python version: `.python-version`
 - Every Python-based `Dockerfile`'s `FROM python:${PYTHON_VERSION}-slim` reads that value via a `PYTHON_VERSION` build-arg, propagated through `Makefile` and `docker-compose.yml`'s `build.args`
 - bump `.python-version` -> run `make build`, every image rebuilds against the new version in one shot
-- Local scripts/tests run via `uv run`/`uv sync`, which reads `.python-version` automatically - keeps one interpreter instead of whatever `python3` resolves to locally.
-- Anything touching a `pyproject.toml` dependency (pytest, ruff, any future script needing a third-party package) always runs via `uv run` - never a bare `python3 -m pytest`/manual `pip install`.
-- Stdlib-only scripts (`scripts/*`, `hooks/harness_audit/*`, etc.) stay on plain `python3` - no third-party deps, no `uv run` needed
+- Every Python invocation in this repo runs via `uv run` (`uv run python3 ...`, `uv run pytest`, `uv run ruff`, etc.) - even stdlib-only scripts with no third-party deps, since the point is pinning the interpreter to `.python-version`, not just resolving dependencies.
+  Never a bare `python3`/`pip install`.
 - If `uv` isn't installed: `make install-uv`
 
 Service dependency edits are a three-step chain - stopping early leaves the change with no effect anywhere:
@@ -92,6 +92,7 @@ PROACTIVE (dispatch without being asked):
 - `dashboard-parser` - `agents_overview.json` reads
 - `stale-ref-sweeper` - entity renames/removals
 - `code-locator` - codebase search
+- `python-structure-navigator` - Python structural lookups via the ast-index cache, before raw Read/Grep
 - `script-ops` - mechanical / read-only ops
 
 EXPLICIT DISPATCH:
@@ -110,6 +111,7 @@ SKILLS:
 - `dynamictext-panel-queries`
 - `dynamictext-panel-design-system`
 - `trace-debugging`
+- `ast-index`
 - `harness-guardian`
 - `me`
 - `min`

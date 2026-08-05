@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 hooks/report_git_branch.py",
+            "command": "uv run python3 hooks/report_git_branch.py",
             "timeout": 5
           }
         ]

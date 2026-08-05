@@ -4,7 +4,7 @@ description: >
   TRIGGER - read/apply whenever any panel in services/grafana/dashboards/agents_overview.json is created, edited, or removed - regardless of whether the calling task mentions it.
   Keeps services/grafana/dashboards-health/query_performance.json (its query-performance mirror) from drifting, via the tag/extract/render scripts under services/grafana/scripts/.
   SKIP for any other dashboard file, and for a Dynamic Text panel's query-content-only edit (same id, same tab).
-  v1.0.2
+  v1.0.3
 ---
 
 Applies only to `services/grafana/dashboards/agents_overview.json` - no other dashboard has a `query_performance.json`-style mirror.
@@ -52,6 +52,6 @@ Never hand-write ad-hoc Python to discover untagged panels or validate rendered 
    Still required even if step 1 found nothing untagged (fresh tree per rebuild).
 4. Run `build_query_perf_dashboard.py --tree <path> --out <path>` once, no `--tab` - covers every tab in one call.
    Confirm stderr has no `warning: skipped untagged panels` line - any panel named there means step 2/3 missed something.
-5. Validate with `python3 -m json.tool <out> > /dev/null` (exits non-zero on invalid JSON) - the sanctioned check, don't write a custom `json.load` script.
+5. Validate with `uv run python3 -m json.tool <out> > /dev/null` (exits non-zero on invalid JSON) - the sanctioned check, don't write a custom `json.load` script.
 
 Distinct from the per-edit sync above, which stays scoped to the affected tab(s) via `--tab` - don't widen a single-panel edit into a full rebuild, and don't narrow an explicit full-rebuild ask down to one `--tab` just because only one tab changed recently.
