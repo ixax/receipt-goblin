@@ -21,7 +21,7 @@ html, body {
 
 .st-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: 1fr;
   gap: 4px 20px;
   background: #1f2126;
   border: 1px solid #2c2f36;
@@ -33,10 +33,12 @@ html, body {
 .st-stat-label {
   color: #8e9297;
   margin-right: 6px;
+  font-weight: 600;
 }
 
 .st-stat-value {
   color: #d8d9da;
+  font-weight: 400;
 }
 
 .st-lines {
