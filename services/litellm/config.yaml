@@ -73,6 +73,7 @@ general_settings:
     - db_exceptions
     - budget_alerts
     - failed_tracking_spend
+    - spend_tracked
   alerting_threshold: 300  # seconds; matches llm_too_slow/llm_requests_hanging trigger
 
   # Personal virtual keys go in this header regardless of route (see

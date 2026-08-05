@@ -566,3 +566,19 @@ def replay_dlq_row(client, stage: str, row: list) -> None:
         raise ValueError(f"unknown DLQ stage: {stage!r}")
     row = _deserialize_row_multi(row, *_DLQ_STAGE_TIMESTAMP_INDICES[stage])
     client.insert(stage, [row], column_names=columns, column_type_names=_column_type_names(client, stage, columns))
+
+
+_RESOLVED_COLUMNS = ["occurred_at", "stage", "litellm_call_id"]
+
+
+def mark_dlq_rows_resolved(client, rows: list[tuple]) -> None:
+    """Batch-inserts resolved markers for ingest_dlq rows that replayed
+    successfully this page - never call for a row still failing.
+    rows: (occurred_at, stage, litellm_call_id) tuples, the natural key
+    ingest_dlq_unresolved's LEFT ANTI JOIN matches on."""
+    if not rows:
+        return
+    client.insert(
+        "ingest_dlq_resolved", rows, column_names=_RESOLVED_COLUMNS,
+        column_type_names=_column_type_names(client, "ingest_dlq_resolved", _RESOLVED_COLUMNS),
+    )

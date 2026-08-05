@@ -290,10 +290,10 @@ def build_panels_for(source_id):
         LIMIT 50""")
     # Bucketed on a fixed 5-minute grain, matching the toStartOfInterval(...,
     # INTERVAL 5 MINUTE) convention already used for timeseries bucketing in
-    # dashboards-health/litellm_alerting.json - no per-dashboard "window"
-    # template variable exists here (unlike agents_overview.json's
-    # ${window}-driven panels), so a fixed interval is the closest existing
-    # convention rather than a new one.
+    # dashboards-health/infra_overview.json's "LiteLLM" tab - no
+    # per-dashboard "window" template variable exists here (unlike
+    # agents_overview.json's ${window}-driven panels), so a fixed interval
+    # is the closest existing convention rather than a new one.
     latency_sql = textwrap.dedent(f"""\
         SELECT
           toStartOfInterval(event_time, INTERVAL 5 MINUTE) AS time,

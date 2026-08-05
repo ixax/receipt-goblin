@@ -8,10 +8,9 @@ Safe to re-run any number of times: the target tables are all ReplacingMergeTree
 ingest_dlq itself is never deleted from - replayed rows stay in it as an append-only forensic log.
 """
 import argparse
-from datetime import datetime, timezone
 
 from common import fastjson as json
-from common.ingest_db import get_client, replay_dlq_row
+from common.ingest_db import get_client, mark_dlq_rows_resolved, replay_dlq_row
 from common.logging_config import create_logger
 
 from .config import REPARSE_CHUNK_SIZE
@@ -35,38 +34,49 @@ def _replay_one(client, stage: str, litellm_call_id: str, raw_row: str) -> bool:
 
 
 def reparse_dlq(stage: str = "") -> int:
-    """stage="" replays every row in ingest_dlq, across all stages.
+    """stage="" replays every not-yet-resolved row in ingest_dlq, across all stages.
     Returns rows processed (attempted, not necessarily succeeded).
 
-    Pages REPARSE_CHUNK_SIZE rows at a time (keyset pagination on the compound (occurred_at, litellm_call_id) cursor - occurred_at alone can collide at millisecond precision, same reasoning schema.sql documents for agent_events' own ORDER BY).
+    Pages REPARSE_CHUNK_SIZE rows at a time from ingest_dlq_unresolved (see
+    migrations/015_ingest_dlq_resolved.sql) - no cursor needed.
+    Each successfully replayed row gets marked resolved before the next page
+    is fetched, so it permanently drops out of ingest_dlq_unresolved and the
+    same plain LIMIT query naturally returns different rows next iteration.
+    That's what makes pagination terminate: a plain ORDER BY/LIMIT cursor
+    over occurred_at isn't reliable when many rows share the same
+    millisecond timestamp (ClickHouse doesn't guarantee stable tie-breaking
+    across pages under parallel execution), which caused the 2026-08-04 OOM
+    by re-selecting the same backlog dozens of times.
     """
     client = get_client()
     query = (
-        "SELECT occurred_at, stage, litellm_call_id, raw_row FROM ingest_dlq "
+        "SELECT occurred_at, stage, litellm_call_id, raw_row FROM ingest_dlq_unresolved "
         "WHERE ({stage:String} = '' OR stage = {stage:String}) "
-        "AND (occurred_at, litellm_call_id) > ({cursor_ts:DateTime64(3)}, {cursor_id:String}) "
-        "ORDER BY occurred_at, litellm_call_id "
         "LIMIT {chunk_size:UInt32}"
     )
 
     count = 0
     succeeded = 0
-    cursor_ts = datetime.fromtimestamp(0, tz=timezone.utc)
-    cursor_id = ""
     while True:
-        result = client.query(query, parameters={
-            "stage": stage, "cursor_ts": cursor_ts, "cursor_id": cursor_id, "chunk_size": REPARSE_CHUNK_SIZE,
-        })
+        result = client.query(query, parameters={"stage": stage, "chunk_size": REPARSE_CHUNK_SIZE})
         rows = result.result_rows
         if not rows:
             break
+        resolved_this_page = []
         for occurred_at, row_stage, litellm_call_id, raw_row in rows:
+            count += 1
             if _replay_one(client, row_stage, litellm_call_id, raw_row):
                 succeeded += 1
-            count += 1
-            if count % 500 == 0:
-                logger.info("replayed %d DLQ rows so far...", count)
-        cursor_ts, cursor_id = rows[-1][0], rows[-1][2]
+                resolved_this_page.append((occurred_at, row_stage, litellm_call_id))
+        if not resolved_this_page:
+            logger.warning(
+                "stopping: a page of %d row(s) made zero progress (all still failing) - "
+                "check the logged errors above rather than looping forever", len(rows),
+            )
+            break
+        mark_dlq_rows_resolved(client, resolved_this_page)
+        if count % 500 == 0:
+            logger.info("replayed %d DLQ rows so far...", count)
 
     logger.info(
         "reparse-dlq complete (n=%d, succeeded=%d, still_failing=%d, stage=%r)",

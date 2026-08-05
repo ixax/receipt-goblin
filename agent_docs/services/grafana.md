@@ -11,7 +11,7 @@ Prometheus/Loki datasources carry no secrets/per-env values (fixed internal Dock
 
 ## Dashboards
 
-All six ship as `dashboard.grafana.app/v2beta1` schema JSON; `metadata.name` is the uid (stable URL).
+All five ship as `dashboard.grafana.app/v2beta1` schema JSON; `metadata.name` is the uid (stable URL).
 All follow the same panel/build conventions - read the `dashboard-panels` skill before editing any dashboard's panels, don't treat each file as bespoke.
 `dashboards-expert` owns every panel in every dashboard directly, including `agents_overview.json`'s Dynamic Text pair (panel-76/77) - see that agent's own frontmatter for the two on-demand skills (`dynamictext-panel-queries`, `dynamictext-panel-design-system`) it reads for Dynamic-Text-specific query/styling work.
 
@@ -24,6 +24,6 @@ All follow the same panel/build conventions - read the `dashboard-panels` skill 
 - `services/grafana/dashboards-health/infra_overview.json` - uid `infra-overview`, up/down status, request rate/latency, and worker queue health for every service added by the observability migration, fed by Prometheus.
   Conceptually the dashboard behind the infra-health alert rules (`services/grafana/provisioning/alerting/rules.yml`).
   Its "Load balancer" tab's "Access log"/"Error log" sub-tabs are Logs panels fed by Loki instead - see `agent_docs/services/load-balancer.md`'s "Access/error logs" section.
-- `services/grafana/dashboards-health/litellm_alerting.json` - uid `litellm-alerting`, LiteLLM native alerts (budget/outage/exception/hang signals) alongside our own derived reliability metrics (error rate, latency, spend, ingest pipeline health).
-  Fed directly by ClickHouse (`agent_events`/`agent_usage`), not Prometheus - available without the `observability` profile.
-  Conceptually the dashboard behind the llm-alerts alert rules (`services/grafana/provisioning/alerting/rules.yml`).
+  Its "LiteLLM" and "Ingest DLQ" tabs are fed directly by ClickHouse (`agent_events`/`agent_usage`/`litellm_alerts`/`ingest_dlq`), not Prometheus - available without the `observability` profile.
+  "LiteLLM" holds LiteLLM's own native alerts (budget/outage/exception/hang signals) alongside our derived reliability metrics (error rate, latency, spend); "Ingest DLQ" triages rejected ingest rows.
+  Conceptually also the dashboard behind the llm-alerts alert rules (`services/grafana/provisioning/alerting/rules.yml`).

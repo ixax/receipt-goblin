@@ -5444,6 +5444,1062 @@
             }
           }
         }
+      },
+      "panel-54": {
+        "kind": "Panel",
+        "spec": {
+          "id": 54,
+          "title": "Recent LiteLLM alerts",
+          "description": "Goal: surface LiteLLM's own budget/outage/exception/hang signals (things our generic_api StandardLoggingPayload callback cannot reconstruct) as soon as they fire.\nDescription: lists the most recent 100 litellm_alerts rows newest first, with event as a visible sortable column so a viewer can scan/filter by alert type; raw_payload (full JSON, shape varies per alert type) is shown via the inspect drawer rather than a fixed-width column.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "grafana-clickhouse-datasource",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 1,
+                        "rawSql": "SELECT received_at, event, event_group, key_alias, team_id, user_id, spend, max_budget, event_message, raw_payload\nFROM litellm_alerts\nWHERE $__timeFilter(received_at)\nORDER BY received_at DESC\nLIMIT 100"
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "options": {
+                "showHeader": true,
+                "sortBy": [
+                  {
+                    "displayName": "received_at",
+                    "desc": true
+                  }
+                ]
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "received_at"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.width",
+                        "value": 170
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "event"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.width",
+                        "value": 150
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "event_group"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.width",
+                        "value": 130
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "spend"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "currencyUSD"
+                      },
+                      {
+                        "id": "custom.width",
+                        "value": 100
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "max_budget"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "currencyUSD"
+                      },
+                      {
+                        "id": "custom.width",
+                        "value": 100
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "event_message"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.cellOptions",
+                        "value": {
+                          "type": "auto"
+                        }
+                      },
+                      {
+                        "id": "custom.inspect",
+                        "value": true
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "raw_payload"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.cellOptions",
+                        "value": {
+                          "type": "auto"
+                        }
+                      },
+                      {
+                        "id": "custom.inspect",
+                        "value": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-55": {
+        "kind": "Panel",
+        "spec": {
+          "id": 55,
+          "title": "Error rate by model over time",
+          "description": "Goal: spot which model is driving up API-level failures right now, not just the aggregate error rate.\nDescription: joins agent_events to agent_usage on litellm_call_id (unique per call) to attach a model to each event, buckets into 5-minute intervals, and computes failures / total calls per model per bucket.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "grafana-clickhouse-datasource",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT\n  toStartOfInterval(e.timestamp, INTERVAL 5 MINUTE) AS time,\n  u.model AS metric,\n  countIf(e.status = 'failure') / nullIf(count(), 0) AS value\nFROM agent_events e\nINNER JOIN agent_usage u ON e.litellm_call_id = u.litellm_call_id\nWHERE $__timeFilter(e.timestamp)\n  AND e.litellm_call_id != ''\nGROUP BY time, metric\nORDER BY time"
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percentunit",
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "fillOpacity": 10,
+                    "spanNulls": false,
+                    "showPoints": "never",
+                    "pointSize": 5,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-56": {
+        "kind": "Panel",
+        "spec": {
+          "id": 56,
+          "title": "Error rate by provider over time",
+          "description": "Goal: tell whether a spike in failures is provider-wide (an upstream outage) or isolated to one model within a provider.\nDescription: same join/bucketing as \"Error rate by model over time\" but grouped by agent_usage.provider (claude/openai/other) instead of the individual model.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "grafana-clickhouse-datasource",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT\n  toStartOfInterval(e.timestamp, INTERVAL 5 MINUTE) AS time,\n  u.provider AS metric,\n  countIf(e.status = 'failure') / nullIf(count(), 0) AS value\nFROM agent_events e\nINNER JOIN agent_usage u ON e.litellm_call_id = u.litellm_call_id\nWHERE $__timeFilter(e.timestamp)\n  AND e.litellm_call_id != ''\nGROUP BY time, metric\nORDER BY time"
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percentunit",
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "fillOpacity": 10,
+                    "spanNulls": false,
+                    "showPoints": "never",
+                    "pointSize": 5,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-57": {
+        "kind": "Panel",
+        "spec": {
+          "id": 57,
+          "title": "Latency p95 by model over time",
+          "description": "Goal: see whether one model is dragging p95 latency up, since a slow-but-rare model can hide inside an all-model average.\nDescription: joins agent_events to agent_usage on litellm_call_id to attach a model to each call, buckets into 5-minute intervals, and computes quantile(0.95)(latency_ms) per model per bucket.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "grafana-clickhouse-datasource",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT\n  toStartOfInterval(e.timestamp, INTERVAL 5 MINUTE) AS time,\n  u.model AS metric,\n  quantile(0.95)(e.latency_ms) AS value\nFROM agent_events e\nINNER JOIN agent_usage u ON e.litellm_call_id = u.litellm_call_id\nWHERE $__timeFilter(e.timestamp)\n  AND e.litellm_call_id != ''\n  AND e.latency_ms IS NOT NULL\nGROUP BY time, metric\nORDER BY time"
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "ms",
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "fillOpacity": 10,
+                    "spanNulls": false,
+                    "showPoints": "never",
+                    "pointSize": 5,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-58": {
+        "kind": "Panel",
+        "spec": {
+          "id": 58,
+          "title": "Latency p99 by model over time",
+          "description": "Goal: catch tail-latency outliers per model that p95 alone can smooth over.\nDescription: same join/bucketing as the p95 panel, computing quantile(0.99)(latency_ms) per model per bucket instead.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "grafana-clickhouse-datasource",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT\n  toStartOfInterval(e.timestamp, INTERVAL 5 MINUTE) AS time,\n  u.model AS metric,\n  quantile(0.99)(e.latency_ms) AS value\nFROM agent_events e\nINNER JOIN agent_usage u ON e.litellm_call_id = u.litellm_call_id\nWHERE $__timeFilter(e.timestamp)\n  AND e.litellm_call_id != ''\n  AND e.latency_ms IS NOT NULL\nGROUP BY time, metric\nORDER BY time"
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "ms",
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "fillOpacity": 10,
+                    "spanNulls": false,
+                    "showPoints": "never",
+                    "pointSize": 5,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "displayName": "${__field.labels.metric}"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-59": {
+        "kind": "Panel",
+        "spec": {
+          "id": 59,
+          "title": "Spend trend (cost over time)",
+          "description": "Goal: watch overall spend trend so a budget alert (see litellm_alerts row above) can be read against the spend that actually caused it.\nDescription: buckets agent_usage into 5-minute intervals and sums LiteLLM-reported cost per bucket - no local pricing math, cost comes straight from LiteLLM's own response_cost - and overlays a second series counting litellm_alerts rows per bucket whose event looks budget/threshold-related, so a spend spike can be read against when a budget alert actually fired.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "grafana-clickhouse-datasource",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT\n  toStartOfInterval(timestamp, INTERVAL 5 MINUTE) AS time,\n  sum(cost) AS value\nFROM agent_usage\nWHERE $__timeFilter(timestamp)\nGROUP BY time\nORDER BY time"
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "B",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "grafana-clickhouse-datasource",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT\n  toStartOfInterval(received_at, INTERVAL 5 MINUTE) AS time,\n  count() AS budget_alerts\nFROM litellm_alerts\nWHERE $__timeFilter(received_at)\n  AND (positionCaseInsensitive(event, 'budget') > 0 OR positionCaseInsensitive(event, 'threshold') > 0)\nGROUP BY time\nORDER BY time"
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "options": {
+                "legend": {
+                  "showLegend": true,
+                  "displayMode": "list",
+                  "placement": "right"
+                },
+                "tooltip": {
+                  "mode": "multi"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "currencyUSD",
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "blue"
+                  },
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "fillOpacity": 10,
+                    "spanNulls": false,
+                    "showPoints": "never",
+                    "pointSize": 5,
+                    "stacking": {
+                      "mode": "none",
+                      "group": "A"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "value"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "fixed",
+                          "fixedColor": "blue"
+                        }
+                      },
+                      {
+                        "id": "displayName",
+                        "value": "cost"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "budget_alerts"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "fixed",
+                          "fixedColor": "white"
+                        }
+                      },
+                      {
+                        "id": "custom.axisPlacement",
+                        "value": "right"
+                      },
+                      {
+                        "id": "custom.drawStyle",
+                        "value": "points"
+                      },
+                      {
+                        "id": "custom.pointSize",
+                        "value": 8
+                      },
+                      {
+                        "id": "unit",
+                        "value": "short"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-60": {
+        "kind": "Panel",
+        "spec": {
+          "id": 60,
+          "title": "Ingest DLQ row count",
+          "description": "Goal: give the unresolved ingest_dlq dead-letter feed an at-a-glance signal that something still needs triage.\nDescription: counts ingest_dlq_unresolved rows (rejected agent_events/agent_usage/etc. inserts not yet marked resolved) in the selected time range - any non-zero value means unreplayed failures still need attention.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "grafana-clickhouse-datasource",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT count() AS dlq_count\nFROM ingest_dlq_unresolved\nWHERE $__timeFilter(occurred_at)"
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {},
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      },
+                      {
+                        "color": "red",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "unit": "locale"
+                },
+                "overrides": []
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "showPercentChange": false
+              }
+            }
+          }
+        }
+      },
+      "panel-61": {
+        "kind": "Panel",
+        "spec": {
+          "id": 61,
+          "title": "Ingest DLQ recent rows",
+          "description": "Goal: give the unresolved ingest_dlq dead-letter feed an actual triage view instead of sitting write-only.\nDescription: lists the most recent 100 ingest_dlq_unresolved rows (which target table rejected the insert, the error, and the offending litellm_call_id/session_id/raw_row, not yet marked resolved) ordered newest first; raw_row is the full JSON of the rejected row, shown via the inspect drawer rather than a fixed-width column.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "grafana-clickhouse-datasource",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 1,
+                        "rawSql": "SELECT occurred_at, stage, litellm_call_id, session_id, error, raw_row\nFROM ingest_dlq_unresolved\nWHERE $__timeFilter(occurred_at)\nORDER BY occurred_at DESC\nLIMIT 100"
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "options": {
+                "showHeader": true,
+                "sortBy": [
+                  {
+                    "displayName": "occurred_at",
+                    "desc": true
+                  }
+                ]
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "occurred_at"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.width",
+                        "value": 170
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "stage"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.width",
+                        "value": 150
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "session_id"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.width",
+                        "value": 130
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "error"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.cellOptions",
+                        "value": {
+                          "type": "auto"
+                        }
+                      },
+                      {
+                        "id": "custom.inspect",
+                        "value": true
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "raw_row"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.cellOptions",
+                        "value": {
+                          "type": "auto"
+                        }
+                      },
+                      {
+                        "id": "custom.inspect",
+                        "value": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-62": {
+        "kind": "Panel",
+        "spec": {
+          "id": 62,
+          "title": "Ingest DLQ row count",
+          "description": "Goal: give the unresolved ingest_dlq dead-letter feed an at-a-glance signal that something still needs triage.\nDescription: counts ingest_dlq_unresolved rows (rejected agent_events/agent_usage/etc. inserts not yet marked resolved) in the selected time range - any non-zero value means unreplayed failures still need attention.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "grafana-clickhouse-datasource",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "SELECT count() AS dlq_count\nFROM ingest_dlq_unresolved\nWHERE $__timeFilter(occurred_at)"
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {},
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      },
+                      {
+                        "color": "red",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "unit": "locale"
+                },
+                "overrides": []
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "showPercentChange": false
+              }
+            }
+          }
+        }
+      },
+      "panel-63": {
+        "kind": "Panel",
+        "spec": {
+          "id": 63,
+          "title": "Redis: Evicted keys/s",
+          "description": "Goal: surface Redis key eviction pressure alongside the other at-a-glance health stats on the General tab.\nDescription: rate of redis_evicted_keys_total over a 5m window, an instant value - non-zero means Redis is evicting keys under memory pressure.",
+          "links": [],
+          "transparent": false,
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "refId": "A",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "DS_PROMETHEUS"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "rate(redis_evicted_keys_total[5m])",
+                        "instant": true,
+                        "format": "time_series",
+                        "legendFormat": "",
+                        "interval": ""
+                      }
+                    }
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "spec": {
+              "pluginVersion": "13.1.0",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {},
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "unit": "none"
+                },
+                "overrides": []
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "showPercentChange": false
+              }
+            }
+          }
+        }
       }
     },
     "layout": {
@@ -5461,7 +6517,7 @@
                     {
                       "kind": "RowsLayoutRow",
                       "spec": {
-                        "title": "Public",
+                        "title": "Core stack",
                         "collapse": false,
                         "layout": {
                           "kind": "GridLayout",
@@ -5498,7 +6554,7 @@
                                 "spec": {
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-7"
+                                    "name": "panel-1"
                                   },
                                   "x": 6,
                                   "y": 0,
@@ -5511,7 +6567,7 @@
                                 "spec": {
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-3"
+                                    "name": "panel-7"
                                   },
                                   "x": 9,
                                   "y": 0,
@@ -5524,9 +6580,22 @@
                                 "spec": {
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-46"
+                                    "name": "panel-3"
                                   },
                                   "x": 12,
+                                  "y": 0,
+                                  "width": 3,
+                                  "height": 4
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-46"
+                                  },
+                                  "x": 15,
                                   "y": 0,
                                   "width": 3,
                                   "height": 4
@@ -5540,7 +6609,7 @@
                     {
                       "kind": "RowsLayoutRow",
                       "spec": {
-                        "title": "Data",
+                        "title": "Ingest stack",
                         "collapse": false,
                         "layout": {
                           "kind": "GridLayout",
@@ -5551,22 +6620,9 @@
                                 "spec": {
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-1"
-                                  },
-                                  "x": 0,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4
-                                }
-                              },
-                              {
-                                "kind": "GridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
                                     "name": "panel-2"
                                   },
-                                  "x": 3,
+                                  "x": 0,
                                   "y": 0,
                                   "width": 3,
                                   "height": 4
@@ -5579,7 +6635,7 @@
                                     "kind": "ElementReference",
                                     "name": "panel-14"
                                   },
-                                  "x": 6,
+                                  "x": 3,
                                   "y": 0,
                                   "width": 3,
                                   "height": 4
@@ -5592,7 +6648,7 @@
                                     "kind": "ElementReference",
                                     "name": "panel-4"
                                   },
-                                  "x": 9,
+                                  "x": 6,
                                   "y": 0,
                                   "width": 3,
                                   "height": 4
@@ -5605,34 +6661,7 @@
                                     "kind": "ElementReference",
                                     "name": "panel-5"
                                   },
-                                  "x": 12,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4
-                                }
-                              }
-                            ]
-                          }
-                        }
-                      }
-                    },
-{
-                      "kind": "RowsLayoutRow",
-                      "spec": {
-                        "title": "Provider fallback",
-                        "collapse": false,
-                        "layout": {
-                          "kind": "GridLayout",
-                          "spec": {
-                            "items": [
-                              {
-                                "kind": "GridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "panel-51"
-                                  },
-                                  "x": 0,
+                                  "x": 9,
                                   "y": 0,
                                   "width": 3,
                                   "height": 4
@@ -5643,9 +6672,22 @@
                                 "spec": {
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-52"
+                                    "name": "panel-62"
                                   },
-                                  "x": 3,
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 3,
+                                  "height": 4
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-63"
+                                  },
+                                  "x": 15,
                                   "y": 0,
                                   "width": 3,
                                   "height": 4
@@ -5656,11 +6698,11 @@
                         }
                       }
                     },
-                                        {
+                    {
                       "kind": "RowsLayoutRow",
                       "spec": {
                         "title": "Langfuse",
-                        "collapse": false,
+                        "collapse": true,
                         "layout": {
                           "kind": "GridLayout",
                           "spec": {
@@ -5747,6 +6789,73 @@
                           }
                         }
                       }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "Providers fallback",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-51"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 3,
+                                  "height": 4
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-52"
+                                  },
+                                  "x": 3,
+                                  "y": 0,
+                                  "width": 3,
+                                  "height": 4
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "Firing alerts",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-20"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 24,
+                                  "height": 12
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
                     }
                   ]
                 }
@@ -5758,14 +6867,13 @@
             "spec": {
               "title": "Services",
               "layout": {
-                "kind": "RowsLayout",
+                "kind": "TabsLayout",
                 "spec": {
-                  "rows": [
+                  "tabs": [
                     {
-                      "kind": "RowsLayoutRow",
+                      "kind": "TabsLayoutTab",
                       "spec": {
                         "title": "load-balancer",
-                        "collapse": false,
                         "layout": {
                           "kind": "GridLayout",
                           "spec": {
@@ -5802,10 +6910,9 @@
                       }
                     },
                     {
-                      "kind": "RowsLayoutRow",
+                      "kind": "TabsLayoutTab",
                       "spec": {
                         "title": "webhook",
-                        "collapse": false,
                         "layout": {
                           "kind": "GridLayout",
                           "spec": {
@@ -5842,10 +6949,9 @@
                       }
                     },
                     {
-                      "kind": "RowsLayoutRow",
+                      "kind": "TabsLayoutTab",
                       "spec": {
                         "title": "worker",
-                        "collapse": false,
                         "layout": {
                           "kind": "GridLayout",
                           "spec": {
@@ -5895,10 +7001,9 @@
                       }
                     },
                     {
-                      "kind": "RowsLayoutRow",
+                      "kind": "TabsLayoutTab",
                       "spec": {
                         "title": "redis",
-                        "collapse": false,
                         "layout": {
                           "kind": "GridLayout",
                           "spec": {
@@ -5961,10 +7066,9 @@
                       }
                     },
                     {
-                      "kind": "RowsLayoutRow",
+                      "kind": "TabsLayoutTab",
                       "spec": {
                         "title": "mcp-dev",
-                        "collapse": false,
                         "layout": {
                           "kind": "GridLayout",
                           "spec": {
@@ -6001,10 +7105,9 @@
                       }
                     },
                     {
-                      "kind": "RowsLayoutRow",
+                      "kind": "TabsLayoutTab",
                       "spec": {
                         "title": "mcp-stats",
-                        "collapse": false,
                         "layout": {
                           "kind": "GridLayout",
                           "spec": {
@@ -6041,10 +7144,9 @@
                       }
                     },
                     {
-                      "kind": "RowsLayoutRow",
+                      "kind": "TabsLayoutTab",
                       "spec": {
                         "title": "litellm",
-                        "collapse": false,
                         "layout": {
                           "kind": "GridLayout",
                           "spec": {
@@ -6090,85 +7192,100 @@
             "spec": {
               "title": "Observability",
               "layout": {
-                "kind": "GridLayout",
+                "kind": "RowsLayout",
                 "spec": {
-                  "items": [
+                  "rows": [
                     {
-                      "kind": "GridLayoutItem",
+                      "kind": "RowsLayoutRow",
                       "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-17"
-                        },
-                        "x": 0,
-                        "y": 0,
-                        "width": 4,
-                        "height": 4
+                        "title": "Services",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-17"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 4,
+                                  "height": 4
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-18"
+                                  },
+                                  "x": 4,
+                                  "y": 0,
+                                  "width": 4,
+                                  "height": 4
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-21"
+                                  },
+                                  "x": 8,
+                                  "y": 0,
+                                  "width": 4,
+                                  "height": 4
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-22"
+                                  },
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 4,
+                                  "height": 4
+                                }
+                              }
+                            ]
+                          }
+                        }
                       }
                     },
                     {
-                      "kind": "GridLayoutItem",
+                      "kind": "RowsLayoutRow",
                       "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-18"
-                        },
-                        "x": 4,
-                        "y": 0,
-                        "width": 4,
-                        "height": 4
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-21"
-                        },
-                        "x": 0,
-                        "y": 4,
-                        "width": 4,
-                        "height": 4
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-22"
-                        },
-                        "x": 4,
-                        "y": 4,
-                        "width": 4,
-                        "height": 4
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-20"
-                        },
-                        "x": 8,
-                        "y": 0,
-                        "width": 16,
-                        "height": 12
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-19"
-                        },
-                        "x": 0,
-                        "y": 8,
-                        "width": 8,
-                        "height": 8
+                        "title": "Scrape targets",
+                        "collapse": true,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-19"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 24,
+                                  "height": 8
+                                }
+                              }
+                            ]
+                          }
+                        }
                       }
                     }
                   ]
@@ -6409,6 +7526,188 @@
                 }
               }
             }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "title": "LiteLLM",
+              "layout": {
+                "kind": "TabsLayout",
+                "spec": {
+                  "tabs": [
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "LiteLLM native alerts",
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-54"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 24,
+                                  "height": 8
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "Error rate",
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-55"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-56"
+                                  },
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "Latency",
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-57"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-58"
+                                  },
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "Spend/budget",
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-59"
+                                  },
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 24,
+                                  "height": 8
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "title": "Ingest DLQ",
+              "layout": {
+                "kind": "GridLayout",
+                "spec": {
+                  "items": [
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 0,
+                        "width": 6,
+                        "height": 4,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-60"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 4,
+                        "width": 24,
+                        "height": 8,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-61"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         ]
       }
@@ -6441,7 +7740,7 @@
         "kind": "QueryVariable",
         "spec": {
           "name": "backend",
-          "label": "Backend",
+          "label": "Load balancer backend",
           "current": {
             "text": "All",
             "value": "$__all"

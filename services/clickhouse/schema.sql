@@ -501,6 +501,35 @@ ENGINE = MergeTree
 PARTITION BY concat(toString(toYear(occurred_at)), '-H', toString(intDiv(toMonth(occurred_at) - 1, 6) + 1))
 ORDER BY (occurred_at);
 
+-- Insert-only marker of which ingest_dlq rows have already been
+-- successfully replayed - never delete/update ingest_dlq itself, mark
+-- resolution here instead. Also what makes reparse_dlq.py's pagination
+-- terminate: once a row's marker lands, it drops out of
+-- ingest_dlq_unresolved permanently, so the unresolved set shrinks every
+-- page instead of relying on ORDER BY/LIMIT tie-breaking determinism
+-- (which ClickHouse doesn't guarantee across many same-millisecond rows -
+-- see migrations/015_ingest_dlq_resolved.sql).
+CREATE TABLE IF NOT EXISTS ingest_dlq_resolved
+(
+    occurred_at     DateTime64(3),
+    stage           LowCardinality(String),
+    litellm_call_id String,
+    resolved_at     DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = MergeTree
+PARTITION BY concat(toString(toYear(occurred_at)), '-H', toString(intDiv(toMonth(occurred_at) - 1, 6) + 1))
+ORDER BY (occurred_at, stage, litellm_call_id);
+
+-- Single shared "still needs attention" view - reparse_dlq.py's pagination,
+-- the LiteLLM Alerting dashboard panels, and the ingest-dlq-nonempty alert
+-- all read this instead of each reimplementing their own notion of which
+-- ingest_dlq rows are stale.
+CREATE VIEW IF NOT EXISTS ingest_dlq_unresolved AS
+SELECT d.*
+FROM ingest_dlq AS d
+LEFT ANTI JOIN ingest_dlq_resolved AS r
+    ON d.occurred_at = r.occurred_at AND d.stage = r.stage AND d.litellm_call_id = r.litellm_call_id;
+
 -- LiteLLM's native alerting webhook (general_settings.alerting: ["webhook"]
 -- in services/litellm/config.yaml) reports signals our generic_api
 -- StandardLoggingPayload callback can't reconstruct: budget/spend threshold

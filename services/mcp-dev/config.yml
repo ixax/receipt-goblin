@@ -17,6 +17,8 @@ allowed_tables:
   - ai_gateway_groups
   - ingest_raw
   - ingest_dlq
+  - ingest_dlq_resolved
+  - ingest_dlq_unresolved
   - litellm_alerts
   - plan_proposals
   - schema_migrations

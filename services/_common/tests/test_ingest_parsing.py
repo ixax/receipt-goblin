@@ -209,6 +209,41 @@ def test_prompt_kind_and_display_success_classifies_away_recap():
     assert display_arg == ""
 
 
+def test_prompt_kind_and_display_success_classifies_compact_summary():
+    response_text = (
+        "<analysis>\nLet me go through this conversation chronologically.\n"
+        "1. Did some stuff.\n</analysis>\n\n"
+        "<summary>\n1. Primary Request and Intent:\n" + ("word " * 150) + "\n</summary>"
+    )
+    prompt_kind, display_text, display_arg = ip._prompt_kind_and_display(
+        "[tool_result]\nunrelated tool output", "", response_text
+    )
+    assert prompt_kind == "compact"
+    assert display_text == "/compact"
+    assert "analysis" not in display_arg
+    assert len(display_arg.split()) <= 101  # 100 words + trailing "..."
+    assert display_arg.endswith("...")
+
+
+def test_prompt_kind_and_display_success_classifies_compact_summary_without_summary_tag():
+    # If compaction's output shape ever drops the <summary> wrapper, fall
+    # back to whatever text remains after stripping <analysis>.
+    response_text = "<analysis>reasoning here</analysis>\n\nplain leftover text"
+    prompt_kind, display_text, display_arg = ip._prompt_kind_and_display("hi", "", response_text)
+    assert prompt_kind == "compact"
+    assert display_text == "/compact"
+    assert display_arg == "plain leftover text"
+
+
+def test_prompt_kind_and_display_success_compact_takes_priority_over_empty_prompt():
+    # Keyed off response_text, so it must fire even when prompt_text is
+    # empty - unlike every other branch, which bails out early on that.
+    response_text = "<analysis>x</analysis>\n\n<summary>done</summary>"
+    prompt_kind, display_text, display_arg = ip._prompt_kind_and_display("", "", response_text)
+    assert prompt_kind == "compact"
+    assert display_arg == "done"
+
+
 def test_prompt_kind_and_display_success_strips_two_leading_system_reminders():
     # Claude Code can inject more than one system-reminder as separate
     # leading content blocks of the same user turn (e.g. a skills-listing

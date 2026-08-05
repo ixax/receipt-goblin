@@ -23,6 +23,7 @@ _FAKE_TABLE_COLUMNS = {
     "ai_gateway_users": db._USER_COLUMNS,
     "clients": db._CLIENT_COLUMNS,
     "ingest_dlq": db._FAILURE_COLUMNS,
+    "ingest_dlq_resolved": db._RESOLVED_COLUMNS,
 }
 
 
@@ -331,5 +332,27 @@ def test_replay_dlq_row_unsuccess_unknown_stage_raises(monkeypatch):
         raise AssertionError("expected ValueError")
     except ValueError:
         pass
+
+    assert fake_client.inserts == []
+
+
+def test_mark_dlq_rows_resolved_success_inserts_one_row_per_marker(monkeypatch):
+    fake_client = _FakeClient()
+    ts = datetime(2026, 8, 4, 20, 50, 4, 123456, tzinfo=timezone.utc)
+    rows = [(ts, "agent_events", "call-1"), (ts, "agent_usage", "call-2")]
+
+    db.mark_dlq_rows_resolved(fake_client, rows)
+
+    table, inserted_rows, columns = fake_client.inserts[0]
+    assert table == "ingest_dlq_resolved"
+    assert columns == db._RESOLVED_COLUMNS
+    assert inserted_rows == rows
+
+
+def test_mark_dlq_rows_resolved_unsuccess_empty_list_skips_insert(monkeypatch):
+    monkeypatch.setattr(db, "get_client", lambda: (_ for _ in ()).throw(AssertionError("get_client should not be called")))
+    fake_client = _FakeClient()
+
+    db.mark_dlq_rows_resolved(fake_client, [])
 
     assert fake_client.inserts == []

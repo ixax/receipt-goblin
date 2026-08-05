@@ -43,6 +43,15 @@ _STOP_HOOK_FEEDBACK_PREFIX = "Stop hook feedback:"
 # Claude Code's own auto-injected prompt asking the model to summarize
 # progress for an idle-then-returning user - never typed by a human.
 _AWAY_RECAP_PREFIX = "The user stepped away and is coming back."
+# Claude Code's auto-compact context-summarization call.
+# Detected off the *response*, not the prompt: the triggering "prompt" is
+# just whatever the last message in context happened to be (a tool_result,
+# user text, anything), so there's no stable prompt-side prefix to key off
+# like the other category-B kinds above.
+# The model's reply always opens with an <analysis> scratchpad (a
+# chronological pass over the conversation), followed by the actual
+# <summary> - see _compact_message.
+_COMPACT_ANALYSIS_PREFIX = "<analysis>"
 
 # Trace panel (panel-76) text-cleaning regexes, ported from its SQL CTEs
 # so display text is precomputed once at ingest instead of per dashboard load.
@@ -56,6 +65,7 @@ _COMMAND_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.DOTALL)
 _LOCAL_STDOUT_STRIP_RE = re.compile(r"^.*</local-command-stdout>", re.DOTALL)
 _INTERRUPTED_STRIP_RE = re.compile(r"^\[Request interrupted by user\]\s*")
 _SUMMARY_TAG_RE = re.compile(r"<summary>(.*?)</summary>", re.DOTALL)
+_ANALYSIS_TAG_RE = re.compile(r"<analysis>.*?</analysis>", re.DOTALL)
 _STATUS_TAG_RE = re.compile(r"<status>(.*?)</status>")
 _SEVERITY_TAG_RE = re.compile(r"<severity>\s*(\d+)")
 _BLOCK_TAG_RE = re.compile(r"<block>\s*(yes|no)", re.IGNORECASE)
@@ -67,6 +77,7 @@ _BLANK_LINES_COLLAPSE_RE = re.compile(r"\n{2,}")
 
 _DISPLAY_TEXT_TRUNCATE = 1500
 _WEBPAGE_DISPLAY_TRUNCATE = 100
+_COMPACT_MESSAGE_WORD_LIMIT = 100
 
 # tool_render's argument preference chain, ported verbatim (order matters).
 _TOOL_ARG_KEY_PREFERENCE = ("file_path", "command", "sql", "url", "query", "description", "summary", "task_id")
@@ -658,6 +669,17 @@ def _truncate_at_word_boundary(text: str, limit: int) -> str:
     return cut.rstrip() + "..."
 
 
+def _truncate_words(text: str, limit: int) -> str:
+    """Like _truncate_at_word_boundary, but caps by word count instead of
+    character count - used for the compact-summary message, where a
+    character cap would cut off mid-sentence at wildly different points
+    depending on the model's phrasing."""
+    words = text.split()
+    if len(words) <= limit:
+        return text
+    return " ".join(words[:limit]) + "..."
+
+
 def _clean_prompt_text(prompt_text: str) -> str:
     return _SYSTEM_REMINDER_STRIP_RE.sub("", prompt_text, count=1).strip()
 
@@ -701,6 +723,19 @@ def _judge_verdict(response_text: str) -> tuple[Optional[bool], str]:
     return (ok if isinstance(ok, bool) else None), (reason if isinstance(reason, str) else "")
 
 
+def _compact_message(response_text: str) -> str:
+    """Extracts the human-readable part of an auto-compact call's response.
+    The leading <analysis> block is the model's own scratchpad, never meant
+    for display.
+    The real summary lives in the <summary> tag right after it - or, if
+    compaction's output shape ever changes, whatever text remains once
+    <analysis> is stripped."""
+    remainder = _ANALYSIS_TAG_RE.sub("", response_text, count=1).strip()
+    summary_match = _SUMMARY_TAG_RE.search(remainder)
+    text = summary_match.group(1) if summary_match else remainder
+    return _truncate_words(_collapse_whitespace(text).strip(), _COMPACT_MESSAGE_WORD_LIMIT)
+
+
 def _prompt_kind_and_display(prompt_text: str, command_name: str, response_text: str = "") -> tuple[str, str, str]:
     """Classifies the *incoming* prompt (port of panel-76's prompt_calc/
     prompt_display/prompt_final CTEs), independent of calculated_type -
@@ -720,7 +755,14 @@ def _prompt_kind_and_display(prompt_text: str, command_name: str, response_text:
 
     Returns (prompt_kind, display_text, display_arg); display_arg is the
     variable "gray argument" part of the line (severity score, summary...),
-    empty when a branch has none."""
+    empty when a branch has none.
+
+    "compact" is checked first and keyed off response_text, not
+    prompt_text - see _COMPACT_ANALYSIS_PREFIX - so it takes priority over
+    every prompt-text-based branch below, including an empty prompt_text."""
+    if response_text.startswith(_COMPACT_ANALYSIS_PREFIX):
+        return "compact", "/compact", _compact_message(response_text)
+
     if not prompt_text:
         return "", "", ""
 
