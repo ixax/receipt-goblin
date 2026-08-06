@@ -31,11 +31,7 @@ Dev/prod split: `agent_docs/architecture.md`; per-service detail: `agent_docs/se
   Never a bare `python3`/`pip install`.
 - If `uv` isn't installed: `make install-uv`
 
-Service dependency edits are a three-step chain - stopping early leaves the change with no effect anywhere:
-
-1. Edit `services/<svc>/requirements.txt` - direct deps only, keep the `why` comments.
-2. Run `make lock` - regenerates `requirements.lock` (full transitive pin). Images install from the `.lock`, never the `.txt`, so an unlocked edit reaches nothing. Commit both files together - `.githooks/lib/check-lock.sh` fails the commit otherwise.
-3. Hand the rebuild to `dev-ops` - a lock change is a baked-in-file change like any other, so it only reaches a running container via its rebuild. Never rebuild inline instead.
+Service dependency edits - before touching any `requirements.txt`, read `agent_docs/rules/dependencies.md` first.
 
 ## Project structure
 
