@@ -285,6 +285,12 @@ def flush_outbox(
     max_events_per_second: float = DEFAULT_MAX_EVENTS_PER_SECOND,
 ) -> int:
     if not api_url or not virtual_key:
+        pending = outbox.pending_count()
+        if pending:
+            logger.warning(
+                "flush skipped: AGENT_CLI_TRACKING_API_URL/LITELLM_VIRTUAL_KEY unset, %d event(s) stay queued",
+                pending,
+            )
         return 0
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -336,6 +342,9 @@ def flush_outbox(
                 logger.error("usage event rejected by server", extra={"event_id": event_ids[0]})
                 outbox.delete_many(event_ids)
                 current_batch_size = batch_size
+                # The rejected single still consumed a request - keep the per-event pacing honest instead of bursting the retries.
+                if max_events_per_second > 0:
+                    next_request_at = request_started_at + 1 / max_events_per_second
                 continue
             outbox.mark_failed_many(event_ids, f"HTTP {exc.code}")
             break
@@ -392,7 +401,13 @@ def _run_backfill(roots: list[Path]) -> int:
         for root in roots:
             paths = [root] if root.is_file() else root.rglob("*.jsonl")
             for path in paths:
-                collect_transcript(path, outbox, tracking_mode=os.environ.get("CLAUDE_TRANSCRIPT_TRACKING_MODE"))
+                try:
+                    # tracking_mode is forced to None: with the ambient CLAUDE_TRANSCRIPT_TRACKING_MODE=direct a launcher exports, historical entrypoint=cli transcripts (including sessions already counted through the proxy) would be reclassified as claude_remote_control and double-counted.
+                    # Backfill only ever trusts entrypoint=claude-desktop rows.
+                    collect_transcript(path, outbox, tracking_mode=None)
+                except Exception:
+                    # One locked or corrupt transcript must not abort the rest of the run; committed cursors keep completed files done.
+                    logger.exception("backfill failed for %s - skipping", path)
         flush_outbox(
             outbox,
             api_url=_environment("AGENT_CLI_TRACKING_API_URL", DEFAULT_API_URL),

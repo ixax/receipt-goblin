@@ -59,7 +59,7 @@ Reparse uses the same adapters, so historical rows improve when their stored sou
 
 `scripts/claude_usage_collector.py` is installed as the global Claude `Stop`/`SubagentStop` hook.
 It reads only complete JSONL transcript lines and advances a byte cursor per transcript.
-The hook is fail-open and time-bounded, so a collector or network failure cannot block Claude from stopping.
+The hook is fail-open and its network flush is time-bounded, so a collector or network failure cannot block Claude from stopping.
 
 The collector writes extracted envelopes to a local SQLite WAL outbox before attempting HTTP delivery.
 It keeps transient failures and removes a valid batch only after a successful response.

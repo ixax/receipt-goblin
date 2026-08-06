@@ -850,7 +850,8 @@ Remote Control needs Anthropic's direct channel and can fail if the whole Claude
 
 ### Tracking Claude Desktop and Remote Control
 
-Run `python3 scripts/claude_usage_collector.py install` once to install global `Stop` and `SubagentStop` hooks.
+Run `python3 scripts/claude_usage_collector.py install` to install global `Stop` and `SubagentStop` hooks.
+`install` copies the script into `~/.claude/hooks/`, so re-run it after updating this repo to refresh the deployed copy.
 The collector tails only newly completed JSONL transcript lines, writes deduplicated events to a SQLite outbox, and sends batches of at most 50 events at a bounded rate.
 The server authenticates the batch with the existing LiteLLM virtual key and enriches identity from `/key/info` instead of trusting client-supplied user/team fields.
 
@@ -894,7 +895,7 @@ python3 scripts/claude_usage_collector.py backfill ~/.claude/projects
 
 Automatic historical backfill intentionally accepts only `entrypoint=claude-desktop`.
 Old CLI transcripts do not contain enough reliable information to distinguish proxied sessions from Remote Control sessions.
-The direct path has no proxy TTFT/latency and never reads or sends prompt text, response text, message bodies, or tool arguments.
+The direct path has no proxy TTFT/latency and never extracts or transmits prompt text, response text, message bodies, or tool arguments.
 
 ### Routing Codex CLI through it
 

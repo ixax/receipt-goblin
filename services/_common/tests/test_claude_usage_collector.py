@@ -151,3 +151,67 @@ def test_flush_outbox_unsuccess_keeps_batch_when_server_is_unavailable(monkeypat
 
     assert sent == 0
     assert outbox.pending_count() == 3
+
+
+def test_envelope_from_row_unsuccess_skips_user_rows():
+    row = {
+        "type": "user",
+        "requestId": "req_user",
+        "entrypoint": "claude-desktop",
+        "message": {"content": [{"type": "text", "text": "raw prompt text"}], "usage": {"input_tokens": 1}},
+    }
+
+    assert collector._envelope_from_row(row, tracking_mode=None) is None
+
+
+def test_collect_transcript_success_resumes_from_cursor(tmp_path):
+    outbox = collector.Outbox(tmp_path / "outbox.sqlite3")
+    transcript = tmp_path / "session.jsonl"
+    first = _assistant_row()
+    first["requestId"] = "req-first"
+    _write_transcript(transcript, [first])
+
+    assert collector.collect_transcript(transcript, outbox) == 1
+
+    second = _assistant_row()
+    second["requestId"] = "req-second"
+    with transcript.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(second) + "\n")
+
+    assert collector.collect_transcript(transcript, outbox) == 1
+    assert collector.collect_transcript(transcript, outbox) == 0
+    assert outbox.pending_count() == 2
+
+
+def test_collect_transcript_success_resets_cursor_after_truncation(tmp_path):
+    outbox = collector.Outbox(tmp_path / "outbox.sqlite3")
+    transcript = tmp_path / "session.jsonl"
+    long_row = _assistant_row()
+    long_row["requestId"] = "req-long"
+    long_row["padding"] = "x" * 4096
+    _write_transcript(transcript, [long_row])
+    collector.collect_transcript(transcript, outbox)
+
+    replacement = _assistant_row()
+    replacement["requestId"] = "req-after-truncate"
+    _write_transcript(transcript, [replacement])
+
+    assert collector.collect_transcript(transcript, outbox) == 1
+    assert outbox.pending_count() == 2
+
+
+def test_read_envelopes_unsuccess_skips_malformed_lines(tmp_path):
+    transcript = tmp_path / "session.jsonl"
+    first = _assistant_row()
+    first["requestId"] = "req-ok-1"
+    second = _assistant_row()
+    second["requestId"] = "req-ok-2"
+    transcript.write_text(
+        json.dumps(first) + "\n" + "{not json at all\n" + json.dumps(second) + "\n",
+        encoding="utf-8",
+    )
+
+    envelopes, offset = collector._read_envelopes(transcript, tracking_mode=None)
+
+    assert [envelope["event_id"] for envelope in envelopes] == ["req-ok-1", "req-ok-2"]
+    assert offset == transcript.stat().st_size
