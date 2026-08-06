@@ -21,6 +21,8 @@ export GF_INSTALL_PLUGINS="$(yml_get install_plugins)"
 export GF_AUTH_ANONYMOUS_ENABLED="$(yml_get auth_anonymous_enabled)"
 export GF_AUTH_ANONYMOUS_ORG_ROLE="$(yml_get auth_anonymous_org_role)"
 export GF_PANELS_DISABLE_SANITIZE_HTML="$(yml_get panels_disable_sanitize_html)"
+export GF_RENDERING_SERVER_URL="$(yml_get rendering_server_url)"
+export GF_RENDERING_CALLBACK_URL="$(yml_get rendering_callback_url)"
 
 TEMPLATE=/etc/grafana/provisioning-templates/datasources/clickhouse.yml.template
 OUT_DIR=/etc/grafana/provisioning/datasources

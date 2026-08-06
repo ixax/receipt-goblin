@@ -43,6 +43,9 @@ LOAD_BALANCER_TAG: 0.2.0
 LITELLM_TAG: 0.1.0
 CLICKHOUSE_TAG: 0.1.0
 GRAFANA_TAG: 0.1.0
+# Static (no `{build}`) for the same reason the observability/langfuse groups are:
+# a stock upstream image with no baked config of ours on top.
+GRAFANA_RENDERER_TAG: 0.1.0
 REDIS_TAG: 0.1.0
 BACKUP_TAG: 0.1.0
 PROMETHEUS_TAG: 0.1.1

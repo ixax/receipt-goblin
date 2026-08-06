@@ -9,6 +9,14 @@ Grafana's own tunables (`install_plugins`, `auth_anonymous_enabled`, `auth_anony
 The entrypoint also renders the ClickHouse datasource from `provisioning-templates/datasources/clickhouse.yml.template` via `sed` (no `envsubst`/`gettext` dependency, not guaranteed present in the base image), substituting `CLICKHOUSE_HOST`/`PORT`/`USER`/`PASSWORD`/`DATABASE` (all required, always set by container start).
 Prometheus/Loki datasources carry no secrets/per-env values (fixed internal Docker DNS names), so unlike ClickHouse's they're plain static files, copied through as-is, not templated.
 
+## Panel rendering (`grafana-renderer`)
+
+`/render` and `/render/d-solo` turn a panel into a PNG, which Grafana itself cannot do - it delegates to the `grafana-renderer` sidecar (`services/grafana-renderer/Dockerfile`, stock `grafana/grafana-image-renderer`).
+Wiring is `rendering_server_url`/`rendering_callback_url` in `config.yml`, translated to `GF_RENDERING_*` by the entrypoint like every other setting there - deliberately not the in-process image-renderer plugin, which would drag headless Chromium into the Grafana image itself.
+The sidecar is internal-only: no published port, no load-balancer route, nothing outside the compose network reaches it.
+`/render` answers 500 while the sidecar is down or its URL is blank, which is the expected state on a stack that never brought it up.
+Applying a change here needs the sidecar built and Grafana restarted so the entrypoint re-reads `config.yml`.
+
 ## Dashboards
 
 All five ship as `dashboard.grafana.app/v2beta1` schema JSON; `metadata.name` is the uid (stable URL).

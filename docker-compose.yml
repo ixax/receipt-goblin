@@ -45,6 +45,11 @@ x-clickhouse-bootstrap-user: &clickhouse-bootstrap-user ${CLICKHOUSE_BOOTSTRAP_U
 x-clickhouse-bootstrap-password: &clickhouse-bootstrap-password ${CLICKHOUSE_BOOTSTRAP_PASSWORD:?set CLICKHOUSE_BOOTSTRAP_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 
 x-grafana-port: &grafana-port ${GRAFANA_PORT:-3000}
+# Shared secret between grafana and the grafana-renderer sidecar.
+# Unlike grafana's other GF_* settings it does not live in
+# services/grafana/config.yml: that file is committed, and Grafana refuses to
+# start in production mode while the renderer token is still the default.
+x-grafana-renderer-token: &grafana-renderer-token ${GRAFANA_RENDERER_TOKEN:?set GRAFANA_RENDERER_TOKEN, e.g. in a .env file next to docker-compose.yml}
 x-mcp-stats-port: &mcp-stats-port ${MCP_STATS_PORT:-8002}
 
 # Host root dir backup/restore scripts read/write ($BACKUP_DIR, default .backups - see README.md's "Backup & restore" section).
@@ -215,6 +220,7 @@ services:
       CLICKHOUSE_USER: *clickhouse-grafana-user
       CLICKHOUSE_PASSWORD: *clickhouse-grafana-password
       CLICKHOUSE_DATABASE: *clickhouse-database
+      GF_RENDERING_RENDERER_TOKEN: *grafana-renderer-token
     mem_limit: 1g
     restart: always
     labels:
@@ -230,6 +236,38 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
+    networks:
+      - receipt-goblin
+
+  grafana-renderer:
+    # Headless-Chromium sidecar that turns a panel into a PNG for Grafana's
+    # /render and /render/d-solo endpoints (used by the usage-coach skill and
+    # by any report/alert image).
+    # Grafana reaches it via services/grafana/config.yml's rendering_server_url.
+    # Internal-only: nothing outside this network talks to it, so no published
+    # port and no load-balancer route.
+    # No healthcheck of our own: the stock image bakes in its own HEALTHCHECK
+    # (`grafana-image-renderer healthcheck`), which compose inherits - the
+    # autoheal label below rides on that, so a wedged headless Chromium gets
+    # restarted like every other core service.
+    build: ./services/grafana-renderer
+    image: receipt-goblin-grafana-renderer:${GRAFANA_RENDERER_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
+    container_name: receipt-goblin-grafana-renderer
+    environment:
+      # One browser instance per concurrent render is the memory cost here -
+      # two at a time is plenty for report-generation traffic.
+      RENDERING_MODE: clustered
+      RENDERING_CLUSTERING_MODE: browser
+      RENDERING_CLUSTERING_MAX_CONCURRENCY: "2"
+      LOG_LEVEL: info
+      # Must match grafana's GF_RENDERING_RENDERER_TOKEN - the sidecar rejects
+      # render requests carrying any other token.
+      AUTH_TOKEN: *grafana-renderer-token
+    mem_limit: 1g
+    restart: always
+    labels:
+      - autoheal=true
+    logging: *default-logging
     networks:
       - receipt-goblin
 
