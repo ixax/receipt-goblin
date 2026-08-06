@@ -1,5 +1,5 @@
-"""Drains the raw StandardLoggingPayloads webhook (server.py) enqueues
-unmodified, calls build_event() on each one here (the CPU-bound parsing -
+"""Drains source-tagged usage payloads webhook (server.py) enqueues,
+dispatches each through its adapter here (the CPU-bound parsing -
 regex classification, message scanning, JSON work - kept off webhook's own
 request path on purpose), and writes the results into ClickHouse in
 batches via ingest_events_batch(), so ClickHouse sees a handful of large
@@ -26,8 +26,8 @@ from common.config.queue import (
     STALE_IDLE_MS,
     STREAM_KEY,
 )
+from common.ingest_adapters import LITELLM_STANDARD_ADAPTER, build_ingest_event
 from common.ingest_db import clickhouse_alive, get_client, ingest_events_batch
-from common.ingest_parsing import build_event
 from common.logging_config import create_logger
 from common.side_ingest import (
     _git_branch_row,
@@ -96,10 +96,8 @@ def _check_dependencies(redis_client: redis.Redis) -> None:
 
 
 def _decode_into(entries: list[tuple[str, dict]], message_ids: list[str], events: list[dict]) -> None:
-    """Turns each queued raw StandardLoggingPayload into a build_event()
-    dict - this is where the CPU-bound parsing webhook itself no longer
-    does happens.
-    One bad payload (malformed JSON, or an exception inside build_event())
+    """Turns each queued source payload into a normalized ingest event.
+    One bad payload (malformed JSON, or an adapter exception)
     only drops that item, same guarantee webhook's own per-payload
     try/except used to give when it called build_event() itself."""
     for message_id, fields in entries:
@@ -114,12 +112,15 @@ def _decode_into(entries: list[tuple[str, dict]], message_ids: list[str], events
             logger.exception("failed to decode queued payload (message_id=%s)", message_id)
             continue
         try:
-            events.append(build_event(payload))
+            adapter = fields.get("adapter") or LITELLM_STANDARD_ADAPTER
+            events.append(build_ingest_event(adapter, payload))
         except Exception:
             DECODE_FAILURES.inc()
             logger.exception(
-                "failed to build event from queued payload (message_id=%s litellm_call_id=%s)",
-                message_id, payload.get("litellm_call_id", "") if isinstance(payload, dict) else "",
+                "failed to build event from queued payload (message_id=%s call_id=%s adapter=%s)",
+                message_id,
+                (payload.get("litellm_call_id") or payload.get("event_id") or "") if isinstance(payload, dict) else "",
+                fields.get("adapter") or LITELLM_STANDARD_ADAPTER,
             )
 
 

@@ -7,15 +7,16 @@ in batches - see AGENTS.md.
 
 from common.config.litellm import LITELLM_BASE_URL, LITELLM_MASTER_KEY
 from common.ingest_db import clickhouse_alive
-from common.litellm_auth import virtual_key_is_valid
+from common.litellm_auth import team_alias, virtual_key_info, virtual_key_is_valid
 from common.logging_config import create_logger
+from common.usage_envelope import UsageEnvelopeError, normalize_usage_envelope
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel
 
 from .config import APP_VERSION
-from .queue import enqueue_raw, enqueue_side, get_async_redis
+from .queue import enqueue_raw, enqueue_side, enqueue_usage_events, get_async_redis
 
 logger = create_logger("webhook.server")
 
@@ -29,6 +30,7 @@ app = FastAPI(
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 bearer_scheme = HTTPBearer(auto_error=False)
+MAX_USAGE_EVENTS_PER_REQUEST = 100
 
 
 class HealthResponse(BaseModel):
@@ -64,6 +66,27 @@ _LITELLM_ALERT_EXAMPLE = {
     "budget_threshold": 100,
     "current_spend": 105,
 }
+_USAGE_EVENT_EXAMPLE = {
+    "schema_version": 1,
+    "source": "claude_desktop",
+    "event_id": "req_example",
+    "session_id": "session-example",
+    "timestamp": "2026-08-06T14:06:52Z",
+    "model": "claude-opus-5",
+    "client_version": "2.1.221",
+    "entrypoint": "claude-desktop",
+    "stop_reason": "end_turn",
+    "tool_name": "",
+    "agent_id": "",
+    "usage": {
+        "input_tokens": 2,
+        "output_tokens": 24,
+        "cache_creation_tokens": 39921,
+        "cache_read_tokens": 33693,
+        "cache_creation_1h_tokens": 39921,
+        "cache_creation_5m_tokens": 0,
+    },
+}
 
 
 def _example_request_body(example: dict) -> dict:
@@ -77,8 +100,40 @@ def _example_request_body(example: dict) -> dict:
     }
 
 
+def _usage_event_request_body() -> dict:
+    return {
+        "content": {
+            "application/json": {
+                "schema": {
+                    "oneOf": [
+                        {"type": "object"},
+                        {
+                            "type": "array",
+                            "items": {"type": "object"},
+                            "minItems": 1,
+                            "maxItems": MAX_USAGE_EVENTS_PER_REQUEST,
+                        },
+                    ]
+                },
+                "examples": {
+                    "single": {"value": _USAGE_EVENT_EXAMPLE},
+                    "batch": {"value": [_USAGE_EVENT_EXAMPLE]},
+                },
+            }
+        }
+    }
+
+
 def _virtual_key_is_valid(key: str) -> bool:
     return virtual_key_is_valid(key, LITELLM_BASE_URL, LITELLM_MASTER_KEY)
+
+
+def _virtual_key_info(key: str) -> dict | None:
+    return virtual_key_info(key, LITELLM_BASE_URL, LITELLM_MASTER_KEY)
+
+
+def _team_alias(team_id: str) -> str:
+    return team_alias(team_id, LITELLM_BASE_URL, LITELLM_MASTER_KEY)
 
 
 def require_virtual_key(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)) -> None:
@@ -87,6 +142,15 @@ def require_virtual_key(credentials: HTTPAuthorizationCredentials | None = Depen
     # HTTPBearer's default 403 "Not authenticated".
     if credentials is None or not _virtual_key_is_valid(credentials.credentials):
         raise HTTPException(status_code=401, detail="invalid or missing virtual key")
+
+
+def require_virtual_key_info(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> dict:
+    info = _virtual_key_info(credentials.credentials) if credentials is not None else None
+    if info is None:
+        raise HTTPException(status_code=401, detail="invalid or missing virtual key")
+    return info
 
 
 @app.get("/health", tags=["health"], summary="Liveness/readiness check", response_model=HealthResponse)
@@ -115,6 +179,51 @@ async def receive_metrics(request: Request):
     # entirely for the common case (a lone payload, not a bundled array).
     body = await request.body()
     await enqueue_raw(body)
+    return {"status": "queued"}
+
+
+@app.post(
+    "/api/v1/usage-events",
+    tags=["ingest"],
+    summary="Receive a source-neutral usage event",
+    response_model=AckResponse,
+    responses={
+        401: {"description": "invalid or missing virtual key"},
+        422: {"description": "invalid usage envelope"},
+    },
+    openapi_extra={"requestBody": _usage_event_request_body()},
+)
+async def receive_usage_event(request: Request, key_info: dict = Depends(require_virtual_key_info)):
+    try:
+        body = await request.json()
+        payloads = body if isinstance(body, list) else [body]
+        if not payloads or len(payloads) > MAX_USAGE_EVENTS_PER_REQUEST:
+            raise UsageEnvelopeError(
+                f"request must contain between 1 and {MAX_USAGE_EVENTS_PER_REQUEST} usage events"
+            )
+        group_id = key_info.get("team_id") or ""
+        identity = {
+            "user_id": key_info.get("user_id") or key_info.get("key_alias") or "unknown-user",
+            "user_name": key_info.get("key_alias") or "",
+            "group_id": group_id,
+            # /key/info returns team_id but no alias, so the Team's display
+            # name needs its own (cached) lookup - without it this path can
+            # only ever label a Team by its uuid.
+            "group_name": _team_alias(group_id),
+        }
+        envelopes = []
+        for index, payload in enumerate(payloads):
+            try:
+                envelopes.append(normalize_usage_envelope(payload, identity=identity))
+            except UsageEnvelopeError as exc:
+                raise UsageEnvelopeError(f"events[{index}]: {exc}") from exc
+    except (UsageEnvelopeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        await enqueue_usage_events(envelopes)
+    except Exception as exc:
+        logger.exception("failed to enqueue direct usage batch (event_count=%d)", len(envelopes))
+        raise HTTPException(status_code=503, detail="usage queue unavailable") from exc
     return {"status": "queued"}
 
 

@@ -1,8 +1,7 @@
-"""Redis Streams producer side - webhook (server.py) XADDs each raw
-StandardLoggingPayload completely unmodified onto the stream worker.py
-drains - no parsing, no build_event() - so webhook's own request path
-stays cheap (I/O only); webhook-worker calls build_event() itself when it
-drains the stream, then does the actual ClickHouse inserts in batches.
+"""Redis Streams producer side - webhook XADDs source-tagged payloads onto
+the stream worker.py drains. LiteLLM payloads stay raw; compact direct-usage
+envelopes are validated before they reach this module. The worker selects the
+adapter and writes ClickHouse batches.
 Split out of common/queue_client.py - see
 plans/common-module-cleanup-refactor.md.
 """
@@ -87,6 +86,35 @@ async def enqueue_raw(body: bytes) -> None:
         logger.exception("failed to decode bundled payload array")
         return
     await enqueue(parsed if isinstance(parsed, list) else [parsed])
+
+
+async def enqueue_usage_event(payload: dict) -> None:
+    """Compatibility wrapper for callers that have one usage event."""
+    await enqueue_usage_events([payload])
+
+
+async def enqueue_usage_events(payloads: list[dict]) -> None:
+    """Pipelines one validated UsageEnvelopeV1 batch and propagates failure.
+
+    Unlike LiteLLM's callback endpoint, the direct collector has a durable
+    SQLite outbox. A Redis failure must reach it as a non-2xx response so it
+    can retain and retry the batch.
+    """
+    if not payloads:
+        return
+    client = get_async_redis()
+    pipeline = client.pipeline(transaction=False)
+    for payload in payloads:
+        pipeline.xadd(
+            STREAM_KEY,
+            {
+                "adapter": "claude_transcript",
+                "event": json.dumps(payload, default=str),
+            },
+            maxlen=MAXLEN,
+            approximate=True,
+        )
+    await pipeline.execute()
 
 
 async def enqueue_side(kind: str, payload: dict) -> None:
