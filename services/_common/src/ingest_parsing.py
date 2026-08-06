@@ -87,6 +87,17 @@ _TOOL_ARG_KEY_PREFERENCE = ("file_path", "command", "sql", "url", "query", "desc
 # ingest instead of duplicated across ~30 Grafana panels.
 _PROVIDER_OPENAI_RE = re.compile(r"^(gpt-|chatgpt-|o[0-9]|text-embedding-|dall-e-|whisper|tts-)")
 
+# billing_mode classification for agent_usage.billing_mode, same ingest-time-not-per-panel reasoning as the provider regex above.
+#
+# These are the models services/litellm/config.yaml declares with no api_key, reaching the provider through the caller's own OAuth token instead.
+# claude-* goes against a `claude login` Pro/Max/Team subscription, gpt-5.6-* through litellm's `chatgpt` provider against a ChatGPT subscription.
+# Both bill a flat monthly fee, so their per-token cost is notional - see that file's "cost proxy, not an actual charge" comment.
+#
+# Hardcoded rather than read from config: this module has no access to litellm's config at ingest time, and the set changes only when a model entry is added there.
+# Adding a model with a real api_key means leaving it OUT of this tuple.
+# 'api' is the default, so forgetting to update this reports a subscription-billed model as real spend - it overstates cost rather than hiding it.
+_SUBSCRIPTION_MODEL_PREFIXES = ("claude-", "gpt-5.6-")
+
 
 def _to_dt(epoch_seconds: Optional[float]) -> datetime:
     if not epoch_seconds:
@@ -643,6 +654,16 @@ def _provider_for_model(model: str) -> str:
     return "other"
 
 
+def _billing_mode_for_model(model: str) -> str:
+    """'subscription' when this model's traffic rides a flat-billed plan and its per-token cost is therefore notional, else 'api'.
+
+    See _SUBSCRIPTION_MODEL_PREFIXES for what belongs in the first group and why 'api' is the safer default.
+    """
+    if model.startswith(_SUBSCRIPTION_MODEL_PREFIXES):
+        return "subscription"
+    return "api"
+
+
 def _collapse_whitespace(text: str) -> str:
     text = _WHITESPACE_COLLAPSE_RE.sub(" ", text)
     return _BLANK_LINES_COLLAPSE_RE.sub("\n", text)
@@ -974,7 +995,7 @@ _USAGE_COLUMNS = [
     "cache_creation_1h_tokens", "cache_creation_5m_tokens",
     "cost", "input_cost", "output_cost", "cache_hit", "ttft_ms",
     "litellm_call_id", "client_id", "client_product", "client_surface", "ingest_path",
-    "provider", "ingested_at",
+    "provider", "billing_mode", "ingested_at",
 ]
 _MESSAGE_COLUMNS = [
     "timestamp", "user_id", "group_id", "user_key_hash", "session_id", "trace_id", "turn_id",
@@ -1266,6 +1287,7 @@ def _usage_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
         attribution.surface,
         attribution.ingest_path,
         _provider_for_model(model),
+        _billing_mode_for_model(model),
         now or datetime.now(timezone.utc),
     ]
 

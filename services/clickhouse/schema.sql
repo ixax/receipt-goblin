@@ -146,6 +146,128 @@ CREATE TABLE IF NOT EXISTS ai_gateway_users
 ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (user_id);
 
+-- user_id -> person_id. Config-owned: written only by `make subscriptions`
+-- (services/init/load_subscriptions.py, reading services/init/subscriptions.yml),
+-- never by ingest.
+--
+-- Exists because agent_usage.user_id is a LiteLLM *key* identity, not a
+-- human: one person running Claude Code on a laptop and a desktop holds two
+-- virtual keys, hence two user_ids, but pays one subscription. Billing has
+-- to attach to the payer, so subscriptions below key on person_id and this
+-- table is what gets a usage row there.
+--
+-- Deliberately NOT a person_id column on ai_gateway_users: that table is
+-- ingest-owned (rewritten from LiteLLM metadata on every call - see
+-- services/_common/src/ingest_db.py's _insert_ai_gateway_users), and ingest has no
+-- notion of a person, so under ReplacingMergeTree(updated_at) the next call
+-- would overwrite a config-written person_id straight back to ''.
+--
+-- A user_id absent from this table has no subscription attributed to it -
+-- panels resolve through person_identities_dict and fall back to the raw
+-- user_id, so unmapped keys still show usage, just with no fee beside it.
+CREATE TABLE IF NOT EXISTS person_identities
+(
+    user_id    LowCardinality(String),
+    person_id  LowCardinality(String),
+    updated_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (user_id);
+
+-- What is actually paid, per person per provider, over a validity interval.
+-- Config-owned, same as person_identities above.
+--
+-- This is the counterpart to agent_usage.cost, not a replacement for it.
+-- agent_usage.cost is LiteLLM's response_cost: public per-token rates for a
+-- single call. But claude-* and gpt-5.6-* both ride OAuth passthrough
+-- against the caller's own flat-billed subscription (see
+-- services/litellm/config.yaml's "cost proxy, not an actual charge"), so
+-- that column is what the traffic *would* have cost on the API. The real
+-- charge is this: a flat monthly fee, a per-period fact at a completely
+-- different grain. Keeping them in separate tables is what stops one from
+-- being silently summed into the other.
+--
+-- SCD-2 (valid_from/valid_to) rather than a single current price: plans get
+-- upgraded and prices change, and storing only the current one would
+-- retroactively recompute every historical panel at the new price.
+--
+-- Invariant, enforced by the loader at apply time rather than by any query:
+-- at most one subscription is active per (person_id, provider, day).
+-- Overlapping intervals - or a Team plan recorded alongside the personal
+-- plans of its members - would double-count the fee, and no dashboard query
+-- can detect that after the fact.
+CREATE TABLE IF NOT EXISTS subscriptions
+(
+    person_id     LowCardinality(String),
+    -- Same domain as agent_usage.provider ('claude'/'openai'/'other') so a
+    -- panel can put spend and token usage side by side with no mapping
+    -- table in between.
+    provider      LowCardinality(String),
+    plan          LowCardinality(String),
+    -- Decimal, not Float64 like agent_usage's cost columns: this is a
+    -- declared price copied off an invoice and should round-trip exactly.
+    -- subscription_cost_daily casts it to Float64 on the way out, where it
+    -- only ever meets already-float notional costs anyway.
+    monthly_price Decimal(12, 2),
+    currency      LowCardinality(String) DEFAULT 'USD',
+    seats         UInt16 DEFAULT 1,
+    valid_from    Date,
+    valid_to      Date DEFAULT toDate('2099-12-31'),
+    updated_at    DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (person_id, provider, valid_from);
+
+-- One row per (subscription, day), holding that day's share of the monthly
+-- fee. The query surface every spend panel reads - none of them touch
+-- `subscriptions` directly.
+--
+-- Why a daily expansion at all: a Grafana time range essentially never
+-- lines up with a billing month, so a monthly fee has to be prorated to be
+-- comparable with per-call costs over the same window. Doing it once, here,
+-- makes every panel a plain SUM(cost) WHERE day BETWEEN ... - additive,
+-- and identical across panels. Doing it per panel is the same mistake the
+-- provider classifier was moved into ingest to undo (see agent_usage.provider
+-- below). A day is the finest honest unit: a flat monthly fee has no
+-- intra-day structure to recover.
+--
+-- The inner GROUP BY/argMax is the standard dedupe for reading a
+-- ReplacingMergeTree without FINAL (same idiom as the dictionaries in
+-- services/migrate/src/migrate.py): re-running `make subscriptions` inserts a fresh
+-- row per subscription rather than mutating one, and only the newest
+-- updated_at should win.
+--
+-- least(valid_to, today()) clamps open-ended subscriptions (valid_to
+-- defaults to 2099) - no fee has been charged for days that have not
+-- happened yet. greatest(..., -1) + 1 makes a fully future-dated
+-- subscription expand to zero rows instead of failing on range() of a
+-- negative number.
+CREATE VIEW IF NOT EXISTS subscription_cost_daily AS
+WITH latest AS
+(
+    SELECT
+        person_id,
+        provider,
+        valid_from,
+        argMax(plan, updated_at)          AS plan,
+        argMax(monthly_price, updated_at) AS monthly_price,
+        argMax(currency, updated_at)      AS currency,
+        argMax(seats, updated_at)         AS seats,
+        argMax(valid_to, updated_at)      AS valid_to
+    FROM subscriptions
+    GROUP BY person_id, provider, valid_from
+)
+SELECT
+    person_id,
+    provider,
+    plan,
+    currency,
+    valid_from + toIntervalDay(day_offset) AS day,
+    toFloat64(monthly_price) * seats
+        / toDayOfMonth(toLastDayOfMonth(valid_from + toIntervalDay(day_offset))) AS cost
+FROM latest
+ARRAY JOIN range(toUInt32(greatest(toInt64(dateDiff('day', valid_from, least(valid_to, today()))), -1) + 1)) AS day_offset;
+
 -- One row per distinct calling-client user-agent string (e.g.
 -- "claude-cli/2.1.207 (external, cli)", "codex-tui/0.145.0 (...)").
 -- id = cityHash64(value), computed exclusively by ClickHouse (never by the
@@ -355,6 +477,20 @@ CREATE TABLE IF NOT EXISTS agent_usage
     -- same 3-way regex that used to be duplicated across ~30 dashboard
     -- panels) - see services/_common/src/ingest_parsing.py's provider classifier.
     provider             LowCardinality(String) DEFAULT '',
+    -- How this call was actually billed: 'subscription' (the cost columns
+    -- below are notional - what the traffic would have cost on the API,
+    -- while the real charge is the flat fee in `subscriptions`) or 'api'
+    -- (the cost columns are money that was really spent). Classified from
+    -- `model` at ingest time, beside provider above.
+    --
+    -- Every row is 'subscription' as of this writing, which is the reason
+    -- to carry the column rather than a reason to skip it: as soon as one
+    -- model is configured with a real API key, notional and real costs
+    -- would otherwise land in the same column with nothing distinguishing
+    -- them, and every total mixing the two would be meaningless.
+    -- 'unknown' is what rows ingested before this column existed keep until
+    -- a `make reparse-all` rewrites them.
+    billing_mode         LowCardinality(String) DEFAULT 'unknown',
     agent_name           LowCardinality(String),
     agent_version        LowCardinality(String),
     skill_name           LowCardinality(String),
@@ -393,6 +529,7 @@ CREATE TABLE IF NOT EXISTS agent_usage
     INDEX idx_user_id user_id TYPE set(1000) GRANULARITY 4,
     INDEX idx_group_id group_id TYPE set(100) GRANULARITY 4,
     INDEX idx_provider provider TYPE set(10) GRANULARITY 4,
+    INDEX idx_billing_mode billing_mode TYPE set(10) GRANULARITY 4,
     INDEX idx_client_id client_id TYPE set(50) GRANULARITY 4,
     INDEX idx_client_product client_product TYPE set(10) GRANULARITY 4,
     INDEX idx_client_surface client_surface TYPE set(10) GRANULARITY 4,
