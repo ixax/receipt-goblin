@@ -730,6 +730,9 @@ def test_event_row_success_reports_status_and_latency():
     assert values["latency_ms"] is not None and values["latency_ms"] >= 0
     assert values["calculated_type"] == "title_gen"  # prompt starts with "<session>"
     assert values["group_id"] == "206ec527-2402-4c8b-b5b5-8bd65b8bca0f"  # capture's user_api_key_team_id
+    assert values["client_product"] == "claude"
+    assert values["client_surface"] == "cli"
+    assert values["ingest_path"] == "litellm_proxy"
 
 
 def test_event_row_unsuccess_failure_payload_has_no_tool_name_or_latency():
@@ -752,6 +755,9 @@ def test_usage_row_success_extracts_token_counts():
     assert values["input_tokens"] == 723
     assert values["output_tokens"] == 16
     assert values["group_id"] == "206ec527-2402-4c8b-b5b5-8bd65b8bca0f"
+    assert values["client_product"] == "claude"
+    assert values["client_surface"] == "cli"
+    assert values["ingest_path"] == "litellm_proxy"
 
 
 def test_usage_row_unsuccess_no_billable_tokens_returns_none():

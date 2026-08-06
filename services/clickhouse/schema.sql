@@ -239,6 +239,9 @@ CREATE TABLE IF NOT EXISTS agent_events
     -- table above. 0 when no metadata.user_agent was present on the
     -- payload. See services/_common/src/ingest_db.py:_resolve_client_id.
     event_client_id   UInt64 DEFAULT 0,
+    client_product    LowCardinality(String) DEFAULT 'unknown',
+    client_surface    LowCardinality(String) DEFAULT 'unknown',
+    ingest_path       LowCardinality(String) DEFAULT 'unknown',
     event_type        LowCardinality(String),
     tool_name         LowCardinality(String),
     agent_name        LowCardinality(String),
@@ -306,7 +309,10 @@ CREATE TABLE IF NOT EXISTS agent_events
     INDEX idx_group_id group_id TYPE set(100) GRANULARITY 4,
     INDEX idx_failed_tool_name failed_tool_name TYPE set(1000) GRANULARITY 4,
     INDEX idx_calculated_type calculated_type TYPE set(100) GRANULARITY 4,
-    INDEX idx_event_client_id event_client_id TYPE set(50) GRANULARITY 4
+    INDEX idx_event_client_id event_client_id TYPE set(50) GRANULARITY 4,
+    INDEX idx_client_product client_product TYPE set(10) GRANULARITY 4,
+    INDEX idx_client_surface client_surface TYPE set(10) GRANULARITY 4,
+    INDEX idx_ingest_path ingest_path TYPE set(10) GRANULARITY 4
 )
 ENGINE = ReplacingMergeTree(ingested_at)
 PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
@@ -338,6 +344,12 @@ CREATE TABLE IF NOT EXISTS agent_usage
     trace_id             String,
     turn_id              UInt32,
     litellm_call_id      String DEFAULT '',
+    -- Exact calling-client/version id resolved through the shared clients
+    -- dimension. Stored on usage so token panels never need an event join.
+    client_id            UInt64 DEFAULT 0,
+    client_product       LowCardinality(String) DEFAULT 'unknown',
+    client_surface       LowCardinality(String) DEFAULT 'unknown',
+    ingest_path          LowCardinality(String) DEFAULT 'unknown',
     model                LowCardinality(String),
     -- claude/openai/other, classified once from `model` at ingest time (the
     -- same 3-way regex that used to be duplicated across ~30 dashboard
@@ -380,7 +392,11 @@ CREATE TABLE IF NOT EXISTS agent_usage
     INDEX idx_mcp_tool_name mcp_tool_name TYPE set(1000) GRANULARITY 4,
     INDEX idx_user_id user_id TYPE set(1000) GRANULARITY 4,
     INDEX idx_group_id group_id TYPE set(100) GRANULARITY 4,
-    INDEX idx_provider provider TYPE set(10) GRANULARITY 4
+    INDEX idx_provider provider TYPE set(10) GRANULARITY 4,
+    INDEX idx_client_id client_id TYPE set(50) GRANULARITY 4,
+    INDEX idx_client_product client_product TYPE set(10) GRANULARITY 4,
+    INDEX idx_client_surface client_surface TYPE set(10) GRANULARITY 4,
+    INDEX idx_ingest_path ingest_path TYPE set(10) GRANULARITY 4
 )
 ENGINE = ReplacingMergeTree(ingested_at)
 PARTITION BY concat(toString(toYear(timestamp)), '-H', toString(intDiv(toMonth(timestamp) - 1, 6) + 1))
