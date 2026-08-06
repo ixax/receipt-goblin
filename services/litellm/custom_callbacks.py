@@ -74,6 +74,15 @@ def _chatgpt_account_id(token: str) -> Optional[str]:
     return claims.get("https://api.openai.com/auth", {}).get("chatgpt_account_id")
 
 
+def _header_value(headers: Any, name: str) -> Optional[str]:
+    if not hasattr(headers, "items"):
+        return None
+    for key, value in headers.items():
+        if isinstance(key, str) and key.casefold() == name.casefold() and isinstance(value, str):
+            return value
+    return None
+
+
 _original_is_anthropic_oauth_key = _anthropic_common_utils.is_anthropic_oauth_key
 
 
@@ -109,8 +118,16 @@ class ChatGPTAuthForwardHandler(CustomLogger):
             "responses",
         ],
     ) -> Optional[dict]:
-        headers = (data.get("proxy_server_request") or {}).get("headers") or {}
-        auth_header = headers.get("authorization")
+        # Current LiteLLM deliberately redacts Authorization in
+        # proxy_server_request before callbacks run. The unmodified request
+        # headers remain in secret_fields specifically for auth forwarding;
+        # keep the old location as a compatibility fallback.
+        raw_headers = (data.get("secret_fields") or {}).get("raw_headers") or {}
+        proxy_headers = (data.get("proxy_server_request") or {}).get("headers") or {}
+        auth_header = _header_value(raw_headers, "authorization") or _header_value(
+            proxy_headers,
+            "authorization",
+        )
         if not auth_header:
             return data
         token = auth_header.removeprefix("Bearer ").strip()

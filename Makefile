@@ -308,7 +308,7 @@ observability-status: check-env
 # (`python3.11 -m pytest -c pytest.ini services/mcp-dev/tests`) until the
 # shared `.venv` is upgraded.
 test-services: check-env
-	@for svc in webhook worker reparse loadtest _common; do \
+	@for svc in webhook worker reparse loadtest litellm _common; do \
 	  out=$$(uv run pytest -c pytest.ini services/$$svc/tests 2>&1); code=$$?; \
 	  if [ $$code -ne 0 ]; then echo "$$out"; exit $$code; fi; \
 	  summary=$$(echo "$$out" | grep -E 'passed|failed' | tail -n 1); \

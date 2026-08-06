@@ -79,3 +79,10 @@ Symptom: during a `make loadtest` run (2026-08-04) interrupted and resumed sever
 Cause: verifying `webhook-1`/`webhook-2`/`worker` had switched to/from the isolated `loadtest` DB role included raw `docker inspect`/env-var output verbatim instead of a redacted form.
 Fix: env-var verification in agent output/reports checks presence/non-emptiness or a redacted form, never the literal value - `AGENTS.md`'s "Boundaries & safety" secrets rule, added the same day partly from this incident.
 Note: local-dev credential, not a real prod secret - user confirmed rotation isn't needed.
+
+## LiteLLM Codex OAuth passthrough read a redacted header
+
+Symptom: proxied Codex returned 401 followed by a local 429 (`exceeded retry limit`) despite having no deployments, while direct Codex succeeded.
+Cause: `ChatGPTAuthForwardHandler` read the redacted `proxy_server_request` Authorization header, while current LiteLLM keeps the raw header in `secret_fields.raw_headers`.
+Fix: read the raw Authorization header case-insensitively from `secret_fields.raw_headers`, with the redacted location retained as a compatibility fallback.
+Rule: OAuth tokens must never be logged.
