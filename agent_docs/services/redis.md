@@ -1,6 +1,15 @@
 # `redis`
 
-Queue between `webhook` (producer) and `webhook-worker` (consumer) - see `agent_docs/services/common.md`'s "Why a queue in front of ClickHouse".
+Queue between `webhook` (producer) and `webhook-worker` (consumer) for both LiteLLM callbacks and direct Claude usage envelopes - see `agent_docs/services/common.md`'s "Why a queue in front of ClickHouse".
+
+LiteLLM entries contain the original callback body and default to the `litellm_standard` worker adapter.
+Direct entries contain a compact normalized envelope plus `adapter=claude_transcript`.
+The host collector sends direct history in bounded HTTP batches with a maximum event rate so a backfill does not immediately crowd live events out of the bounded stream.
+
+Redis is the handoff point for the collector's at-least-once delivery.
+The webhook returns a non-2xx response when a direct batch cannot be enqueued, so the collector keeps it in SQLite and retries.
+A partially accepted retry can create duplicate Redis entries.
+ClickHouse dedupes their downstream rows by transcript `requestId`/`litellm_call_id` after merge.
 
 ## `redis.conf`
 

@@ -5,18 +5,21 @@
 Memory: 8 GiB.
 CPU: 4.
 
-Local stack for tracking cost and efficiency of AI coding agents (Claude Code and Codex CLI), with full call-chain tracing - agent, skill, and MCP tool usage are all tracked, not just top-level agent activity.
+Local stack for tracking cost and efficiency of AI coding agents across Codex CLI/Desktop, Claude Code, Claude Desktop, and Claude Remote Control.
+Proxied calls keep full call-chain attribution, while direct Claude clients contribute privacy-minimal usage metadata without routing their traffic through LiteLLM.
 
 ## Overview
 
 ### How data flows
 
-1. Every LLM call from the CLI (Claude Code or Codex) is routed through a local LiteLLM proxy on `:4000` instead of hitting Anthropic/OpenAI directly.
-2. LiteLLM's `generic_api` callback POSTs the full `StandardLoggingPayload` for each call to `webhook` on `:8010`.
-3. `webhook` pushes the raw body onto a `redis` queue completely unmodified - no parsing, no ClickHouse access, request-path work is I/O only.
-4. `webhook-worker` drains that queue in batches, computes a compact event per payload (agent/skill invocations recovered from the payload itself, not from a CLI-side hook) and is the only thing that actually writes to ClickHouse on `:8123` for this traffic - a few large inserts instead of one per request, so ClickHouse isn't hit directly by request volume.
-5. Grafana on `:3000` queries ClickHouse directly for every panel; there's no caching layer, so a dashboard refresh always reflects current table state.
-6. Reads go the other way: `webhook`/`webhook-worker` are write-only, so a CLI session reads data back out via one of two MCP servers registered in `.mcp.json` - `mcp-dev` on `:8001` (dev-only, arbitrary read-only SQL) and `mcp-stats` on `:8002` (prod, e.g. `/me` in Claude Code, requires a LiteLLM virtual key).
+1. Codex CLI/Desktop and normal local Claude Code calls route through LiteLLM on `:4000`.
+2. LiteLLM's `generic_api` callback POSTs each full `StandardLoggingPayload` to `webhook` on `:8010`.
+3. Claude Desktop and Claude Remote Control stay connected directly to Anthropic so application auth and Remote Control keep working.
+4. Global Claude hooks read only token counts and call metadata from JSONL transcripts, store them in a durable SQLite outbox, and POST authenticated `UsageEnvelopeV1` batches to `/api/v1/usage-events`.
+5. `webhook` validates direct envelopes, adds the LiteLLM virtual key's user/team identity, and pushes both source types onto the same `redis` queue.
+6. `webhook-worker` selects the source adapter, builds the common event rows, and is the only service that writes these calls to ClickHouse on `:8123`.
+7. Grafana on `:3000` queries ClickHouse directly, so one dashboard covers both proxy and direct sources.
+8. Reads go the other way through `mcp-dev` on `:8001` or authenticated `mcp-stats` on `:8002`.
 
 ### Services at a glance
 
@@ -203,7 +206,10 @@ There's nothing to do in the UI for your first key - just route a client through
 Want an additional, narrower key instead - e.g. scoped to specific models, or for a teammate?
 That's still a manual `/ui` job: **Teams** (http://localhost:4000/ui/teams) → **Create New Team** (or reuse the existing one) → **Keys** → **Create New Key** → restrict `Models` as needed → copy the generated `sk-...` key.
 
-To confirm the proxy is actually seeing traffic: **Usage** (http://localhost:4000/ui/usage) for per-key/per-model spend and request counts, **Logs** (http://localhost:4000/ui/logs) for individual request/response payloads.
+On a machine that runs Claude Desktop or Claude Remote Control, additionally install the privacy-minimal transcript hooks with `python3 scripts/claude_usage_collector.py install`, and restart Claude Desktop after installing or changing its global hooks.
+
+To confirm proxied traffic, use LiteLLM **Usage** (http://localhost:4000/ui/usage) and **Logs** (http://localhost:4000/ui/logs).
+To confirm both proxy and direct traffic, use Grafana at http://localhost:3000.
 
 ### Build or start a single service
 
@@ -282,14 +288,15 @@ The script runs as the bootstrap superuser (see "Configuration" under "Reference
 
 Calls the `mcp-stats` MCP server (`mcp__stats__me`, see `.mcp.json`) and reports cost/tokens for the current session plus the last 30 days, and the 5 most expensive operations in this session - no need to open Grafana for a quick check.
 
-Grafana is the source of truth when comparing client sources (Codex CLI/Desktop, Claude Code) side by side.
+Grafana is the source of truth when comparing Codex, normal Claude Code, Claude Desktop, and Remote Control together.
+Direct Claude rows use API-equivalent cost estimates from LiteLLM's live model cost map, not the actual charge or subscription value of Claude Max.
 
 Open **Agents Overview** -> **Usage** -> **Clients** to compare normalized sources.
 The tab shows usage totals by `client_product`/`client_surface`/`ingest_path`, token trends over time, exact client versions, and the current unknown-attribution rate.
 The `Client product`, `Client surface`, and `Ingest path` variables filter the dashboard's token and cost panels without joining `agent_events` or parsing user-agent strings in Grafana.
 
-Current source values include `codex/cli`, `codex/desktop`, and `claude/cli`.
-`make reparse-all` can backfill attribution when the stored payload contains enough source metadata.
+Current source values include `codex/cli`, `codex/desktop`, `claude/cli`, `claude/desktop`, and `claude/remote_control`.
+`make reparse-all` can backfill attribution when the stored payload or direct envelope contains enough source metadata.
 Old Codex rows that only contain the ambiguous `codex_cli_rs/*` user-agent remain `codex/unknown` unless an originator was stored.
 
 ### Stop the stack
@@ -454,7 +461,8 @@ While a run is in flight, watch:
 | `webhook`/`grafana` stuck in `Created`, never start                                                                                                                                                                                                  | Their `depends_on: condition: service_healthy` is blocking on the `clickhouse` healthcheck (`webhook`/`webhook-worker` also wait on `redis`). Run `docker compose ps` - if `clickhouse` shows `unhealthy`, check `docker inspect receipt-goblin-clickhouse --format '{{json .State.Health}}'` for the actual healthcheck error, and confirm ClickHouse itself is fine with `docker exec receipt-goblin-clickhouse clickhouse-client --user "$CLICKHOUSE_BOOTSTRAP_USER" --password "$CLICKHOUSE_BOOTSTRAP_PASSWORD" --query "SELECT 1"` (the `default` user doesn't exist - see "Configuration" under "Reference" below). The image ships `wget`, not `curl` - the healthcheck uses `wget --spider`. |
 | `webhook` can't reach ClickHouse (once running)                                                                                                                                                                                                      | `webhook` itself doesn't talk to ClickHouse for `/api/v1/metrics` anymore (see "How data flows" above) - check `docker compose logs redis` / `docker compose logs webhook-worker` for the actual connection error instead. `webhook`'s `/health` route still runs `SELECT 1` against ClickHouse plus a Redis `PING` and reports whichever exception hit first.                                                                                                                                                                                                                                                                                                                                       |
 | `/me` fails or times out                                                                                                                                                                                                                        | Confirm `mcp-stats` is `healthy`/running (`docker compose ps`), reachable at `http://localhost:8002/mcp`, and that your `LITELLM_VIRTUAL_KEY` is set/not blocked/expired (401 means the auth check failed - see "MCP servers" under "Reference" below); check `docker compose logs mcp-stats`. Claude Code only picks up `.mcp.json` changes on the next session start.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| No rows landing in ClickHouse at all                                                                                                                                                                                                                 | Confirm the CLI is actually routed through LiteLLM (`ANTHROPIC_BASE_URL`/`ANTHROPIC_CUSTOM_HEADERS` set, see "Routing Claude Code through it" below), then check `docker compose logs litellm` for callback errors, `docker compose logs webhook` for enqueue exceptions, and `docker compose logs webhook-worker` for batch-insert exceptions - `ingest_events_batch` never raises out of the worker loop, it only logs, so a parsing bug shows up as a log line, not a stuck consumer. Also check `redis-cli -h localhost XLEN webhook:events` - a growing, never-draining backlog points at `webhook-worker` being stuck rather than `webhook` failing to enqueue.                                |
+| No proxied rows landing in ClickHouse                                                                                                                                                                                                               | Confirm the CLI is routed through LiteLLM, then check `docker compose logs litellm`, `docker compose logs webhook`, and `docker compose logs webhook-worker`. Also check `redis-cli -h localhost XLEN webhook:events`; a growing backlog means the worker has fallen behind.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| No Claude Desktop or Remote Control rows landing                                                                                                                                                                                                    | Confirm the collector hooks are installed in `~/.claude/settings.json`, restart Claude Desktop after hook changes, and inspect the collector log/outbox under the platform state directory (`%LOCALAPPDATA%\receipt-goblin` on Windows). A `401` means the virtual key is missing/invalid; `503` leaves the batch in SQLite for retry. Normal proxied Claude CLI transcripts are ignored deliberately to avoid duplicate rows.                                                                                                                                                                                                                                                                            |
 | Dashboard edits stop saving after a Grafana upgrade                                                                                                                                                                                                  | Grafana 13.1.0 (bumped from 11.2.0 for tabs support - see "Dynamic dashboards" below) had a known OSS 12.4.0 bug where "Dynamic Dashboards" broke *provisioned* dashboards on save ([grafana/grafana#119450](https://github.com/grafana/grafana/issues/119450)) - our exact setup (`type: file` provider, `allowUiUpdates: true` in `services/grafana/provisioning/dashboards/dashboard.yml`). Unconfirmed whether 13.1.0 still has it; if UI edits silently fail to persist, that's the first thing to check.                                                                                                                                                                                       |
 | Grafana stops responding after a few clicks/panel loads (no crash in browser)                                                                                                                                                                        | Check `docker inspect receipt-goblin-grafana --format '{{.State.OOMKilled}} {{.State.ExitCode}}'` - Grafana 13.1.0 is meaningfully heavier than 11.2.0 (alerting scheduler, zanzana authz, bleve search indexing, app registry, background plugin auto-updater) and can hit `mem_limit: 512m` within a couple of dashboard interactions (`OOMKilled=true`, exit 137). There's a `restart: always` policy, so an OOM-killed container comes back on its own - raise `grafana`'s `mem_limit` in `docker-compose.yml` if it recurs.                                                                                                                                                                     |
 | No `agent_name`/`skill_name` on events                                                                                                                                                                                                               | Recovered from the LiteLLM payload itself, not a CLI-side hook - see `_agent_invocations_from_messages`/`_skill_name_from_last_turn` in `services/_common/src/ingest_parsing.py`. A subagent's own rows only resolve `agent_name` once the orchestrator's `Agent` tool_use/tool_result pair has itself been ingested and upserted into `agent_invocations` - a subagent call that reaches `webhook` before that happens will have `agent_invocation_id` set but blank `agent_name`.                                                                                                                                                                                                                      |
@@ -567,8 +575,8 @@ Most are covered in more depth elsewhere in this README - follow the section poi
 | `OPENAI_PROXY_PORT`                              | `4002`                                                           | host port mapping for the OpenAI-wire litellm-with-fallback proxy (also serves Codex, which talks the same `responses` wire format) - proxies straight to litellm, falls over to `api.openai.com` if litellm doesn't respond. Auth headers are NOT translated - only a real OpenAI `Authorization: Bearer` request authenticates once fallen back. see `agent_docs/services/load-balancer.md`                                                                              |
 | `OPENAI_PROXY_URI`                               | `http://localhost:$OPENAI_PROXY_PORT`                            | `Makefile` only - same override pattern, for `make setup-client`'s `OPENAI_API_BASE`/Codex `base_url` output                                                                                                                                                                                                                                                                                                                                                         |
 | **Git branch reporting hook**                    |                                                                  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `AGENT_CLI_TRACKING_API_URL`                     | required                                                         | `hooks/report_git_branch.py` - not a `docker-compose.yml`/`.env` variable, exported into your shell instead (see `make setup-client` and "Git branch/repo" below). No fallback: if unset, the hook crashes (`KeyError`, non-zero exit) instead of guessing a URL.                                                                                                                                                                                                    |
-| `LITELLM_VIRTUAL_KEY`                            | required                                                         | `hooks/report_git_branch.py` - personal virtual key (auto-provisioned by `make init`, see `make setup-client`), sent as `Authorization: Bearer` on every git-branch report; webhook verifies it against LiteLLM's own `/key/info` before accepting the report. No fallback: hook crashes if unset, same as `AGENT_CLI_TRACKING_API_URL`.                                                                                                                             |
+| `AGENT_CLI_TRACKING_API_URL`                     | required                                                         | Host-side hooks and the direct Claude usage collector - target for authenticated metadata POSTs. `make setup-client` prints the value; the collector defaults to `http://localhost:8010`.                                                                                                                                                                                                                                                                     |
+| `LITELLM_VIRTUAL_KEY`                            | required                                                         | Personal virtual key (auto-provisioned by `make init`) used by session hooks, `mcp-stats`, and direct Claude usage batches. `webhook` verifies it through LiteLLM's `/key/info` and derives the stored user/team identity from that response.                                                                                                                                                                                                                  |
 | **Observability**                                |                                                                  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `PROMETHEUS_PORT`                                | `9090`                                                           | host port mapping for prometheus's own web UI (`/graph`, `/targets`) - opt-in `observability` profile, see "Observability" below.                                                                                                                                                                                                                                                                                                                                    |
 | `PROMETHEUS_ARCHIVE_AFTER_DAYS`                  | `14`                                                              | prometheus (`archive_old_blocks.sh`) - TSDB blocks older than this get tarred into `$BACKUP_DIR/prometheus`, see "Metric/log retention"                                                                                                                                                                                                                                                                                                                              |
@@ -620,10 +628,10 @@ Each service also has a `mem_limit`: `clickhouse` 2g (paired with `services/clic
 | `ai_gateway_groups`  | One row per LiteLLM Team - `group_id` -> current `group_name` lookup, so a renamed team doesn't require rewriting historical fact rows. Read by dashboard panels through `ai_gateway_groups_dict`, not a JOIN.                                                                                                                                                                        |
 | `ai_gateway_users`   | One row per LiteLLM internal user - `user_id` -> (`group_id`, `user_name`) lookup, the stable identity `agent_events`/`agent_usage`/`agent_messages.user_id` used to duplicate before this table existed. Read through `ai_gateway_users_dict`, not a JOIN.                                                                                                                           |
 | `clients`            | One row per distinct calling-client user-agent string (e.g. `claude-cli/2.1.207`, `codex-tui/0.145.0`) - `id` is a `cityHash64` of the value, joined from `agent_events.event_client_id`.                                                                                                                                                                                             |
-| `agent_events`       | One row per LiteLLM call, full `raw_payload` JSON (the `StandardLoggingPayload`, minus `messages`).                                                                                                                                                                                                                                                                                   |
-| `agent_usage`        | One row per model call: tokens, plus `cost`/`input_cost`/`output_cost` straight from LiteLLM's own `response_cost`/`cost_breakdown` - cache-pricing-aware and never derived locally (a manually-maintained `model_pricing` table + `ASOF JOIN` used to compute cost instead, and was removed after it was found to overcount by several times whenever prompt caching was in play).   |
-| `agent_messages`     | One row per call, holding `prompt_text`/`response_text`.                                                                                                                                                                                                                                                                                                                              |
-| `ingest_raw`         | Full, untouched original `StandardLoggingPayload` per call (`messages` included), write-once at ingest time, compressed hard (`ZSTD(19)`) since it's read only by `services/reparse/src/reparse.py`, never by a live dashboard query. This is what makes reparsing possible.                                                                                                                   |
+| `agent_events`       | One row per tracked call. Proxied rows carry parsed LiteLLM metadata; direct Claude rows carry only allowlisted transcript metadata and `content_omitted=true`.                                                                                                                                                                                                                       |
+| `agent_usage`        | One row per model call. Proxied cost comes from LiteLLM's `response_cost`/`cost_breakdown`; direct Claude cost is an API-equivalent estimate from LiteLLM's live public model cost map, including cache-read and 5m/1h cache-write tiers.                                                                                                                                                 |
+| `agent_messages`     | One row per proxied call holding `prompt_text`/`response_text`. Direct transcript ingestion never writes message content.                                                                                                                                                                                                                                                            |
+| `ingest_raw`         | The original `StandardLoggingPayload` for proxied calls, or the validated privacy-minimal `UsageEnvelopeV1` for direct Claude calls. Direct envelopes contain no prompts, responses, messages, or tool arguments.                                                                                                                                                                     |
 | `ingest_dlq`         | Dead-letter table for a row a table's `insert()` rejected during batch ingest (e.g. a column-value overflow) - a triage/alerting feed, not a permanent store; no TTL, half-year `PARTITION BY` instead (data deletion here is a deliberate manual action, never something ClickHouse runs on a background schedule).                                                                                              |
 
 ### Per-request signals on `agent_usage`
@@ -643,6 +651,7 @@ Model choice (`agent_usage.model`) is the closest proxy: cheaper/faster models a
 `agent_events.raw_payload` carries the full `StandardLoggingPayload` minus `messages` (the ever-growing full conversation history - also on disk verbatim, one file per event under a session's fixture folder in the `loadtest-fixtures-data` volume, for any event `make loadtest-fixtures` has extracted, see "Preparing load-test fixtures" below).
 `agent_messages` adds what's missing from that: the last user message's text and the model's own reply text for that call, via `_last_user_text()`/`_flatten_content()` in `services/_common/src/ingest_parsing.py`.
 A row is only written when at least one of `prompt_text`/`response_text` is non-empty.
+Direct Claude transcript events never create an `agent_messages` row.
 
 ### Git branch/repo (`session_git_branch`)
 
@@ -670,7 +679,7 @@ Same live-reload mechanism as `webhook` below, just entirely in `docker-compose.
 
 **`mcp-stats`** - prod: fully defined in `docker-compose.yml`, ships alongside `litellm`/`grafana`/etc. in every environment. Unlike `mcp-dev`, every request other than `/health`/`/metrics` requires a valid LiteLLM virtual key (`Authorization: Bearer <key>`, checked against LiteLLM's own `/key/info` - the same pattern `webhook`'s `/api/v1/session-git-branch` uses, see "Git branch/repo" above) since it's reachable on all interfaces, not gated behind a `127.0.0.1` bind. Listens on `:8002/mcp`. One tool today:
 
-- `me(session_id: str)` - reports `{cost, input_tokens, output_tokens}` for the given session (the whole session so far, matched by exact `session_id`), the same three fields summed across all usage in the last 30 days, and up to 5 of that session's most expensive individual `agent_usage` rows (one LiteLLM call each). Each is labeled by whichever of skill/agent/mcp-tool triggered it, or - joined in from `agent_events` by `litellm_call_id` - what the call itself did (`spawn:<subagent_type>`, `tool:<name>`, `conversation reply`, etc.), falling back to `llm:<model>` only when neither is available; a bare model name repeated for every row turned out to be nearly useless on its own. Read-only by construction, three fixed queries - never runs arbitrary SQL from the model. Its ClickHouse identity (`mcp_stats` role) is scoped to `agent_usage`/`agent_events` only, unlike `mcp-dev`'s broad `mcp` role. `session_id` must be the caller's own `CLAUDE_CODE_SESSION_ID` env var - the tool has no other way to know which session is "current" (see `.agents/skills/me/SKILL.md`, which reads that var via a shell command before calling this tool).
+- `me(session_id: str)` - reports `{cost, input_tokens, output_tokens}` for the given session (the whole session so far, matched by exact `session_id`), the same three fields summed across all usage in the last 30 days, and up to 5 of that session's most expensive individual `agent_usage` rows (one tracked model call each). Each is labeled by whichever of skill/agent/mcp-tool triggered it, or - joined in from `agent_events` by `litellm_call_id` - what the call itself did (`spawn:<subagent_type>`, `tool:<name>`, `conversation reply`, etc.), falling back to `llm:<model>` only when neither is available; a bare model name repeated for every row turned out to be nearly useless on its own. Read-only by construction, three fixed queries - never runs arbitrary SQL from the model. Its ClickHouse identity (`mcp_stats` role) is scoped to `agent_usage`/`agent_events` only, unlike `mcp-dev`'s broad `mcp` role. `session_id` must be the caller's own `CLAUDE_CODE_SESSION_ID` env var - the tool has no other way to know which session is "current" (see `.agents/skills/me/SKILL.md`, which reads that var via a shell command before calling this tool).
 
 More statistics tools are expected here over time - this is intentionally the "add new prod-facing tools" side of the split, `mcp-dev` is not.
 Built and run standalone (no compose, no `--reload`), it's the same self-contained image `Dockerfile` describes.
@@ -761,14 +770,16 @@ Six template variables in order: `$agent_name`, `$skill_name`, `$mcp_tool`, `$mo
 ### Debugging ingestion
 
 Field extraction from the LiteLLM payload is best-effort and can drift across LiteLLM versions.
-`docker compose logs -f webhook` shows one log line per exception raised while enqueueing (`queue.enqueue` - Redis-availability issues, not parsing, since `webhook` no longer parses anything; never re-raised, so a bad payload never breaks LiteLLM's ack); `docker compose logs -f webhook-worker` shows the same for both the parsing side (`build_event`, called from `worker.py`'s `_decode_into`) and the batched-insert side (`ingest_events_batch`).
+`docker compose logs -f webhook` shows enqueue/auth/validation failures, while `docker compose logs -f webhook-worker` shows adapter and batch-insert failures.
+LiteLLM callback enqueue remains fail-open so a metrics outage does not break model calls.
+Direct collector enqueue returns a non-2xx response on Redis failure so its SQLite outbox keeps the batch for retry.
 `redis-cli -h localhost XLEN webhook:events` shows the current backlog - non-zero-but-draining is normal, non-zero-and-growing means `webhook-worker` has fallen behind or died.
 `make loadtest-fixtures` (see "Preparing load-test fixtures" below) can pull already-ingested events verbatim out of ClickHouse for offline inspection/replay, once they've landed there.
 
 ## LiteLLM
 
-A local LiteLLM gateway (`litellm` + `litellm-db` + `webhook` services in `docker-compose.yml`) sits in front of both CLIs so their traffic can be logged, and centrally billed, before it leaves the machine.
-This gateway *is* how the ClickHouse tracking stack described above gets its data now - `webhook` is the only ingestion path (see "How data flows" above).
+A local LiteLLM gateway sits in front of Codex and normal local Claude Code calls so their traffic can be logged and attributed before it leaves the machine.
+Claude Desktop and Remote Control bypass the proxy but still enter the same `webhook -> redis -> worker -> ClickHouse` pipeline through the direct usage endpoint.
 
 The model names are meant to be stable regardless of what's actually billing them: `claude-sonnet-5`/`claude-haiku-4-5`/`claude-opus-4-8`/`claude-fable-5`/`gpt-5-codex`/`gpt-5` are what you pick in Claude Code's own model selector, put in agent/skill frontmatter `model:` fields, and set as Codex CLI's model - everywhere - and that stays true whether a name is currently backed by OAuth passthrough (no Anthropic key on hand yet) or a real, centrally-held provider key added later through the admin UI.
 People get a personal LiteLLM *virtual key* either way - `make init` auto-provisions your first one - and per-key budgets/rate-limits/model access are enforced entirely by LiteLLM; see "Issue yourself a personal key and route a coding agent through the proxy" under "Getting started" above.
@@ -823,7 +834,8 @@ Ollama must also be listening on `0.0.0.0`, not just `localhost`, on its own hos
 
 ### Routing Claude Code through it
 
-`make setup-client` (see "Getting started" above) prints `export` statements with a `<virtual key>` placeholder for `ANTHROPIC_BASE_URL`/`ANTHROPIC_CUSTOM_HEADERS`/etc. (`ANTHROPIC_PROXY_PORT` in `.env` controls the URL if you changed it from the default).
+`make setup-client` prints the shared virtual key/tracking variables, but it does not set `ANTHROPIC_BASE_URL` or `ANTHROPIC_CUSTOM_HEADERS` globally.
+Normal local Claude Code sessions should receive those two proxy variables per launch through a smart wrapper.
 Model choice isn't part of this - Claude Code picks its own model through its normal interface, same as always.
 Then `claude login` (subscription OAuth, Pro/Max/Team) as usual.
 
@@ -832,6 +844,57 @@ That fallback bypasses litellm entirely, so `ANTHROPIC_CUSTOM_HEADERS`' virtual 
 
 `ANTHROPIC_CUSTOM_HEADERS` is required even though nothing else guards these routes: without a distinct header proving something *else* authenticated to LiteLLM, it can't tell the incoming `Authorization` (the subscription token) apart from its own auth and strips it before forwarding - Anthropic then replies `x-api-key header is required` (see [BerriAI/litellm#19618](https://github.com/BerriAI/litellm/issues/19618)).
 `general_settings.litellm_key_header_name: x-litellm-api-key` in `services/litellm/config.yaml` is what makes LiteLLM read the virtual key from that header, checking it against the budget/model/rate-limit rules on the key, independently of whatever gets forwarded to Anthropic.
+
+Do not put the two Anthropic proxy variables in global `~/.claude/settings.json` when Remote Control is enabled.
+Remote Control needs Anthropic's direct channel and can fail if the whole Claude process is forced through LiteLLM.
+
+### Tracking Claude Desktop and Remote Control
+
+Run `python3 scripts/claude_usage_collector.py install` once to install global `Stop` and `SubagentStop` hooks.
+The collector tails only newly completed JSONL transcript lines, writes deduplicated events to a SQLite outbox, and sends batches of at most 50 events at a bounded rate.
+The server authenticates the batch with the existing LiteLLM virtual key and enriches identity from `/key/info` instead of trusting client-supplied user/team fields.
+
+#### Several Claude accounts on one machine
+
+Identity is entirely a property of the virtual key the collector sends (`/key/info` → `user_id`, `key_alias`, `team_id`), so two Claude accounts running side by side out of separate CLI profiles only stay apart if each profile carries its own key.
+The suggested split is `user_id` = the account's own e-mail and Team = device, because those are the two dimensions the dashboard can already filter on (`user_id`, `group_id`).
+Using the e-mail rather than a made-up handle keeps every panel self-explanatory and matches what the CLI itself reports: `<config dir>/.claude.json` → `oauthAccount.emailAddress` for Claude, and the `email` claim of `tokens.id_token` in `~/.codex/auth.json` for Codex.
+`user_key_hash` is stored but no panel groups by it, so a second key under the *same* user buys nothing beyond independent revocation.
+Issue the extra identities with `scripts/provision_litellm.py --write-env no` (`.env` holds one `LITELLM_VIRTUAL_KEY`, and it belongs to whichever identity the shell/Codex uses).
+
+Two profiles logged into the *same* account share one key - the account is the identity, the profile is not.
+Codex is a separate account with its own e-mail even when the same person runs it, so it gets its own `user_id` rather than being folded into a Claude account's.
+
+Each profile then needs two variables of its own, in that profile's `settings.json` `env` block rather than the shell/registry environment - a per-user environment variable is shared by every profile, and process env is what `_environment()` checks first:
+
+- `LITELLM_VIRTUAL_KEY` - that account's key.
+- `CLAUDE_USAGE_OUTBOX_PATH` - a **separate** SQLite outbox per profile.
+  `pending_events` rows don't record which key produced them, and `flush_outbox` signs whatever it drains with the flushing process's own key.
+  A shared outbox therefore lets one account's Stop hook ship the other account's backlog under its own identity.
+
+Do not add `ANTHROPIC_BASE_URL`/`ANTHROPIC_CUSTOM_HEADERS` here - see the Remote Control warning above; this path tracks direct traffic and doesn't need the proxy.
+Splitting an existing single-account outbox is a file copy (one per profile) - copying preserves `transcript_cursors`, whereas a fresh empty outbox re-reads every transcript from offset 0 (harmless, `event_id` dedupes, but it resends everything).
+
+A launcher that sets `ANTHROPIC_CUSTOM_HEADERS` for the proxied branch has to read the key from the profile it is about to start (`CLAUDE_CONFIG_DIR`, else `~/.claude`), not from a shared user/shell variable.
+The proxied path is attributed by that header alone, so a single shared variable silently books every profile's proxied traffic to one account.
+
+The smart Claude launcher uses two branches:
+
+- normal local Claude Code sets `ANTHROPIC_BASE_URL` and `ANTHROPIC_CUSTOM_HEADERS`, then routes through LiteLLM
+- `claude --remote-control` and `claude remote-control` clear those proxy variables, set `CLAUDE_TRANSCRIPT_TRACKING_MODE=direct`, and connect to Anthropic directly
+
+Claude Desktop already has `entrypoint=claude-desktop`, so the collector recognizes it without a proxy or tracking-mode override.
+Normal proxied Claude CLI transcripts are ignored to avoid double-counting the same request from both LiteLLM and JSONL.
+
+Safe historical Desktop backfill:
+
+```bash
+python3 scripts/claude_usage_collector.py backfill ~/.claude/projects
+```
+
+Automatic historical backfill intentionally accepts only `entrypoint=claude-desktop`.
+Old CLI transcripts do not contain enough reliable information to distinguish proxied sessions from Remote Control sessions.
+The direct path has no proxy TTFT/latency and never reads or sends prompt text, response text, message bodies, or tool arguments.
 
 ### Routing Codex CLI through it
 
@@ -862,33 +925,29 @@ Why this needs more than `forward_client_headers_to_llm_api`: unlike Anthropic, 
 
 ### Configuring via config files instead of shell exports
 
-Model routing itself doesn't need a shell rc file - both CLIs can read it straight from their own config file instead.
-Whether the *shell exports* can also be retired depends on the CLI, since that's really about `hooks/report_git_branch.py`'s two vars (`AGENT_CLI_TRACKING_API_URL`, `LITELLM_VIRTUAL_KEY`), not routing:
+Codex model routing can live in config, while Claude's proxy routing stays per launch so Remote Control can bypass it.
+The shared `AGENT_CLI_TRACKING_API_URL` and `LITELLM_VIRTUAL_KEY` values still need to be visible to hooks:
 
-- **Claude Code** hooks are spawned by the Claude Code process itself, and inherit whatever it was given - including a settings file's `env` block.
-  So putting all four vars there (below) genuinely replaces `~/.zshrc`/`~/.bashrc` for Claude Code.
+- **Claude Code** hooks inherit a settings file's `env` block, so the tracking URL and virtual key can live there.
 - **Codex** hooks (`.codex/hooks.json`'s `SessionStart`) just inherit the environment of whatever shell launched `codex` - there's no config.toml equivalent of Claude's `env` block that injects vars into Codex's own process or its hooks. (`shell_environment_policy` looks like it might do this but doesn't - it only filters what the *agent's own shell tool calls* see, a separate mechanism from hooks entirely.) So the `export AGENT_CLI_TRACKING_API_URL=...`/`export LITELLM_VIRTUAL_KEY=...` lines still need to land in your shell rc for Codex, config.toml or not.
 
 `make setup-client` prints all of this pre-filled - the shell-export lines (headed `~/.zshrc / ~/.bashrc`, since that's where those specifically go), plus a block per CLI below - substituting your real values from `.env` (`ANTHROPIC_PROXY_PORT`/`OPENAI_PROXY_PORT`/`AGENT_CLI_TRACKING_API_URL` if set, `LITELLM_VIRTUAL_KEY` if you've added it there, see `.env.example`) wherever they're already known, so there's normally nothing to hand-type from this section at all.
 
 Values in `~/.claude/settings.json`'s `env` block are plain literal strings - Claude Code doesn't expand `$VAR`/`${VAR}` references there (confirmed against Anthropic's own open feature request for this, [anthropics/claude-code#46889](https://github.com/anthropics/claude-code/issues/46889) - unimplemented as of writing).
-So the virtual key has to be the actual value here, not a reference to whatever's already exported in your shell.
-That's why `make setup-client` substitutes it in directly in this block, while its shell-export lines above do print `"$LITELLM_VIRTUAL_KEY"` - those are read by a real shell, this `env` block isn't.
+So the virtual key has to be the actual value here, not a reference to whatever is exported in your shell.
 
 **Claude Code**:
 
 ```json
 {
   "env": {
-    "ANTHROPIC_BASE_URL": "http://localhost:4000",
-    "ANTHROPIC_CUSTOM_HEADERS": "x-litellm-api-key: Bearer <virtual key>",
     "AGENT_CLI_TRACKING_API_URL": "http://localhost:8010",
     "LITELLM_VIRTUAL_KEY": "<virtual key>"
   }
 }
 ```
 
-Put this in `~/.claude/settings.json` to route *every* Claude Code session on the machine through litellm, or in this repo's `.claude/settings.local.json` (gitignored - real keys should never land in the committed `.claude/settings.json`) to scope it to just this project.
+Put this in `~/.claude/settings.json` to make tracking credentials available to global Claude hooks.
 Either way, **merge** the `env` block into the file - don't replace it wholesale.
 Both the global file and this repo's own `.claude/settings.json`/`.codex/hooks.json` already carry hooks and MCP-server config (`SessionStart`/`CwdChanged`/`PreToolUse` entries, `enabledMcpjsonServers`, etc.) that a full overwrite would silently drop - open those files and see what sections are already there before writing.
 
