@@ -604,7 +604,9 @@ def main():
     out_spec["variables"] = [v for v in out_spec["variables"] if v.get("spec", {}).get("name") != "query_id"]
     out_spec["variables"].append(query_id_variable())
 
-    with open(args.out, "w", encoding="utf-8") as f:
+    # newline="": these files are LF-only, and Windows would otherwise translate
+    # every line ending to CRLF and rewrite the whole file.
+    with open(args.out, "w", encoding="utf-8", newline="") as f:
         json.dump(out, f, indent=2, ensure_ascii=True)
         f.write("\n")
 
