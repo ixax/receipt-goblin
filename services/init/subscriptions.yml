@@ -1,0 +1,54 @@
+# What is actually paid for LLM access, and who pays it.
+# Read once, by `make subscriptions` (services/init/load_subscriptions.py) only.
+#
+# This file exists because agent_usage.cost is not money.
+# It holds LiteLLM's response_cost - public per-token rates - but claude-* and gpt-5.6-* both reach their provider through the caller's own OAuth token against a flat-billed subscription, so nothing is charged per token.
+# The real charge is declared here, by hand, because there is no upstream to sync it from.
+#
+# See services/init/subscription_config.py for the exact (deliberately restricted, NOT general-YAML) grammar this file must stay within.
+# Two top-level list keys, `people:` and `subscriptions:`, each a list of flat mappings, with at most one nested list field per mapping.
+# No flow style ({}/[]), no multi-line scalars, no anchors/references.
+# If this file ever needs more than that, extend the parser deliberately.
+#
+# Everything here is validated before a single row is written - see _validate() in subscription_config.py.
+# The checks that matter most: one user_id belongs to exactly one person, and two subscriptions for the same (person, provider) never overlap in time.
+# Both would double-count or misattribute a fee in a way no dashboard query could detect afterwards.
+
+# person_id -> the LiteLLM key identities that person calls through.
+#
+# These are the values LiteLLM sends as metadata.user_api_key_user_id, which agent_usage.user_id stores - one per virtual key, so one per machine in practice, not one per human.
+# Look them up with: SELECT DISTINCT user_id, user_name FROM ai_gateway_users
+#
+# person_id itself is an arbitrary stable label, only ever used to join usage to a subscription.
+# A user_id left out of this file still shows usage on every panel; it just has no fee attributed to it.
+people:
+  - person_id: alice
+    user_ids:
+      - "default_user_id"
+
+# One entry per thing that is actually billed.
+#
+# provider must be one of claude/openai/other, matching agent_usage.provider, so spend and usage line up without a mapping table in between.
+# monthly_price is the recurring charge for the whole entry, before dividing by anything - `seats` multiplies it, so a 5-seat team plan billed at 150 total is monthly_price 30, seats 5.
+# valid_from/valid_to bound when this price applied, inclusive on both ends.
+# Omit valid_to while a plan is current; it defaults to 2099-12-31 and every query clamps it to today.
+#
+# Changing a plan means closing the old entry with a valid_to and adding a new one starting the next day - NOT editing the old price in place.
+# Editing in place would retroactively recompute every past panel at the new price.
+#
+# Every entry must use the same currency: there is no FX conversion anywhere in the stack, so mixed currencies would sum into a meaningless total.
+subscriptions:
+  - person_id: alice
+    provider: claude
+    plan: max-20x
+    monthly_price: 200.00
+    currency: USD
+    seats: 1
+    valid_from: 2026-01-01
+  - person_id: alice
+    provider: openai
+    plan: chatgpt-pro
+    monthly_price: 200.00
+    currency: USD
+    seats: 1
+    valid_from: 2026-01-01

@@ -46,6 +46,7 @@ from common.ingest_parsing import (
     _USAGE_AGENT_NAME_IDX,
     _USAGE_AGENT_VERSION_IDX,
     _USAGE_CALL_ID_IDX,
+    _USAGE_CLIENT_ID_IDX,
     _USAGE_COLUMNS,
     _USAGE_INGESTED_AT_IDX,
     _USAGE_SESSION_ID_IDX,
@@ -345,17 +346,22 @@ def ingest_events_batch(events: list[dict]) -> None:
     if not events:
         return
     try:
-        writer = _BatchWriter(get_client())
-        writer.write_dimensions(events)
-        event_rows, usage_rows, message_rows = writer.patch_fact_rows(events)
-        for table, rows, columns, call_id_idx, session_id_idx in (
-            ("agent_events", event_rows, _EVENT_COLUMNS, _EVENT_CALL_ID_IDX, _EVENT_SESSION_ID_IDX),
-            ("agent_usage", usage_rows, _USAGE_COLUMNS, _USAGE_CALL_ID_IDX, _USAGE_SESSION_ID_IDX),
-            ("agent_messages", message_rows, _MESSAGE_COLUMNS, _MESSAGE_CALL_ID_IDX, _MESSAGE_SESSION_ID_IDX),
-        ):
-            writer.insert_with_dlq_fallback(table, rows, columns, call_id_idx, session_id_idx)
+        ingest_built_events(get_client(), events)
     except Exception:
         logger.exception("failed to ingest event batch (n=%d)", len(events))
+
+
+def ingest_built_events(client, events: list[dict]) -> None:
+    """Writes already-adapted events using the same batch path as worker."""
+    writer = _BatchWriter(client)
+    writer.write_dimensions(events)
+    event_rows, usage_rows, message_rows = writer.patch_fact_rows(events)
+    for table, rows, columns, call_id_idx, session_id_idx in (
+        ("agent_events", event_rows, _EVENT_COLUMNS, _EVENT_CALL_ID_IDX, _EVENT_SESSION_ID_IDX),
+        ("agent_usage", usage_rows, _USAGE_COLUMNS, _USAGE_CALL_ID_IDX, _USAGE_SESSION_ID_IDX),
+        ("agent_messages", message_rows, _MESSAGE_COLUMNS, _MESSAGE_CALL_ID_IDX, _MESSAGE_SESSION_ID_IDX),
+    ):
+        writer.insert_with_dlq_fallback(table, rows, columns, call_id_idx, session_id_idx)
 
 
 class _BatchWriter:
@@ -471,6 +477,7 @@ class _BatchWriter:
             if usage_row is not None:
                 usage_row[_USAGE_AGENT_NAME_IDX] = agent_name
                 usage_row[_USAGE_AGENT_VERSION_IDX] = agent_version
+                usage_row[_USAGE_CLIENT_ID_IDX] = client_id
                 usage_rows.append(usage_row)
 
             message_row = _deserialize_row_multi(event.get("message_row"), _MESSAGE_TIMESTAMP_IDX, _MESSAGE_INGESTED_AT_IDX)

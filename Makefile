@@ -102,7 +102,7 @@ include .image-tags.mk
 PYTHON_VERSION := $(shell cat .python-version)
 export PYTHON_VERSION
 
-.PHONY: check-env git-hooks-install install-uv init _init_provision start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit lock harness-index ast-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all reparse-dlq print-reparse-final-hint \
+.PHONY: check-env git-hooks-install install-uv init _init_provision start up restart up-no-deps build status migrate stop down logs setup-client subscriptions test test-services test-hooks test-harness-audit lock harness-index ast-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all reparse-dlq print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	archive-prometheus archive-clickhouse-logs \
@@ -171,6 +171,7 @@ _init_provision: check-env
 	fi; \
 	rm -f "$$out"
 	@echo 'migrations applied.'
+	$(MAKE) --no-print-directory subscriptions
 	@echo ''
 	@echo '🔷 Step 4/5  LITELLM'
 	@echo 'Create your personal LiteLLM team and virtual key.'
@@ -236,6 +237,15 @@ status: check-env
 # Never touches ClickHouse users/roles/grants - that's `make init` alone, see services/init/.
 migrate: check-env
 	docker compose $(COMPOSE_FILES) run --rm clickhouse-migrate
+
+# Loads services/init/subscriptions.yml into person_identities/subscriptions -
+# what is actually paid for LLM access, as opposed to agent_usage.cost's
+# notional per-token rates. Runs inside `make init`'s ClickHouse step, after
+# migrations create those tables; run standalone after editing the YAML.
+# Each run truncates and rewrites both tables, so removing an entry from the
+# YAML actually removes the subscription (see the script's docstring).
+subscriptions: check-env
+	uv run python3 services/init/load_subscriptions.py $(COMPOSE_FILES)
 
 # SERVICE is optional (default: whole stack). langfuse-down/observability-down
 # always run regardless of SERVICE - they only tear down their own opt-in

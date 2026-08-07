@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from common import fastjson as json
+from common.client_attribution import from_litellm_payload
 
 _AGENT_ID_RE = re.compile(r"agentId:\s*([0-9a-f]+)")
 _COMMAND_NAME_RE = re.compile(r"<command-name>/?(.*?)</command-name>")
@@ -85,6 +86,17 @@ _TOOL_ARG_KEY_PREFERENCE = ("file_path", "command", "sql", "url", "query", "desc
 # provider classification for agent_usage.provider, computed once at
 # ingest instead of duplicated across ~30 Grafana panels.
 _PROVIDER_OPENAI_RE = re.compile(r"^(gpt-|chatgpt-|o[0-9]|text-embedding-|dall-e-|whisper|tts-)")
+
+# billing_mode classification for agent_usage.billing_mode, same ingest-time-not-per-panel reasoning as the provider regex above.
+#
+# These are the models services/litellm/config.yaml declares with no api_key, reaching the provider through the caller's own OAuth token instead.
+# claude-* goes against a `claude login` Pro/Max/Team subscription, gpt-5.6-* through litellm's `chatgpt` provider against a ChatGPT subscription.
+# Both bill a flat monthly fee, so their per-token cost is notional - see that file's "cost proxy, not an actual charge" comment.
+#
+# Hardcoded rather than read from config: this module has no access to litellm's config at ingest time, and the set changes only when a model entry is added there.
+# Adding a model with a real api_key means leaving it OUT of this tuple.
+# 'api' is the default, so forgetting to update this reports a subscription-billed model as real spend - it overstates cost rather than hiding it.
+_SUBSCRIPTION_MODEL_PREFIXES = ("claude-", "gpt-5.6-")
 
 
 def _to_dt(epoch_seconds: Optional[float]) -> datetime:
@@ -642,6 +654,16 @@ def _provider_for_model(model: str) -> str:
     return "other"
 
 
+def _billing_mode_for_model(model: str) -> str:
+    """'subscription' when this model's traffic rides a flat-billed plan and its per-token cost is therefore notional, else 'api'.
+
+    See _SUBSCRIPTION_MODEL_PREFIXES for what belongs in the first group and why 'api' is the safer default.
+    """
+    if model.startswith(_SUBSCRIPTION_MODEL_PREFIXES):
+        return "subscription"
+    return "api"
+
+
 def _collapse_whitespace(text: str) -> str:
     text = _WHITESPACE_COLLAPSE_RE.sub(" ", text)
     return _BLANK_LINES_COLLAPSE_RE.sub("\n", text)
@@ -959,7 +981,8 @@ _EVENT_COLUMNS = [
     "agent_version", "skill_name", "skill_version", "command_name",
     "agent_invocation_id", "status", "latency_ms",
     "failed_tool_name", "failed_tool_args", "failed_tool_error",
-    "litellm_call_id", "event_client_id", "calculated_type", "calculated_payload", "ingested_at",
+    "litellm_call_id", "event_client_id", "client_product", "client_surface", "ingest_path",
+    "calculated_type", "calculated_payload", "ingested_at",
 ]
 _GROUP_COLUMNS = ["group_id", "group_name", "updated_at"]
 _USER_COLUMNS = ["user_id", "group_id", "user_name", "updated_at"]
@@ -971,7 +994,8 @@ _USAGE_COLUMNS = [
     "stop_reason",
     "cache_creation_1h_tokens", "cache_creation_5m_tokens",
     "cost", "input_cost", "output_cost", "cache_hit", "ttft_ms",
-    "litellm_call_id", "provider", "ingested_at",
+    "litellm_call_id", "client_id", "client_product", "client_surface", "ingest_path",
+    "provider", "billing_mode", "ingested_at",
 ]
 _MESSAGE_COLUMNS = [
     "timestamp", "user_id", "group_id", "user_key_hash", "session_id", "trace_id", "turn_id",
@@ -993,6 +1017,7 @@ _USAGE_AGENT_NAME_IDX = _USAGE_COLUMNS.index("agent_name")
 _USAGE_AGENT_VERSION_IDX = _USAGE_COLUMNS.index("agent_version")
 _USAGE_SKILL_NAME_IDX = _USAGE_COLUMNS.index("skill_name")
 _USAGE_SKILL_VERSION_IDX = _USAGE_COLUMNS.index("skill_version")
+_USAGE_CLIENT_ID_IDX = _USAGE_COLUMNS.index("client_id")
 _MESSAGE_TIMESTAMP_IDX = _MESSAGE_COLUMNS.index("timestamp")
 _MESSAGE_AGENT_NAME_IDX = _MESSAGE_COLUMNS.index("agent_name")
 _MESSAGE_AGENT_VERSION_IDX = _MESSAGE_COLUMNS.index("agent_version")
@@ -1144,6 +1169,7 @@ def _event_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
     collaboration_mode_change = _codex_collaboration_mode_change(payload.get("messages"))
     if collaboration_mode_change:
         calculated_payload["collaboration_mode_change"] = collaboration_mode_change
+    attribution = from_litellm_payload(payload)
 
     return [
         _to_dt(payload.get("endTime") or payload.get("startTime")),
@@ -1170,6 +1196,9 @@ def _event_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
         0,  # event_client_id: patched in by ingest_db.ingest_events_batch()
             # once the calling client's user_agent has been resolved to an id
             # (build_event() has no DB client to do it here).
+        attribution.product,
+        attribution.surface,
+        attribution.ingest_path,
         calculated_type,
         json.dumps(calculated_payload, default=str).decode(),
         now or datetime.now(timezone.utc),
@@ -1222,6 +1251,7 @@ def _usage_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
     mcp_tool_name = called_tool if called_tool.startswith("mcp__") else ""
     cost_breakdown = payload.get("cost_breakdown") or {}
     model = payload.get("model_group") or payload.get("model", "")
+    attribution = from_litellm_payload(payload)
 
     return [
         _to_dt(payload.get("endTime") or payload.get("startTime")),
@@ -1252,7 +1282,12 @@ def _usage_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
         cache_hit,
         ttft_ms,
         payload.get("litellm_call_id", ""),
+        0,  # client_id: patched beside event_client_id by ingest_db.
+        attribution.product,
+        attribution.surface,
+        attribution.ingest_path,
         _provider_for_model(model),
+        _billing_mode_for_model(model),
         now or datetime.now(timezone.utc),
     ]
 
