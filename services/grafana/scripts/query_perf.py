@@ -199,7 +199,8 @@ def cmd_resolve(args):
         "overrides": overrides,
         "panels": panels_out,
     }
-    Path(args.out).write_text(json.dumps(out, indent=2))
+    with open(args.out, "w", encoding="utf-8", newline="") as f:
+        json.dump(out, f, indent=2)
     n_queries = sum(len(p["queries"]) for p in panels_out)
     n_unresolved = sum(1 for p in panels_out for q in p["queries"] if q["unresolved_vars"])
     print(f"resolved {len(panels_out)} panel(s), {n_queries} query/queries -> {args.out}")
@@ -208,8 +209,8 @@ def cmd_resolve(args):
 
 
 def cmd_save_run(args):
-    resolved = json.loads(Path(args.resolved).read_text())
-    stats = json.loads(Path(args.stats).read_text())
+    resolved = json.loads(Path(args.resolved).read_text(encoding="utf-8"))
+    stats = json.loads(Path(args.stats).read_text(encoding="utf-8"))
 
     panels_out = []
     missing_stats = []
@@ -237,7 +238,8 @@ def cmd_save_run(args):
     }
     out_path = Path(args.out) if args.out else RUNS_DIR / f"run-{args.label}-{int(time.time())}.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(run, indent=2))
+    with open(out_path, "w", encoding="utf-8", newline="") as f:
+        json.dump(run, f, indent=2)
     n_queries = sum(len(p["queries"]) for p in panels_out)
     print(f"saved run '{args.label}' ({n_queries} query/queries) -> {out_path}")
 
@@ -257,8 +259,8 @@ def _pct(before, after):
 
 
 def cmd_diff(args):
-    run_a = json.loads(Path(args.run_a).read_text())
-    run_b = json.loads(Path(args.run_b).read_text())
+    run_a = json.loads(Path(args.run_a).read_text(encoding="utf-8"))
+    run_b = json.loads(Path(args.run_b).read_text(encoding="utf-8"))
     idx_a = _query_index(run_a)
     idx_b = _query_index(run_b)
 
@@ -316,7 +318,7 @@ def cmd_diff(args):
 
 
 def cmd_report(args):
-    run = json.loads(Path(args.run).read_text())
+    run = json.loads(Path(args.run).read_text(encoding="utf-8"))
     print(f"# {run['label']!r} ({run['created_at']}) - hours={run['hours']} overrides={run['overrides']}")
     print(f"{'panel':<6} {'query':<50} {'memory bytes':>14} {'read_rows':>12} {'read_bytes':>12} {'duration(ms)':>14}")
     totals = {"mem": 0, "rows": 0, "bytes": 0, "dur": 0.0}

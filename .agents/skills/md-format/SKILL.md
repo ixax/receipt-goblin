@@ -3,9 +3,9 @@ name: md-format
 description: >
   Formatting conventions for markdown prose/tables, and for multi-sentence comments/docstrings in Python and YAML.
   TRIGGER - read before EVERY Edit/Write touching .md prose or tables (agent_docs/*.md, README.md, AGENTS.md, SKILL.md, agent/command bodies, any .md), and before writing a multi-sentence `#` comment or docstring in .py/.yml/.yaml.
-  Covers: line wrapping, one-sentence-per-line, short sentences, enumeration-vs-list, quoting example text, heading hierarchy, table alignment.
+  Covers: line wrapping, one-sentence-per-line, short sentences, enumeration-vs-list, quoting example text, heading hierarchy, table alignment, top-level doc structure.
   SKIP for a single-sentence code comment, and .md edits touching only code blocks/frontmatter.
-  v1.8.0
+  v1.9.0
 ---
 
 Apply to prose paragraphs, list formatting, and table pipe formatting only.
@@ -75,6 +75,10 @@ Every file has exactly one H1 (`#`), the document title.
 Exception: a Subagent/Skill/Command body already carries its identity via frontmatter `name:` (or the command filename) and starts directly at H2.
 Sections at H2, subsections at H3; nest deeper only when a subsection itself needs subsections.
 Never skip a level and never add a second H1.
+
+## Top-level docs
+
+README.md and other top-level docs: `agent_docs/rules/docs.md` (keep short, `<details>` for secondary content).
 
 ## Plain style
 

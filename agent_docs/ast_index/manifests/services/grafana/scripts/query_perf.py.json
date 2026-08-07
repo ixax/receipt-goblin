@@ -1,6 +1,6 @@
 {
   "path": "services/grafana/scripts/query_perf.py",
-  "line_count": 377,
+  "line_count": 379,
   "module_docstring": "Deterministic before/after query-performance benchmarking toolkit for\nservices/grafana/dashboards/agents_overview.json.\n\nExists so that \"how fast is panel X\" / \"did this rewrite actually help\"\nalways gets answered the same way, by the same code, instead of being\nre-derived by an LLM (Grafana macro/variable substitution, run bookkeeping,\ndiff math) on every ask - see the sql-expert agent\n(.claude/agents/sql-expert.md) for the full workflow this supports, and the\nquery-perf-runner agent (.claude/agents/query-perf-runner.md) for who\nactually executes it (this script has no ClickHouse access itself - the\n`profile_query` MCP tool call in between `resolve` and `save-run` is the\none step only an agent can do).\n\nThree subcommands, meant to be chained:\n\n    resolve   dashboard.json [--panels 73,74 | --all] [--hours N] [--var name=value ...] --out resolved.json\n              Deterministic. Extracts each selected panel's rawSql\n              query/queries and substitutes Grafana macros/template\n              variables with concrete literals (see SINGLEQUOTE_VAR_DEFAULTS/\n              BARE_VAR_DEFAULTS below - one fixed table, not re-guessed per\n              call). Writes resolved.json: one entry per (panel, query\n              index) with both raw_sql and resolved_sql, plus any\n              still-unresolved $variable found (which means this table\n              needs a new entry, not that the caller should guess a value).\n\n    save-run  --resolved resolved.json --stats stats.json --label before|after|<anything> --out run.json\n              Deterministic. Merges resolved.json's panel/query identity\n              with stats.json's per-query profile_query results (keyed\n              \"<panel_id>:<query_index>\") into one timestamped run record.\n              stats.json is written by whichever agent actually called\n              `mcp__dev__profile_query` for each resolved_sql - this\n              script never talks to ClickHouse itself.\n\n    diff      run_a.json run_b.json\n              Deterministic. Prints a per-query before/after table (memory,\n              read_rows, read_bytes, duration - absolute and % change) plus\n              a totals row. Exit code is non-zero if run_b.json is not\n              strictly better on every metric summed across all queries -\n              useful as a pass/fail signal, not just a report.\n\n    report    run.json\n              Deterministic. Prints one run's per-query stats with no\n              comparison - for \"what does the dashboard cost right now\",\n              not a before/after ask.\n\nRun artifacts land in .claude/data/query_perf_runs/ (gitignored, and unlike\nthe rest of .claude/data/ - see AGENTS.md - not scratch: these are meant to\npersist and be diffed against later, potentially across sessions) unless\n--out points elsewhere.",
   "imports": [
     {
@@ -142,7 +142,7 @@
       "docstring": null,
       "is_async": false,
       "line_start": 148,
-      "line_end": 207
+      "line_end": 208
     },
     {
       "qualname": "cmd_save_run",
@@ -157,8 +157,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 210,
-      "line_end": 242
+      "line_start": 211,
+      "line_end": 244
     },
     {
       "qualname": "_query_index",
@@ -173,8 +173,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 245,
-      "line_end": 250
+      "line_start": 247,
+      "line_end": 252
     },
     {
       "qualname": "_pct",
@@ -193,8 +193,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 253,
-      "line_end": 256
+      "line_start": 255,
+      "line_end": 258
     },
     {
       "qualname": "cmd_diff",
@@ -209,8 +209,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 259,
-      "line_end": 315
+      "line_start": 261,
+      "line_end": 317
     },
     {
       "qualname": "cmd_report",
@@ -225,8 +225,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 318,
-      "line_end": 339
+      "line_start": 320,
+      "line_end": 341
     },
     {
       "qualname": "main",
@@ -236,9 +236,9 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 342,
-      "line_end": 373
+      "line_start": 344,
+      "line_end": 375
     }
   ],
-  "sha256": "ad43a832a34f31cc60e802c09fa0d40930a5960504d32f7684562065e0718aaf"
+  "sha256": "8628e26160c6518ce8c2374dfee510dc1f02995017ccc5284f79e0d273211eae"
 }

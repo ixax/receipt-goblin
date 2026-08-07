@@ -24,18 +24,7 @@ Dev/prod split: `agent_docs/architecture.md`; per-service detail: `agent_docs/se
 
 ## Python
 
-- NEVER USE BARE `python`/`python3`/`pip install`.
-- Every Python invocation in this repo runs via `uv run` (`uv run python3 ...`, `uv run pytest`, `uv run ruff`, etc.) - even stdlib-only scripts with no third-party deps, since the point is pinning the interpreter to `.python-version`, not just resolving dependencies.
-- If `uv` isn't installed: `make install-uv`
-- Python version: `.python-version`
-- Every Python-based `Dockerfile`'s `FROM python:${PYTHON_VERSION}-slim` reads that value via a `PYTHON_VERSION` build-arg, propagated through `Makefile` and `docker-compose.yml`'s `build.args`
-- bump `.python-version` -> run `make build`, every image rebuilds against the new version in one shot
-
-Service dependency edits are a three-step chain - stopping early leaves the change with no effect anywhere:
-
-1. Edit `services/<svc>/requirements.txt` - direct deps only, keep the `why` comments.
-2. Run `make lock` - regenerates `requirements.lock` (full transitive pin). Images install from the `.lock`, never the `.txt`, so an unlocked edit reaches nothing. Commit both files together - `.githooks/lib/check-lock.sh` fails the commit otherwise.
-3. Hand the rebuild to `dev-ops` - a lock change is a baked-in-file change like any other, so it only reaches a running container via its rebuild. Never rebuild inline instead.
+Writing or editing Python code: read `agent_docs/rules/python.md` first (interpreter/tooling, dependencies, style, encoding).
 
 ## Project structure
 
@@ -120,6 +109,10 @@ SKILLS:
 
 Writing or editing code: read `agent_docs/rules/coding.md` first (style + anti-patterns).
 Skip for a pure analysis/investigation task.
+
+## Docs
+
+Writing or restructuring README.md or another top-level doc: read `agent_docs/rules/docs.md` first (keep it short, `<details>` for secondary content).
 
 ## Boundaries & safety
 
