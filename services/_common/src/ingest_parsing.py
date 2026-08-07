@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from common import fastjson as json
+from common.client_attribution import from_litellm_payload
 
 _AGENT_ID_RE = re.compile(r"agentId:\s*([0-9a-f]+)")
 _COMMAND_NAME_RE = re.compile(r"<command-name>/?(.*?)</command-name>")
@@ -959,7 +960,8 @@ _EVENT_COLUMNS = [
     "agent_version", "skill_name", "skill_version", "command_name",
     "agent_invocation_id", "status", "latency_ms",
     "failed_tool_name", "failed_tool_args", "failed_tool_error",
-    "litellm_call_id", "event_client_id", "calculated_type", "calculated_payload", "ingested_at",
+    "litellm_call_id", "event_client_id", "client_product", "client_surface", "ingest_path",
+    "calculated_type", "calculated_payload", "ingested_at",
 ]
 _GROUP_COLUMNS = ["group_id", "group_name", "updated_at"]
 _USER_COLUMNS = ["user_id", "group_id", "user_name", "updated_at"]
@@ -971,7 +973,8 @@ _USAGE_COLUMNS = [
     "stop_reason",
     "cache_creation_1h_tokens", "cache_creation_5m_tokens",
     "cost", "input_cost", "output_cost", "cache_hit", "ttft_ms",
-    "litellm_call_id", "provider", "ingested_at",
+    "litellm_call_id", "client_id", "client_product", "client_surface", "ingest_path",
+    "provider", "ingested_at",
 ]
 _MESSAGE_COLUMNS = [
     "timestamp", "user_id", "group_id", "user_key_hash", "session_id", "trace_id", "turn_id",
@@ -993,6 +996,7 @@ _USAGE_AGENT_NAME_IDX = _USAGE_COLUMNS.index("agent_name")
 _USAGE_AGENT_VERSION_IDX = _USAGE_COLUMNS.index("agent_version")
 _USAGE_SKILL_NAME_IDX = _USAGE_COLUMNS.index("skill_name")
 _USAGE_SKILL_VERSION_IDX = _USAGE_COLUMNS.index("skill_version")
+_USAGE_CLIENT_ID_IDX = _USAGE_COLUMNS.index("client_id")
 _MESSAGE_TIMESTAMP_IDX = _MESSAGE_COLUMNS.index("timestamp")
 _MESSAGE_AGENT_NAME_IDX = _MESSAGE_COLUMNS.index("agent_name")
 _MESSAGE_AGENT_VERSION_IDX = _MESSAGE_COLUMNS.index("agent_version")
@@ -1144,6 +1148,7 @@ def _event_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
     collaboration_mode_change = _codex_collaboration_mode_change(payload.get("messages"))
     if collaboration_mode_change:
         calculated_payload["collaboration_mode_change"] = collaboration_mode_change
+    attribution = from_litellm_payload(payload)
 
     return [
         _to_dt(payload.get("endTime") or payload.get("startTime")),
@@ -1170,6 +1175,9 @@ def _event_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
         0,  # event_client_id: patched in by ingest_db.ingest_events_batch()
             # once the calling client's user_agent has been resolved to an id
             # (build_event() has no DB client to do it here).
+        attribution.product,
+        attribution.surface,
+        attribution.ingest_path,
         calculated_type,
         json.dumps(calculated_payload, default=str).decode(),
         now or datetime.now(timezone.utc),
@@ -1222,6 +1230,7 @@ def _usage_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
     mcp_tool_name = called_tool if called_tool.startswith("mcp__") else ""
     cost_breakdown = payload.get("cost_breakdown") or {}
     model = payload.get("model_group") or payload.get("model", "")
+    attribution = from_litellm_payload(payload)
 
     return [
         _to_dt(payload.get("endTime") or payload.get("startTime")),
@@ -1252,6 +1261,10 @@ def _usage_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
         cache_hit,
         ttft_ms,
         payload.get("litellm_call_id", ""),
+        0,  # client_id: patched beside event_client_id by ingest_db.
+        attribution.product,
+        attribution.surface,
+        attribution.ingest_path,
         _provider_for_model(model),
         now or datetime.now(timezone.utc),
     ]

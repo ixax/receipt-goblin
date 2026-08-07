@@ -46,6 +46,7 @@ from common.ingest_parsing import (
     _USAGE_AGENT_NAME_IDX,
     _USAGE_AGENT_VERSION_IDX,
     _USAGE_CALL_ID_IDX,
+    _USAGE_CLIENT_ID_IDX,
     _USAGE_COLUMNS,
     _USAGE_INGESTED_AT_IDX,
     _USAGE_SESSION_ID_IDX,
@@ -471,6 +472,7 @@ class _BatchWriter:
             if usage_row is not None:
                 usage_row[_USAGE_AGENT_NAME_IDX] = agent_name
                 usage_row[_USAGE_AGENT_VERSION_IDX] = agent_version
+                usage_row[_USAGE_CLIENT_ID_IDX] = client_id
                 usage_rows.append(usage_row)
 
             message_row = _deserialize_row_multi(event.get("message_row"), _MESSAGE_TIMESTAMP_IDX, _MESSAGE_INGESTED_AT_IDX)
