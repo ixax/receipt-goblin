@@ -94,6 +94,9 @@ def cmd_show_panel(args):
     if not panel:
         print("no matching panel", file=sys.stderr)
         sys.exit(1)
+    if args.full:
+        print(json.dumps({"ref": ref, "panel": panel}, indent=2))
+        return
     pspec = panel.get("spec", {})
     print(f"ref: {ref}")
     print(f"id: {pspec.get('id')}")
@@ -104,6 +107,16 @@ def cmd_show_panel(args):
     for i, q in enumerate(queries):
         qspec = q.get("spec", {}).get("query", {}).get("spec", {})
         print(f"query[{i}]: {json.dumps(qspec, indent=2)}")
+
+
+def cmd_show_tab(args):
+    spec = load(args.file)["spec"]
+    for title, tab_layout in iter_tabs(spec):
+        if title == args.title:
+            print(json.dumps({"title": title, "layout": tab_layout}, indent=2))
+            return
+    print(f"no tab named '{args.title}'", file=sys.stderr)
+    sys.exit(1)
 
 
 def cmd_show_variable(args):
@@ -153,7 +166,13 @@ def main():
     p.add_argument("file")
     p.add_argument("--id", type=int)
     p.add_argument("--title")
+    p.add_argument("--full", action="store_true")
     p.set_defaults(func=cmd_show_panel)
+
+    p = sub.add_parser("show-tab")
+    p.add_argument("file")
+    p.add_argument("--title", required=True)
+    p.set_defaults(func=cmd_show_tab)
 
     p = sub.add_parser("show-variable")
     p.add_argument("file")
