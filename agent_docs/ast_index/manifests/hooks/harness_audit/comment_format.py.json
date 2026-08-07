@@ -1,33 +1,119 @@
 {
   "path": "hooks/harness_audit/comment_format.py",
-  "line_count": 89,
-  "module_docstring": "Flag comment/docstring lines in .py/.yml/.yaml files that violate\nmd-format's one-sentence-per-line rule (two sentences hard-wrapped onto\nthe same line). Stdlib only. Same heuristic as audit.py's markdown check,\napplied to code comments instead of markdown prose.\n\nUsage: uv run python3 comment_format.py <file> [<file> ...]\nExit 0 = clean, 1 = violations found.",
+  "line_count": 243,
+  "module_docstring": "Flag comment/docstring lines in .py/.yml/.yaml files that violate\nmd-format's one-sentence-per-line rule (two sentences hard-wrapped onto\nthe same line).\nAlso covers JSON-embedded prose in Grafana dashboard files: panel\n`description` values and `--` SQL comments inside `rawSql` values.\nStdlib only.\nSame sentence-end heuristic as audit.py's markdown check, applied to\ncode comments and dashboard JSON instead of markdown prose.\n\nUsage: uv run python3 comment_format.py <file> [<file> ...]\nExit 0 = clean, 1 = violations found.",
   "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 14
+    },
     {
       "kind": "import",
       "module": "re",
       "names": [],
-      "line": 10
+      "line": 15
     },
     {
       "kind": "import",
       "module": "sys",
       "names": [],
-      "line": 11
+      "line": 16
     }
   ],
   "module_constants": [
     {
-      "name": "MULTI_SENTENCE_PATTERN",
-      "line": 13
+      "name": "TRIPLE_QUOTE",
+      "line": 18
     },
     {
-      "name": "TRIPLE_QUOTE",
-      "line": 14
+      "name": "LATIN_SENTENCE_END_PATTERN",
+      "line": 30
+    },
+    {
+      "name": "CYRILLIC_SENTENCE_END_PATTERN",
+      "line": 31
+    },
+    {
+      "name": "ABBREVIATIONS",
+      "line": 36
+    },
+    {
+      "name": "VERSION_TOKEN_PATTERN",
+      "line": 37
+    },
+    {
+      "name": "OPENING_PUNCTUATION",
+      "line": 38
+    },
+    {
+      "name": "DASHBOARD_JSON_PATH_PATTERN",
+      "line": 136
+    },
+    {
+      "name": "DESCRIPTION_VALUE_PATTERN",
+      "line": 137
+    },
+    {
+      "name": "RAWSQL_VALUE_PATTERN",
+      "line": 138
     }
   ],
   "classes": [],
   "functions": [
+    {
+      "qualname": "_word_before_dot",
+      "signature": "(s: str, dot_index: int) -> str",
+      "args": [
+        {
+          "name": "s",
+          "annotation": "str"
+        },
+        {
+          "name": "dot_index",
+          "annotation": "int"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "The run of non-whitespace characters immediately preceding the\nperiod at `dot_index`. Used to check a candidate sentence-end match\nagainst known abbreviations and version tokens before flagging it.",
+      "is_async": false,
+      "line_start": 41,
+      "line_end": 48
+    },
+    {
+      "qualname": "_is_known_exception",
+      "signature": "(word: str) -> bool",
+      "args": [
+        {
+          "name": "word",
+          "annotation": "str"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": "True for a period-ending token that isn't really a sentence end:\na known abbreviation (e.g., i.e., vs., etc.) or a version token like\nv1.2 or 2.0.\n\nPython's `re` has no variable-length lookbehind for multi-word\nabbreviations, so this runs as a post-filter on regex candidate\nmatches instead of being folded into the sentence-end pattern\nitself.",
+      "is_async": false,
+      "line_start": 51,
+      "line_end": 63
+    },
+    {
+      "qualname": "_has_multi_sentence_violation",
+      "signature": "(s: str) -> bool",
+      "args": [
+        {
+          "name": "s",
+          "annotation": "str"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 66,
+      "line_end": 72
+    },
     {
       "qualname": "comment_lines_in_text",
       "signature": "(text: str, is_py: bool)",
@@ -45,8 +131,8 @@
       "decorators": [],
       "docstring": "Yield (lineno, text) for whole-line '#' comments and, for Python,\nthe inner lines of triple-quoted docstrings (single- or multi-line).\nlineno is 1-based within `text`, not necessarily the file's real line\nnumber - callers that pass a snippet (e.g. an Edit's new_string) get\nsnippet-relative numbers, which is fine since this is just for the\nviolation message excerpt.",
       "is_async": false,
-      "line_start": 17,
-      "line_end": 58
+      "line_start": 75,
+      "line_end": 116
     },
     {
       "qualname": "check_file",
@@ -61,8 +147,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 61,
-      "line_end": 65
+      "line_start": 119,
+      "line_end": 124
     },
     {
       "qualname": "check_text",
@@ -81,8 +167,120 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 68,
-      "line_end": 72
+      "line_start": 127,
+      "line_end": 131
+    },
+    {
+      "qualname": "is_dashboard_json",
+      "signature": "(path: str) -> bool",
+      "args": [
+        {
+          "name": "path",
+          "annotation": "str"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 141,
+      "line_end": 142
+    },
+    {
+      "qualname": "_decode_json_string",
+      "signature": "(raw: str) -> str",
+      "args": [
+        {
+          "name": "raw",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": "Undo JSON string escaping (\\n, \\\", etc.) on a regex-captured\nfragment.\nWrapping it back in quotes and handing it to json.loads reuses the\nstdlib's own escape handling instead of reimplementing it.\nFalls back to a plain \\n/\\\" replace if that fails, e.g. on a\nfragment truncated mid-escape by a partial Edit diff.",
+      "is_async": false,
+      "line_start": 145,
+      "line_end": 155
+    },
+    {
+      "qualname": "_rawsql_comment_lines",
+      "signature": "(sql: str)",
+      "args": [
+        {
+          "name": "sql",
+          "annotation": "str"
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 158,
+      "line_end": 162
+    },
+    {
+      "qualname": "_json_embedded_lines_via_regex",
+      "signature": "(text: str)",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": "Fallback extraction for text that isn't valid standalone JSON, e.g.\nan Edit hook's new_string diff fragment: find \"description\" and\n\"rawSql\" string values by pattern instead of requiring a full parse.",
+      "is_async": false,
+      "line_start": 165,
+      "line_end": 177
+    },
+    {
+      "qualname": "_walk_json_for_checkable_strings",
+      "signature": "(obj)",
+      "args": [
+        {
+          "name": "obj",
+          "annotation": null
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 180,
+      "line_end": 191
+    },
+    {
+      "qualname": "json_embedded_lines_in_text",
+      "signature": "(text: str)",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": "Yield (lineno, text) for checkable JSON-embedded prose in a Grafana\ndashboard file: panel \"description\" values, and \"--\" SQL-comment\nlines inside \"rawSql\" values (\\n-escaped in the JSON source, so\nun-escaped and split into lines before the \"--\" check).\n\nTries a real json.loads() parse first - the normal case when checking\na whole dashboard file - and falls back to regex extraction directly\non the raw text for fragments that aren't valid standalone JSON, e.g.\nan Edit hook's new_string diff snippet.\n\nlineno is 1-based; for the parse-succeeded path it's just the\nextraction order (no real source offset survives a parse), same\n\"snippet-relative, good enough for the excerpt\" convention as\ncomment_lines_in_text above.",
+      "is_async": false,
+      "line_start": 194,
+      "line_end": 215
+    },
+    {
+      "qualname": "check_json_text",
+      "signature": "(text: str)",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 218,
+      "line_end": 222
     },
     {
       "qualname": "main",
@@ -92,9 +290,9 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 75,
-      "line_end": 85
+      "line_start": 225,
+      "line_end": 239
     }
   ],
-  "sha256": "0cf49703d8ae264b7aab04064980ee4050352ebd872210444ea0c6be5b54bd5f"
+  "sha256": "0944ef82a9fd6ca6b1a6f3470c704ab6fa29dc19ba30d03e7f0f725b66ad62c5"
 }

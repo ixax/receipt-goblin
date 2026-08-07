@@ -15,3 +15,4 @@ Python-specific style/anti-pattern rules live in `agent_docs/rules/python.md` in
 - Never loosen `_validate_readonly_sql` in `services/mcp-dev/src/server.py`.
 - Never restart/recreate `clickhouse` or edit a dashboard as a side effect of other work.
 - Never call `docker compose build up / start / restart logs status` directly - always `make build / up start / restart / logs / status`.
+- Never change a service's Dockerfile/image code without bumping its `*_TAG` in `VERSIONS.yml` in the same commit - enforced by `.githooks/pre-commit`'s `check-versions.sh`.

@@ -1,25 +1,25 @@
 {
   "path": "hooks/harness_audit/md_format_skill_gate.py",
-  "line_count": 188,
-  "module_docstring": "PreToolUse hook: force reading the md-format skill before the FIRST\nEdit/Write in a session that touches markdown prose or a multi-line\ncomment/docstring.\nStdlib only.\n\nRoot cause this fixes: md-format's SKILL.md description says \"read BEFORE\nEVERY Edit/Write touching .md prose ... and before writing a multi-sentence\ncomment\", but that's advisory.\nThe agent may or may not act on it.\nThe reactive PostToolUse hooks (comment_format_hook.py, audit_hook.py) only\ncatch one narrow rule (one-sentence-per-line, via regex) after the fact,\nand only for that one rule.\nThey say nothing about heading hierarchy, enumeration-vs-list, quoting, or\ntable alignment, and they never make the agent actually read the skill's\nreasoning.\nThis hook makes the read itself mandatory, once per session, before the\nqualifying edit lands.\n\nWire in .claude/settings.json:\n  \"PreToolUse\": [{\"matcher\": \"Edit|Write\",\n    \"hooks\": [{\"type\": \"command\",\n               \"command\": \"uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/md_format_skill_gate.py\"\"}]}]\n\nDetects a prior read two ways, since not every agent has the Skill tool -\nmost Subagents don't (`tools:` in their frontmatter omits it) and instead\nread a skill's SKILL.md directly with Read, per their own body text (e.g.\nharness-expert, dashboards-expert). So \"already read\" means either:\n  1. a Skill tool_use with input.skill == \"md-format\", or\n  2. a Read tool_use whose file_path is md-format's SKILL.md,\nanywhere earlier in the session transcript. Once read, the skill's content\nis already in context, so the gate stays open for the rest of the session.",
+  "line_count": 207,
+  "module_docstring": "PreToolUse hook: force reading the md-format skill before the FIRST\nEdit/Write in a session that touches markdown prose or a multi-line\ncomment/docstring.\nStdlib only.\n\nRoot cause this fixes: md-format's SKILL.md description says \"read BEFORE\nEVERY Edit/Write touching .md prose ... and before writing a multi-sentence\ncomment\", but that's advisory.\nThe agent may or may not act on it.\nThe reactive PostToolUse hooks (comment_format_hook.py, audit_hook.py) only\ncatch one narrow rule (one-sentence-per-line, via regex) after the fact,\nand only for that one rule.\nThey say nothing about heading hierarchy, enumeration-vs-list, quoting, or\ntable alignment, and they never make the agent actually read the skill's\nreasoning.\nThis hook makes the read itself mandatory, once per session, before the\nqualifying edit lands.\n\nWire in .claude/settings.json:\n  \"PreToolUse\": [{\"matcher\": \"Edit|Write\",\n    \"hooks\": [{\"type\": \"command\",\n               \"command\": \"uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/md_format_skill_gate.py\"\"}]}]\n\nDetects a prior read two ways, since not every agent has the Skill tool -\nmost Subagents don't (`tools:` in their frontmatter omits it) and instead\nread a skill's SKILL.md directly with Read, per their own body text (e.g.\nharness-expert, dashboards-expert). So \"already read\" means either:\n  1. a Skill tool_use with input.skill == \"md-format\", or\n  2. a Read tool_use whose file_path is md-format's SKILL.md,\nanywhere earlier in the session transcript.\n\nThis is a session-wide backstop, not a per-agent context guarantee: a\nTask-spawned subagent does NOT inherit the orchestrator's context, so one\nagent reading the skill does not put its rules in front of a different\nagent that writes afterward.\nThe actual per-agent guarantee comes from instruction lines placed\ndirectly in each writing agent's own body, telling it to read\nSkill(md-format) itself before a qualifying edit - a separate, already-\nplanned change.\nThis hook only guarantees the skill was read by *someone*, at least once,\nsomewhere in the session.",
   "imports": [
     {
       "kind": "import",
       "module": "difflib",
       "names": [],
-      "line": 34
+      "line": 44
     },
     {
       "kind": "import",
       "module": "json",
       "names": [],
-      "line": 35
+      "line": 45
     },
     {
       "kind": "import",
       "module": "sys",
       "names": [],
-      "line": 36
+      "line": 46
     },
     {
       "kind": "from",
@@ -27,33 +27,35 @@
       "names": [
         "Path"
       ],
-      "line": 37
+      "line": 47
     },
     {
       "kind": "from",
       "module": "comment_format",
       "names": [
-        "comment_lines_in_text"
+        "comment_lines_in_text",
+        "is_dashboard_json",
+        "json_embedded_lines_in_text"
       ],
-      "line": 41
+      "line": 51
     }
   ],
   "module_constants": [
     {
       "name": "HOOK_DIR",
-      "line": 39
+      "line": 49
     },
     {
       "name": "SKILL_NAME",
-      "line": 43
+      "line": 57
     },
     {
       "name": "SKILL_FILE_SUFFIX",
-      "line": 44
+      "line": 58
     },
     {
       "name": "EXCLUDED_DIRS",
-      "line": 48
+      "line": 62
     }
   ],
   "classes": [],
@@ -71,8 +73,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 51,
-      "line_end": 52
+      "line_start": 65,
+      "line_end": 66
     },
     {
       "qualname": "_block_satisfies_gate",
@@ -87,8 +89,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 55,
-      "line_end": 64
+      "line_start": 69,
+      "line_end": 78
     },
     {
       "qualname": "_subagent_transcripts",
@@ -103,8 +105,8 @@
       "decorators": [],
       "docstring": "Task-spawned subagents get their own transcript file under\n<session-dir>/subagents/agent-<id>.jsonl, sibling to the main\n<session-id>.jsonl the orchestrator writes to.\nA subagent's own Skill/Read calls land only in its own file, never in the main one.\nSo a subagent-issued Edit/Write must check both, or a compliant subagent can never satisfy this gate on its own.\nConfirmed live: harness-expert and dev-ops each read the skill in-session and were denied on every retry regardless.",
       "is_async": false,
-      "line_start": 67,
-      "line_end": 78
+      "line_start": 81,
+      "line_end": 92
     },
     {
       "qualname": "already_read",
@@ -119,8 +121,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 81,
-      "line_end": 101
+      "line_start": 95,
+      "line_end": 115
     },
     {
       "qualname": "has_multiline_comment_block",
@@ -139,8 +141,8 @@
       "decorators": [],
       "docstring": "Heuristic for the SKILL's \"multi-sentence comment/docstring\" trigger:\n2+ consecutive comment/docstring lines is treated as a likely\nmulti-sentence block, whether or not it's already correctly split.",
       "is_async": false,
-      "line_start": 104,
-      "line_end": 120
+      "line_start": 118,
+      "line_end": 134
     },
     {
       "qualname": "added_lines",
@@ -159,8 +161,8 @@
       "decorators": [],
       "docstring": "Lines Edit is actually introducing, excluding unchanged context that\nold_string/new_string carry only to make the match unique.\nPrevents the gate from firing on code edits that merely happen to sit\nnext to an existing, untouched comment block.",
       "is_async": false,
-      "line_start": 123,
-      "line_end": 134
+      "line_start": 137,
+      "line_end": 148
     },
     {
       "qualname": "qualifies",
@@ -179,8 +181,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 137,
-      "line_end": 144
+      "line_start": 151,
+      "line_end": 163
     },
     {
       "qualname": "main",
@@ -190,9 +192,9 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 147,
-      "line_end": 184
+      "line_start": 166,
+      "line_end": 203
     }
   ],
-  "sha256": "4ad459809043430bd3c2c87645dda4d7c07aadb6f12a4fb584db0f3cdcd4a663"
+  "sha256": "5ce0b7483c95925879aacb534597e66dbecec4c0e767fbef5fd432041d43c113"
 }

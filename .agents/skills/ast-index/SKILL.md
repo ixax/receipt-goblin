@@ -3,8 +3,7 @@ name: ast-index
 description: >
   Query CLI and cache conventions for `agent_docs/ast_index/`, the committed structural digest of every tracked `.py` file (schema documented in `scripts/ast_index.py`'s module docstring).
   TRIGGER - read before running `uv run python3 scripts/ast_index.py query`/`build`, or when deciding whether a STALE cache needs `--file` or `--all`.
-  Language-agnostic cache/hook/CLI shape by design; extraction (`ast.parse`) is the only Python-specific piece.
-  v1.0.2
+  v1.0.3
 ---
 
 ## Cache & schema

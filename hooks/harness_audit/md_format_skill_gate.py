@@ -28,8 +28,18 @@ read a skill's SKILL.md directly with Read, per their own body text (e.g.
 harness-expert, dashboards-expert). So "already read" means either:
   1. a Skill tool_use with input.skill == "md-format", or
   2. a Read tool_use whose file_path is md-format's SKILL.md,
-anywhere earlier in the session transcript. Once read, the skill's content
-is already in context, so the gate stays open for the rest of the session.
+anywhere earlier in the session transcript.
+
+This is a session-wide backstop, not a per-agent context guarantee: a
+Task-spawned subagent does NOT inherit the orchestrator's context, so one
+agent reading the skill does not put its rules in front of a different
+agent that writes afterward.
+The actual per-agent guarantee comes from instruction lines placed
+directly in each writing agent's own body, telling it to read
+Skill(md-format) itself before a qualifying edit - a separate, already-
+planned change.
+This hook only guarantees the skill was read by *someone*, at least once,
+somewhere in the session.
 """
 import difflib
 import json
@@ -38,7 +48,11 @@ from pathlib import Path
 
 HOOK_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(HOOK_DIR))
-from comment_format import comment_lines_in_text  # noqa: E402
+from comment_format import (  # noqa: E402
+    comment_lines_in_text,
+    is_dashboard_json,
+    json_embedded_lines_in_text,
+)
 
 SKILL_NAME = "md-format"
 SKILL_FILE_SUFFIX = ".claude/skills/md-format/SKILL.md"
@@ -139,6 +153,11 @@ def qualifies(path: str, text: str) -> bool:
         return False
     if path.endswith(".md"):
         return True
+    if is_dashboard_json(path):
+        # Only gate when the edited/added text actually carries checkable
+        # prose (a "description" value or a "--" rawSql comment) - not on
+        # every dashboard JSON edit, e.g. moving a panel's width/position.
+        return any(True for _ in json_embedded_lines_in_text(text))
     if path.endswith((".py", ".yml", ".yaml")):
         return has_multiline_comment_block(text, path.endswith(".py"))
     return False

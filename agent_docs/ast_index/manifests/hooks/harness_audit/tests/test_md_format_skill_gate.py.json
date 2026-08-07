@@ -1,6 +1,6 @@
 {
   "path": "hooks/harness_audit/tests/test_md_format_skill_gate.py",
-  "line_count": 189,
+  "line_count": 210,
   "module_docstring": "Unit tests for hooks/harness_audit/md_format_skill_gate.py.\nStdlib unittest only.\n\nRun: python3 -m unittest discover -s hooks/harness_audit/tests",
   "imports": [
     {
@@ -224,7 +224,7 @@
     {
       "qualname": "TestQualifies",
       "line_start": 114,
-      "line_end": 140,
+      "line_end": 161,
       "decorators": [],
       "bases": [
         "unittest.TestCase"
@@ -358,13 +358,77 @@
           "is_async": false,
           "line_start": 138,
           "line_end": 140
+        },
+        {
+          "qualname": "TestQualifies.test_dashboard_json_description_qualifies",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 142,
+          "line_end": 145
+        },
+        {
+          "qualname": "TestQualifies.test_dashboard_json_rawsql_comment_qualifies",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 147,
+          "line_end": 150
+        },
+        {
+          "qualname": "TestQualifies.test_dashboard_json_position_edit_does_not_qualify",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 152,
+          "line_end": 157
+        },
+        {
+          "qualname": "TestQualifies.test_non_dashboard_json_does_not_qualify",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 159,
+          "line_end": 161
         }
       ]
     },
     {
       "qualname": "TestUnderExcludedDir",
-      "line_start": 143,
-      "line_end": 148,
+      "line_start": 164,
+      "line_end": 169,
       "decorators": [],
       "bases": [
         "unittest.TestCase"
@@ -384,8 +448,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 144,
-          "line_end": 145
+          "line_start": 165,
+          "line_end": 166
         },
         {
           "qualname": "TestUnderExcludedDir.test_non_plans_dir_does_not_match",
@@ -400,15 +464,15 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 147,
-          "line_end": 148
+          "line_start": 168,
+          "line_end": 169
         }
       ]
     },
     {
       "qualname": "TestMain",
-      "line_start": 151,
-      "line_end": 185,
+      "line_start": 172,
+      "line_end": 206,
       "decorators": [],
       "bases": [
         "unittest.TestCase"
@@ -444,8 +508,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 152,
-          "line_end": 173
+          "line_start": 173,
+          "line_end": 194
         },
         {
           "qualname": "TestMain.test_denies_when_unread",
@@ -460,8 +524,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 175,
-          "line_end": 177
+          "line_start": 196,
+          "line_end": 198
         },
         {
           "qualname": "TestMain.test_allows_when_already_read",
@@ -476,8 +540,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 179,
-          "line_end": 181
+          "line_start": 200,
+          "line_end": 202
         },
         {
           "qualname": "TestMain.test_allows_non_qualifying_file",
@@ -492,8 +556,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 183,
-          "line_end": 185
+          "line_start": 204,
+          "line_end": 206
         }
       ]
     }
@@ -516,5 +580,5 @@
       "line_end": 24
     }
   ],
-  "sha256": "b0d0ef276034509e8b1f63a9016547b70a4d14be0eb496f954db044543619e3a"
+  "sha256": "e8d05efb288ad7887883f9ac5da14c680180ebd3294b44223641ed246ac70c4d"
 }

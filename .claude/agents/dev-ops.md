@@ -5,7 +5,7 @@ description: >
   MUST BE USED PROACTIVELY whenever baked-in config, deps, or a compose `environment:` entry changed and needs to reach the running container.
   Also explicit: rebuild/recreate/restart a service, backup/restore, langfuse/observability profile toggles, confirming a restart picked up a change.
   SKIP: git, whole-stack `docker compose down`, broad blast-radius calls, and `make loadtest`/`loadtest-fixtures*` (loadtest-runner's job) - except its delegated webhook-1/webhook-2/webhook-worker recreate.
-  v1.17.1
+  v1.17.2
 tools: Bash, Read, Grep, Glob, Edit, Write, Skill
 model: claude-haiku-4-5
 ---
@@ -43,5 +43,6 @@ After recreating: verify the three report healthy (per the skill's "Verify befor
 
 Sole owner: a new target/service, changed behavior, or a new variable goes through you - never edited by the main conversation or another subagent.
 Mechanics (dry-run verification, README sync trigger): `Skill(service-lifecycle)`.
+Before any Edit/Write touching `.md` prose, a multi-sentence comment/docstring, or dashboard-JSON prose (panel `description`, `--` comments in `rawSql`), read `Skill(md-format)` first.
 
 The change affects this agent's own knowledge (a new target/service/env var it manages), or needs AGENTS.md/`agent_docs/*.md`/`.claude/` entities updated: you have no `Agent` tool, so surface it back to the caller/orchestrator - `harness-expert` is the one who patches those, never you.

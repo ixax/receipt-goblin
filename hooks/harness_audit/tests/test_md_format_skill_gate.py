@@ -139,6 +139,27 @@ class TestQualifies(unittest.TestCase):
         # "plans" only exempts the directory, not files that merely mention it.
         self.assertTrue(gate.qualifies("agent_docs/plans-overview.md", "trivial"))
 
+    def test_dashboard_json_description_qualifies(self):
+        path = "services/grafana/dashboards/foo.json"
+        text = '"description": "This is one sentence. This is a second sentence.",'
+        self.assertTrue(gate.qualifies(path, text))
+
+    def test_dashboard_json_rawsql_comment_qualifies(self):
+        path = "services/grafana/dashboards-health/foo.json"
+        text = '"rawSql": "SELECT 1\\n-- This is one comment. This is a second comment.\\nFROM foo",'
+        self.assertTrue(gate.qualifies(path, text))
+
+    def test_dashboard_json_position_edit_does_not_qualify(self):
+        # Editing panel layout shouldn't gate - only description/rawSql
+        # prose should.
+        path = "services/grafana/dashboards/foo.json"
+        text = '"gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},'
+        self.assertFalse(gate.qualifies(path, text))
+
+    def test_non_dashboard_json_does_not_qualify(self):
+        text = '"description": "This is one sentence. This is a second sentence.",'
+        self.assertFalse(gate.qualifies("some/other/thing.json", text))
+
 
 class TestUnderExcludedDir(unittest.TestCase):
     def test_plans_dir_matches(self):

@@ -1,19 +1,19 @@
 {
   "path": "hooks/harness_audit/comment_format_hook.py",
-  "line_count": 55,
-  "module_docstring": "PostToolUse hook: check md-format's one-sentence-per-line rule against\ncomments/docstrings in an edited .py/.yml/.yaml file. Stdlib only.\n\nWire in .claude/settings.json:\n  \"PostToolUse\": [{\"matcher\": \"Edit|Write\",\n    \"hooks\": [{\"type\": \"command\",\n               \"command\": \"uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/comment_format_hook.py\"\"}]}]\nExit 2 feeds violations back to the editing agent (works for agents without Bash).\n\nScoped to what the agent just wrote, not the whole file: for Edit, only\ntool_input.new_string is checked, so pre-existing violations elsewhere in\na large file never block an unrelated edit. For Write the agent owns the\nwhole file's content, so the full tool_input.content is checked.",
+  "line_count": 60,
+  "module_docstring": "PostToolUse hook: check md-format's one-sentence-per-line rule against\ncomments/docstrings in an edited .py/.yml/.yaml file, or against\ndescription/rawSql-comment prose in an edited Grafana dashboard .json\nfile.\nStdlib only.\n\nWire in .claude/settings.json:\n  \"PostToolUse\": [{\"matcher\": \"Edit|Write\",\n    \"hooks\": [{\"type\": \"command\",\n               \"command\": \"uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/comment_format_hook.py\"\"}]}]\nExit 2 feeds violations back to the editing agent (works for agents without Bash).\n\nScoped to what the agent just wrote, not the whole file: for Edit, only\ntool_input.new_string is checked, so pre-existing violations elsewhere in\na large file never block an unrelated edit.\nFor Write the agent owns the whole file's content, so the full\ntool_input.content is checked.",
   "imports": [
     {
       "kind": "import",
       "module": "json",
       "names": [],
-      "line": 16
+      "line": 20
     },
     {
       "kind": "import",
       "module": "sys",
       "names": [],
-      "line": 17
+      "line": 21
     },
     {
       "kind": "from",
@@ -21,15 +21,17 @@
       "names": [
         "Path"
       ],
-      "line": 18
+      "line": 22
     },
     {
       "kind": "from",
       "module": "comment_format",
       "names": [
-        "check_text"
+        "check_json_text",
+        "check_text",
+        "is_dashboard_json"
       ],
-      "line": 22
+      "line": 26
     },
     {
       "kind": "from",
@@ -37,13 +39,13 @@
       "names": [
         "under_excluded_dir"
       ],
-      "line": 23
+      "line": 27
     }
   ],
   "module_constants": [
     {
       "name": "HOOK_DIR",
-      "line": 20
+      "line": 24
     }
   ],
   "classes": [],
@@ -56,9 +58,9 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 26,
-      "line_end": 51
+      "line_start": 30,
+      "line_end": 56
     }
   ],
-  "sha256": "94f95b96203aa9cf67ed77e97f115b58eda0e10f6d9b56489ab248a255680ad3"
+  "sha256": "95de0571060e85ca54ee3b99b72b815c01b00e7588004f3778656250575092df"
 }

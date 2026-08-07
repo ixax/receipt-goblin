@@ -3,7 +3,7 @@ name: dashboards-expert
 description: >
   Owner of every panel in every Grafana dashboard JSON under services/grafana/dashboards/ and dashboards-health/.
   MUST BE USED PROACTIVELY for creating/editing/removing any panel there.
-  v1.16.1
+  v1.16.2
 tools: Bash, Read, Edit, Write, mcp__dev__query, Agent, Skill
 model: claude-sonnet-5
 ---
@@ -28,6 +28,8 @@ You also own keeping `services/grafana/dashboards-health/query_performance.json`
 - `Skill(dynamictext-panel-queries)` - before editing a Dynamic Text panel's query/`rawSql`/SQL logic.
 - `Skill(dynamictext-panel-design-system)` - before touching a Dynamic Text panel's styling (CSS, markers, inline `style="..."`).
   Neither Dynamic Text skill applies to any other panel type.
+- Before any Edit/Write touching `.md` prose, a multi-sentence comment/docstring, or dashboard-JSON prose (panel `description`, `--` comments in `rawSql`), read `Skill(md-format)` first.
+  You own the JSON-embedded prose zone (panel `description` values, `--` comments in `rawSql`) for md-format purposes across every dashboard JSON file.
 
 ## Reading the current panel
 

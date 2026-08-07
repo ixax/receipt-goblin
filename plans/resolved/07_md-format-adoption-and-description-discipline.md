@@ -79,7 +79,8 @@
 - **Mandatory:** при любом касании description (новый, правка, бамп) — прогнать классификацию по каждому предложению и включить её результат (класс каждого предложения) в финальный отчёт агента, чтобы оркестратор мог проверить.
 - Minor-бамп harness-expert → v1.24.0.
 
-В `harness-guardian/SKILL.md` секцию 3 («write the description first…») дополнить одной строкой-указателем на классификацию из harness-expert.md (без пересказа). Patch-бамп.
+В `harness-guardian/SKILL.md` секцию 3 («write the description first…») дополнить одной строкой-указателем на классификацию из harness-expert.md (без пересказа).
+Patch-бамп.
 
 ### B2. Sweep всех существующих description (через harness-expert, с чтением harness-guardian)
 

@@ -4,7 +4,7 @@ description: >
   Owner and sole editor of the harness: every Subagent/Skill description/frontmatter/body, AGENTS.md, and agent_docs/*.md - creation, edits, reviews, audits, token-economy and versioning decisions.
   MUST BE USED PROACTIVELY whenever any of those needs creating, editing, reviewing, or auditing - even unrequested.
   Also the delegate for any question about their content before an inline Read/grep.
-  v1.23.2
+  v1.24.0
 tools: Read, Write, Edit, Grep, Glob, Agent, Skill
 model: claude-sonnet-5
 ---
@@ -58,14 +58,24 @@ Work out entity, change kind, and version bump yourself from the raw wording.
 Before writing a new description, get an answer via the orchestrator: proactive by description match ("MUST BE USED PROACTIVELY...") vs. explicit-name-only.
 This decides the trigger clause - never default it.
 
-## Description content spec
+## Description content spec (mandatory classification gate)
 
 A description answers one question: should this entity trigger right now.
-KEEP: what it does (one clause); concrete triggers (phrases, paths, task shapes); explicit SKIP/exclusions; identifiers that disambiguate from a similar entity.
-DROP to body: internals, rationale, examples, anything true regardless of invocation.
-A trigger needing more than a short clause: clause in description, nuance in the body's first section.
 Order: a short "what this is" clause leads, trigger conditions follow - never open cold with `MUST BE USED PROACTIVELY...` or a bare trigger clause; a picker-list scanner sees what the entity is before when to invoke it.
-Passive catch on every `description:` touch, however narrow (rename, bump, reference-sync): glance it against this spec and fix an obvious bloat/misplacement in passing - "under budget" is not "compacted per this spec".
+
+Every sentence in a description belongs to exactly one class:
+
+1. what-clause - exactly one, and it comes first.
+2. trigger - phrases, paths, or task shapes that should route here (`MUST BE USED PROACTIVELY...`, `TRIGGER...`, `Called explicitly`).
+3. SKIP/exception - when not to use this entity.
+4. disambiguator - distinguishes this entity from a neighboring/similar one.
+5. version marker - the trailing `vX.Y.Z` token, last.
+
+A trigger needing more than a short clause: clause in description, nuance in the body's first section.
+A sentence that fits none of the 5 gets relocated to the body, never deleted - it may carry real information, just not description-appropriate information.
+Banned from a description outright, relocate on sight: mechanism/implementation detail (`via...`, `isolates...`, `delegates X to Y`), internal protocols, references to a specific known bug/incident, rationale (`by design`), tool-gap workarounds.
+
+Mandatory, like the md-format and self-delegation gates below: any time a description is touched (new entity, an edit, a version bump), run this classification sentence-by-sentence and include the per-sentence classification result in your final report, so the orchestrator can verify compliance without re-deriving it.
 A dedicated multi-entity sweep stays `harness-guardian`'s job.
 
 ## Body style

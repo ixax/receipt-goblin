@@ -47,6 +47,111 @@ class TestCheckText(unittest.TestCase):
         text = 'x = "a. B"\ny = re.compile(r"foo. Bar")\n'
         self.assertEqual(comment_format.check_text(text, is_py=True), [])
 
+    def test_sentence_end_before_abbreviation_flagged(self):
+        # Previously missed: the char before the period ("M" in "OOM") is
+        # uppercase, so the old [a-z0-9`)\]] class never matched it.
+        text = "# System ran out of memory (OOM. Second attempt failed too\nx = 1\n"
+        self.assertTrue(comment_format.check_text(text, is_py=True))
+
+    def test_eg_abbreviation_not_flagged(self):
+        # Previously a false positive: "e.g. Foo" was flagged as a
+        # sentence end.
+        text = "# See e.g. Foo for context\nx = 1\n"
+        self.assertEqual(comment_format.check_text(text, is_py=True), [])
+
+    def test_ie_abbreviation_not_flagged(self):
+        text = "# See i.e. Bar for context\nx = 1\n"
+        self.assertEqual(comment_format.check_text(text, is_py=True), [])
+
+    def test_vs_abbreviation_not_flagged(self):
+        text = "# Compare vs. Baz here\nx = 1\n"
+        self.assertEqual(comment_format.check_text(text, is_py=True), [])
+
+    def test_etc_abbreviation_not_flagged(self):
+        text = "# Handles etc. Qux cases\nx = 1\n"
+        self.assertEqual(comment_format.check_text(text, is_py=True), [])
+
+    def test_version_token_not_flagged(self):
+        text = "# Bumped to v1.2. Next release adds foo\nx = 1\n"
+        self.assertEqual(comment_format.check_text(text, is_py=True), [])
+
+    def test_cyrillic_sentence_end_flagged(self):
+        text = "# Это конец. Следующее предложение здесь\nx = 1\n"
+        self.assertTrue(comment_format.check_text(text, is_py=True))
+
+    def test_closing_quote_sentence_end_flagged(self):
+        text = '# He said "done". Next steps follow\nx = 1\n'
+        self.assertTrue(comment_format.check_text(text, is_py=True))
+
+
+class TestJsonExtraction(unittest.TestCase):
+    DASHBOARD_PATH = "services/grafana/dashboards/foo.json"
+
+    def test_is_dashboard_json_true_for_dashboards_dir(self):
+        self.assertTrue(comment_format.is_dashboard_json("services/grafana/dashboards/foo.json"))
+
+    def test_is_dashboard_json_true_for_dashboards_health_dir(self):
+        self.assertTrue(comment_format.is_dashboard_json("services/grafana/dashboards-health/foo.json"))
+
+    def test_is_dashboard_json_false_for_unrelated_json(self):
+        self.assertFalse(comment_format.is_dashboard_json("some/other/thing.json"))
+
+    def test_multi_sentence_description_flagged_full_file(self):
+        dashboard = {
+            "panels": [
+                {
+                    "id": 1,
+                    "description": "This is one sentence. This is a second sentence.",
+                }
+            ]
+        }
+        text = json.dumps(dashboard)
+        self.assertTrue(comment_format.check_json_text(text))
+
+    def test_single_sentence_description_not_flagged_full_file(self):
+        dashboard = {"panels": [{"id": 1, "description": "Just one sentence here."}]}
+        text = json.dumps(dashboard)
+        self.assertEqual(comment_format.check_json_text(text), [])
+
+    def test_multi_sentence_rawsql_comment_flagged_full_file(self):
+        dashboard = {
+            "panels": [
+                {
+                    "id": 1,
+                    "targets": [
+                        {"rawSql": "SELECT 1\n-- This is one comment. This is a second comment.\nFROM foo"}
+                    ],
+                }
+            ]
+        }
+        text = json.dumps(dashboard)
+        self.assertTrue(comment_format.check_json_text(text))
+
+    def test_single_sentence_rawsql_comment_not_flagged_full_file(self):
+        dashboard = {
+            "panels": [{"id": 1, "targets": [{"rawSql": "SELECT 1\n-- Just one comment here.\nFROM foo"}]}]
+        }
+        text = json.dumps(dashboard)
+        self.assertEqual(comment_format.check_json_text(text), [])
+
+    def test_multi_sentence_description_flagged_edit_fragment(self):
+        # An Edit hook only sees new_string, usually a partial diff that
+        # isn't valid standalone JSON - exercises the regex fallback path.
+        fragment = '  "description": "This is one sentence. This is a second sentence.",\n'
+        self.assertTrue(comment_format.check_json_text(fragment))
+
+    def test_single_sentence_description_not_flagged_edit_fragment(self):
+        fragment = '  "description": "Just one sentence here.",\n'
+        self.assertEqual(comment_format.check_json_text(fragment), [])
+
+    def test_multi_sentence_rawsql_comment_flagged_edit_fragment(self):
+        fragment = '  "rawSql": "SELECT 1\\n-- This is one comment. This is a second comment.\\nFROM foo",\n'
+        self.assertTrue(comment_format.check_json_text(fragment))
+
+    def test_single_sentence_rawsql_comment_not_flagged_edit_fragment(self):
+        fragment = '  "rawSql": "SELECT 1\\n-- Just one comment here.\\nFROM foo",\n'
+        self.assertEqual(comment_format.check_json_text(fragment), [])
+
 
 class TestHook(unittest.TestCase):
     def run_hook(self, payload):
@@ -114,6 +219,36 @@ class TestHook(unittest.TestCase):
             "tool_input": {
                 "file_path": "plans/scratch.py",
                 "new_string": "# One sentence. Two sentence.\n",
+            },
+        })
+        self.assertEqual(code, 0)
+
+    def test_dashboard_json_violation_blocks(self):
+        code = self.run_hook({
+            "tool_name": "Edit",
+            "tool_input": {
+                "file_path": "services/grafana/dashboards/foo.json",
+                "new_string": '"description": "This is one sentence. This is a second sentence.",',
+            },
+        })
+        self.assertEqual(code, 2)
+
+    def test_dashboard_json_clean_passes(self):
+        code = self.run_hook({
+            "tool_name": "Edit",
+            "tool_input": {
+                "file_path": "services/grafana/dashboards/foo.json",
+                "new_string": '"description": "Just one sentence here.",',
+            },
+        })
+        self.assertEqual(code, 0)
+
+    def test_non_dashboard_json_skipped(self):
+        code = self.run_hook({
+            "tool_name": "Edit",
+            "tool_input": {
+                "file_path": "some/other/thing.json",
+                "new_string": '"description": "This is one sentence. This is a second sentence.",',
             },
         })
         self.assertEqual(code, 0)

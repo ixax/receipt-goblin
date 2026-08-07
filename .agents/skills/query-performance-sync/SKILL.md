@@ -1,10 +1,10 @@
 ---
 name: query-performance-sync
 description: >
+  Keeps services/grafana/dashboards-health/query_performance.json (its query-performance mirror) from drifting.
   TRIGGER - read/apply whenever any panel in services/grafana/dashboards/agents_overview.json is created, edited, or removed - regardless of whether the calling task mentions it.
-  Keeps services/grafana/dashboards-health/query_performance.json (its query-performance mirror) from drifting, via the tag/extract/render scripts under services/grafana/scripts/.
   SKIP for any other dashboard file, and for a Dynamic Text panel's query-content-only edit (same id, same tab).
-  v1.0.3
+  v1.0.4
 ---
 
 Applies only to `services/grafana/dashboards/agents_overview.json` - no other dashboard has a `query_performance.json`-style mirror.

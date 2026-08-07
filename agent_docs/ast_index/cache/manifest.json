@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-07T14:42:58.612739+00:00",
+  "generated_at": "2026-08-07T15:00:56.387760+00:00",
   "files": {
     "hooks/ast_index/sync_hook.py": {
       "sha256": "c8959b7bd47119783c7c14eefd46cb4c76a873f6238107e6cca27706f4e89b48",
@@ -43,13 +43,13 @@
       "cache_path": "manifests/hooks/harness_audit/budgets.py.json"
     },
     "hooks/harness_audit/comment_format.py": {
-      "sha256": "0cf49703d8ae264b7aab04064980ee4050352ebd872210444ea0c6be5b54bd5f",
-      "size": 2925,
+      "sha256": "0944ef82a9fd6ca6b1a6f3470c704ab6fa29dc19ba30d03e7f0f725b66ad62c5",
+      "size": 9315,
       "cache_path": "manifests/hooks/harness_audit/comment_format.py.json"
     },
     "hooks/harness_audit/comment_format_hook.py": {
-      "sha256": "94f95b96203aa9cf67ed77e97f115b58eda0e10f6d9b56489ab248a255680ad3",
-      "size": 1969,
+      "sha256": "95de0571060e85ca54ee3b99b72b815c01b00e7588004f3778656250575092df",
+      "size": 2210,
       "cache_path": "manifests/hooks/harness_audit/comment_format_hook.py.json"
     },
     "hooks/harness_audit/md_format_bash_gate.py": {
@@ -58,8 +58,8 @@
       "cache_path": "manifests/hooks/harness_audit/md_format_bash_gate.py.json"
     },
     "hooks/harness_audit/md_format_skill_gate.py": {
-      "sha256": "4ad459809043430bd3c2c87645dda4d7c07aadb6f12a4fb584db0f3cdcd4a663",
-      "size": 7008,
+      "sha256": "5ce0b7483c95925879aacb534597e66dbecec4c0e767fbef5fd432041d43c113",
+      "size": 7848,
       "cache_path": "manifests/hooks/harness_audit/md_format_skill_gate.py.json"
     },
     "hooks/harness_audit/self_delegation_gate.py": {
@@ -88,8 +88,8 @@
       "cache_path": "manifests/hooks/harness_audit/tests/test_audit_hook.py.json"
     },
     "hooks/harness_audit/tests/test_comment_format.py": {
-      "sha256": "94db9c9ac646c341772fbadce4c207fdf329ff861088c5fcb33bf9a0ea51bfea",
-      "size": 4156,
+      "sha256": "e531eeb54b11dbe78690eeb43f0c1a030d7c456676e3cc5e4a068f1bc248ce97",
+      "size": 10069,
       "cache_path": "manifests/hooks/harness_audit/tests/test_comment_format.py.json"
     },
     "hooks/harness_audit/tests/test_md_format_bash_gate.py": {
@@ -98,8 +98,8 @@
       "cache_path": "manifests/hooks/harness_audit/tests/test_md_format_bash_gate.py.json"
     },
     "hooks/harness_audit/tests/test_md_format_skill_gate.py": {
-      "sha256": "b0d0ef276034509e8b1f63a9016547b70a4d14be0eb496f954db044543619e3a",
-      "size": 6905,
+      "sha256": "e8d05efb288ad7887883f9ac5da14c680180ebd3294b44223641ed246ac70c4d",
+      "size": 7975,
       "cache_path": "manifests/hooks/harness_audit/tests/test_md_format_skill_gate.py.json"
     },
     "hooks/harness_audit/tests/test_sync_hook.py": {

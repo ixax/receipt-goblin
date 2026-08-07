@@ -3,9 +3,10 @@ name: md-format
 description: >
   Formatting conventions for markdown prose/tables, and for multi-sentence comments/docstrings in Python and YAML.
   TRIGGER - read before EVERY Edit/Write touching .md prose or tables (agent_docs/*.md, README.md, AGENTS.md, SKILL.md, agent/command bodies, any .md), and before writing a multi-sentence `#` comment or docstring in .py/.yml/.yaml.
+  Also covers Grafana dashboard-JSON prose: panel `description` field values, and `--`-prefixed SQL comment lines inside `rawSql` strings, under services/grafana/dashboards/*.json and dashboards-health/*.json.
   Covers: line wrapping, one-sentence-per-line, short sentences, enumeration-vs-list, quoting example text, heading hierarchy, table alignment, top-level doc structure.
   SKIP for a single-sentence code comment, and .md edits touching only code blocks/frontmatter.
-  v1.9.0
+  v1.10.0
 ---
 
 Apply to prose paragraphs, list formatting, and table pipe formatting only.
@@ -39,6 +40,11 @@ After (same facts, one idea per line):
 > By this doc's own tagging, roughly 25% was universal, 50% deep-dive, 20% task-specific, 5% duplicate.
 > The optimized version is ~1.6-1.9k tokens.
 > Everything cut moved into two deep-docs, not lost.
+
+## JSON-embedded prose
+
+The one-sentence-per-line rule applies inside Grafana dashboard-JSON prose too: panel `description` field values, and `--`-prefixed SQL comment lines inside `rawSql` strings.
+Inside a JSON string value, a line break is the two literal characters `\n`, not an actual newline - split sentences onto separate `\n`-joined lines, never a real newline that would break the JSON.
 
 ## Enumeration vs. inline list
 

@@ -3,10 +3,7 @@ name: loadtest-runner
 description: >
   End-to-end owner of the `make loadtest` workflow - pre-flight checks, launch, monitoring, verification, reporting.
   MUST BE USED PROACTIVELY whenever the user asks to run a load test (нагрузочное тестирование) or how the stack behaves under concurrency/load.
-  Isolates traffic in a dedicated ClickHouse database; delegates the write-path identity switch (webhook-1/webhook-2/webhook-worker) to `dev-ops`; stops immediately on the known OOM regression.
-  Has no AskUserQuestion tool - relays pre-flight decisions via the orchestrator's `NEED USER INPUT:` protocol.
-  Can delegate mechanical work (e.g. log inspection) to `script-ops`.
-  v1.9.3
+  v1.9.4
 tools: Bash, Read, Monitor, SendMessage, Agent, Skill
 model: claude-sonnet-5
 ---
@@ -22,6 +19,8 @@ Two standing protocols, used throughout:
   The orchestrator resumes you (same conversation, context preserved) with the answer.
 - Status checkpoint - `SendMessage` with `to: "main"`.
   A plain notification, not a question: don't block on it, and don't skip it where a phase below mandates one.
+
+Delegate mechanical work outside these phases (e.g. log inspection) to `script-ops`.
 
 ## Phase 0 - Understand the tooling
 

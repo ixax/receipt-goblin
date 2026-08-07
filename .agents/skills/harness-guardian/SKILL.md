@@ -1,15 +1,10 @@
 ---
 name: harness-guardian
 description: >
-  Token-economy audit workflow for the agent harness: file budgets,
-  rule classification and relocation, cache hygiene, dual-harness
-  (Claude Code + Codex) layout checks.
-  Never triggers proactively - invoked explicitly by name, or read by
-  the harness-expert subagent before a structural audit or relocation
-  pass.
-  SKIP for routine per-edit budget checks - the PostToolUse hook runs
-  those automatically.
-  v1.5.1
+  Token-economy audit workflow for the agent harness: file budgets, rule classification and relocation, cache hygiene, dual-harness (Claude Code + Codex) layout checks.
+  Never triggers proactively - invoked explicitly by name, or read by the harness-expert subagent before a structural audit or relocation pass.
+  SKIP for routine per-edit budget checks - already automatic.
+  v1.5.3
 ---
 
 Keep the always-loaded context layer minimal.
@@ -45,6 +40,7 @@ An under-triggered skill costs one missed load; a bloated AGENTS.md costs every 
 - Notes meant for humans go into `<!-- block comments -->` (stripped before context).
 - New skill: write the description first - what it does plus the concrete trigger phrases and file paths that activate it.
   All "when to use" wording goes in the description, none in the body.
+  Run every sentence through the classification gate in `.claude/agents/harness-expert.md`'s "Description content spec" before finalizing.
 
 ## 4. Verify
 
