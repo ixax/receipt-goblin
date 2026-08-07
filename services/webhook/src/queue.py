@@ -99,6 +99,11 @@ async def enqueue_usage_events(payloads: list[dict]) -> None:
     Unlike LiteLLM's callback endpoint, the direct collector has a durable
     SQLite outbox. A Redis failure must reach it as a non-2xx response so it
     can retain and retry the batch.
+
+    Delivery is at-least-once by design: a mid-pipeline failure can leave a
+    prefix of the batch on the stream, and the collector's retry re-XADDs it.
+    ClickHouse's ReplacingMergeTree keys on the envelope's event_id, so the
+    replays collapse on merge - same semantics as every other ingest path.
     """
     if not payloads:
         return

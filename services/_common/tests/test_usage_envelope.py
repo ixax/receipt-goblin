@@ -79,3 +79,12 @@ def test_normalize_usage_envelope_unsuccess_rejects_unknown_version():
 
     with pytest.raises(UsageEnvelopeError, match="schema_version"):
         normalize_usage_envelope(payload)
+
+
+def test_normalize_success_treats_explicit_null_optional_field_as_absent():
+    payload = _payload()
+    payload["stop_reason"] = None
+
+    normalized = normalize_usage_envelope(payload)
+
+    assert normalized["stop_reason"] == ""

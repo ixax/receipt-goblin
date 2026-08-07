@@ -30,7 +30,10 @@ def virtual_key_info(key: str, base_url: str, master_key: str, timeout: int = 3)
     if not isinstance(payload, dict):
         return None
     info = payload.get("info")
-    if not isinstance(info, dict) or not isinstance(info.get("key_name"), str) or not info["key_name"]:
+    # Only shape-check here - key_name/key_alias presence varies across
+    # LiteLLM versions and consumers, and gating every existing endpoint on
+    # one optional field would silently 401 keys that used to pass.
+    if not isinstance(info, dict) or not info:
         return None
     if info.get("blocked"):
         return None

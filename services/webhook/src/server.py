@@ -5,6 +5,8 @@ webhook-worker (worker.py) is what actually parses/inserts into ClickHouse,
 in batches - see AGENTS.md.
 """
 
+import asyncio
+
 from common.config.litellm import LITELLM_BASE_URL, LITELLM_MASTER_KEY
 from common.ingest_db import clickhouse_alive
 from common.litellm_auth import team_alias, virtual_key_info, virtual_key_is_valid
@@ -209,7 +211,10 @@ async def receive_usage_event(request: Request, key_info: dict = Depends(require
             # /key/info returns team_id but no alias, so the Team's display
             # name needs its own (cached) lookup - without it this path can
             # only ever label a Team by its uuid.
-            "group_name": _team_alias(group_id),
+            # to_thread: team_alias blocks on urllib up to 3s on a cache miss,
+            # and this is an async handler - inline it would stall the whole
+            # event loop, /health included.
+            "group_name": await asyncio.to_thread(_team_alias, group_id),
         }
         envelopes = []
         for index, payload in enumerate(payloads):

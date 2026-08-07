@@ -37,7 +37,10 @@ _UINT32_MAX = 2**32 - 1
 
 
 def _string(payload: dict, field: str, *, required: bool = True) -> str:
+    # `or ""`: an optional field explicitly sent as JSON null is the same as an absent one - common encoder idiom for "unset".
     value = payload.get(field, "")
+    if value is None and not required:
+        value = ""
     if not isinstance(value, str) or (required and not value.strip()):
         raise UsageEnvelopeError(f"{field} must be a non-empty string")
     return value.strip()
