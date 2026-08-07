@@ -9,9 +9,10 @@ PRODUCT_HEADER = "x-rg-client-product"
 SURFACE_HEADER = "x-rg-client-surface"
 ORIGINATOR_HEADER = "x-rg-client-originator"
 
+# Keyed casefolded: the header value is client-supplied free text, and a casing drift would otherwise silently demote attribution to codex/unknown.
 _CODEX_ORIGINATORS = {
-    "Codex CLI": "cli",
-    "Codex Desktop": "desktop",
+    "codex cli": "cli",
+    "codex desktop": "desktop",
 }
 
 
@@ -48,7 +49,7 @@ def from_litellm_payload(payload: dict) -> ClientAttribution:
     if product in PRODUCTS and surface in SURFACES:
         return ClientAttribution(product, surface, "litellm_proxy")
 
-    originator = str(headers.get(ORIGINATOR_HEADER) or "").strip()
+    originator = str(headers.get(ORIGINATOR_HEADER) or "").strip().casefold()
     if originator in _CODEX_ORIGINATORS:
         return ClientAttribution("codex", _CODEX_ORIGINATORS[originator], "litellm_proxy")
 

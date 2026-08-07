@@ -104,3 +104,17 @@ def test_claude_transcript_attribution_uses_validated_envelope_source(source, su
     assert attribution.product == "claude"
     assert attribution.surface == surface
     assert attribution.ingest_path == "claude_transcript"
+
+
+def test_from_litellm_payload_success_matches_originator_case_insensitively():
+    module = _attribution_module()
+    payload = {
+        "metadata": {
+            "requester_custom_headers": {"x-rg-client-originator": "CODEX DESKTOP"},
+            "user_agent": "codex_cli_rs/0.145.0",
+        }
+    }
+
+    attribution = module.from_litellm_payload(payload)
+
+    assert (attribution.product, attribution.surface) == ("codex", "desktop")
