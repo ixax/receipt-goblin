@@ -23,7 +23,9 @@ That's purely an nginx-internal socket choice, unrelated to `LANGFUSE_PORT`, whi
 ## Routing stays port-based, not path-prefixed or subdomain-based
 
 This stack has no domain or local DNS infra anywhere.
-Every consumer (README, `Makefile`, `.mcp.json`, `make setup-client`'s printed `ANTHROPIC_BASE_URL`/`AGENT_CLI_TRACKING_API_URL`) already addresses services as `http://localhost:<PORT>`, so per-port `server{}` blocks in `nginx.conf` reuse that with zero client-facing change.
+Every network consumer (README, `Makefile`, `.mcp.json`, and the snippets printed by `make setup-client`) already addresses services as `http://localhost:<PORT>`, so per-port `server{}` blocks in `nginx.conf` reuse that with zero client-facing change.
+`make setup-client` prints `AGENT_CLI_TRACKING_API_URL` as a safe global and puts the OpenAI-wire proxy URI in Codex's config snippet.
+It prints the Anthropic-wire URI only as input to a per-launch Claude smart wrapper, not as a global `ANTHROPIC_BASE_URL`.
 Path prefixes would need every backend to tolerate a stripped/rewritten prefix (unverified for LiteLLM's UI/API and both MCP servers' `streamable-http` transport) and would ripple through every hardcoded URL above.
 Subdomains would need `/etc/hosts`/DNS infra that doesn't exist here.
 Revisit only if this stack ever runs behind a real external domain.
@@ -53,7 +55,11 @@ The landing page (`listen 80`) and `stub_status` (`listen 8080`) stay excluded (
 ## litellm-with-fallback proxy ports
 
 Two extra ports (`ANTHROPIC_PROXY_PORT`/`4001`, `OPENAI_PROXY_PORT`/`4002`) proxy straight to litellm, same as `LITELLM_PORT`, but fail over to the real provider (`api.anthropic.com`/`api.openai.com`) if litellm doesn't respond, instead of failing the request.
-`make setup-client` points `ANTHROPIC_BASE_URL`/`OPENAI_API_BASE`/Codex's `base_url` at these ports rather than plain `LITELLM_PORT`.
+`make setup-client` puts the resolved `OPENAI_PROXY_URI` value in Codex's `base_url` config.
+It does not export `OPENAI_API_BASE`.
+For normal Claude CLI launches, the smart wrapper sets `ANTHROPIC_BASE_URL` and `ANTHROPIC_CUSTOM_HEADERS` only on the child process.
+For `claude --remote-control` and `claude remote-control`, the wrapper leaves both proxy variables unset and sets `CLAUDE_TRANSCRIPT_TRACKING_MODE=direct`.
+Claude Desktop also stays direct and never inherits a global Anthropic proxy URL.
 
 Mixing an HTTP backend (litellm) and an HTTPS backend (the fallback target) in one `upstream{}` doesn't work - `proxy_pass`'s scheme applies to every server in that upstream block, and litellm is plain HTTP while the fallback targets are HTTPS.
 So instead of an `upstream{}` with a `backup` server, each port's `location /` proxies to litellm with `proxy_intercept_errors on;` and an `error_page 502 503 504 = @<name>_fallback;`, and the named `location` proxies to the real provider over HTTPS (`proxy_ssl_server_name on; proxy_ssl_name <host>;`).

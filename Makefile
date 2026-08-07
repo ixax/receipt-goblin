@@ -43,9 +43,9 @@ URI := $(if $(strip $(LITELLM_URI)),$(LITELLM_URI),http://localhost:$(PORT))
 
 # litellm-with-fallback ports (load-balancer's `listen 4001`/`listen 4002` -
 # see agent_docs/services/load-balancer.md) - same PORT/URI override pattern
-# as above. setup-client below points ANTHROPIC_BASE_URL/OPENAI_API_BASE at
-# these instead of plain $(URI), so a dead litellm fails over to
-# api.anthropic.com/api.openai.com instead of failing the client outright.
+# as above. setup-client below uses the OpenAI endpoint in Codex config and
+# prints the Anthropic endpoint for per-launch Claude wrappers, so a dead
+# litellm can fail over to api.anthropic.com/api.openai.com.
 ANTHROPIC_PROXY_PORT := $(if $(strip $(ANTHROPIC_PROXY_PORT)),$(ANTHROPIC_PROXY_PORT),4001)
 ANTHROPIC_PROXY_URI := $(if $(strip $(ANTHROPIC_PROXY_URI)),$(ANTHROPIC_PROXY_URI),http://localhost:$(ANTHROPIC_PROXY_PORT))
 OPENAI_PROXY_PORT := $(if $(strip $(OPENAI_PROXY_PORT)),$(OPENAI_PROXY_PORT),4002)
@@ -102,7 +102,7 @@ include .image-tags.mk
 PYTHON_VERSION := $(shell cat .python-version)
 export PYTHON_VERSION
 
-.PHONY: check-env git-hooks-install install-uv init _init_provision start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit lock harness-index ast-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all reparse-dlq print-reparse-final-hint \
+.PHONY: check-env git-hooks-install install-uv preflight bootstrap init _init_provision init-auto litellm-provision setup-client-apply reset-tracking-data start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit lock harness-index ast-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all reparse-dlq print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	archive-prometheus archive-clickhouse-logs \
@@ -166,7 +166,7 @@ _init_provision: check-env
 	@echo 'Provision ClickHouse roles and apply schema migrations.'
 	uv run python3 services/init/init_clickhouse_users.py $(COMPOSE_FILES)
 	@out=$$(mktemp); \
-	if ! docker compose $(COMPOSE_FILES) run --rm clickhouse-migrate >"$$out" 2>&1; then \
+	if ! docker compose $(COMPOSE_FILES) run --build --rm clickhouse-migrate >"$$out" 2>&1; then \
 	  cat "$$out"; rm -f "$$out"; exit 1; \
 	fi; \
 	rm -f "$$out"
@@ -186,6 +186,71 @@ _init_provision: check-env
 	@echo '  make up'
 	@echo ''
 	@echo '(optional: `make observability-up` for Prometheus/Loki/etc - see README "Observability")'
+
+# Promptless ClickHouse-provisioning slice of `init` - the variant an agent
+# (or CI) can run; `make bootstrap` composes the rest (up, status, LiteLLM
+# key) around it. Reuses whatever is already in .env, defaults the rest,
+# generates any missing password. Force a specific value by exporting it:
+# `CLICKHOUSE_DATABASE=metrics make init-auto`. ENVIRONMENT keeps its
+# normal default (development) instead of prompting.
+init-auto: check-env git-hooks-install
+	uv run python3 services/init/init_clickhouse_users.py --non-interactive $(COMPOSE_FILES)
+	$(MAKE) migrate
+
+# Read-only host readiness check - docker daemon, compose/buildx plugins,
+# python, free host ports, docker CPU/RAM against README's floor, and whether
+# a stack from a *different* clone already owns this compose project name.
+# Run first by `bootstrap` so a missing prerequisite fails in 2 seconds with
+# the fix printed, instead of 4 minutes into an image build with a misleading
+# error (see scripts/preflight.py's docstring for the two real ones).
+preflight:
+	@uv run python3 scripts/preflight.py
+
+# One command, fresh clone to working stack, no prompts and no /ui
+# clickthrough - the target an agent runs. Every step below is individually
+# re-runnable and idempotent, so re-running `bootstrap` on an already-provisioned
+# host is safe (it reuses existing .env credentials and an existing valid
+# virtual key rather than reissuing either).
+#
+#   preflight         - host is actually able to run this
+#   init-auto         - .env + ClickHouse roles + schema migrations
+#   up                - build and start the whole core stack
+#   status            - block until every service is healthy
+#   litellm-provision - team + user + personal virtual key -> .env
+#
+# Opt-in extras (both default off, since both write outside this repo):
+#   APPLY_CLIENT=1    - also write ~/.claude/settings.json + ~/.codex/config.toml
+#   SHELL_RC=~/.zshrc - also write the shell exports Codex CLI's hooks need
+# Langfuse/observability stay opt-in as always (`make langfuse-up`/`observability-up`).
+bootstrap:
+	@echo "=== bootstrap: preflight -> init-auto -> up -> status -> litellm-provision ==="
+	$(MAKE) preflight
+	$(MAKE) init-auto
+	$(MAKE) up
+	$(MAKE) status
+	$(MAKE) litellm-provision
+ifeq ($(APPLY_CLIENT),1)
+	$(MAKE) setup-client-apply
+else
+	@echo ''
+	@echo 'Stack is up. Client config not written (pass APPLY_CLIENT=1 to write it):'
+	@$(MAKE) --no-print-directory setup-client
+endif
+
+# Multi-identity/agent-grade LiteLLM provisioning over the admin API, host-side
+# (needs the stack up, unlike `make init`'s in-container first-key step):
+# find-or-create team/user/key with explicit aliases, live key-validity
+# recheck, and `LITELLM_VIRTUAL_KEY` written back to .env. Idempotent - an
+# existing valid key in .env is kept as-is. Override any of the three:
+#   make litellm-provision TEAM=Personal ALIAS=alice USER_ID=default_user_id
+# MODELS is optional and comma-separated; empty means the key isn't restricted
+# to a model list.
+litellm-provision: check-env
+	uv run python3 scripts/provision_litellm.py \
+	  --team "$(or $(TEAM),Personal)" \
+	  --alias "$(or $(ALIAS),personal)" \
+	  --user-id "$(or $(USER_ID),default_user_id)" \
+	  --models "$(MODELS)"
 
 # `start`: Brings up containers with existing images (no rebuild/recreate).
 # `up`: Rebuilds and recreates containers - the fix for baked-in config/env/file changes.
@@ -234,8 +299,42 @@ status: check-env
 # + one-time dashboard Dictionaries). Runs automatically at the end of `make init`
 # on a fresh setup; can also be run standalone after adding a new migration file.
 # Never touches ClickHouse users/roles/grants - that's `make init` alone, see services/init/.
+#
+# `--build`, deliberately: in production (COMPOSE_FILES without
+# docker-compose.dev.yml) nothing bind-mounts services/clickhouse/migrations
+# or services/migrate/src, so a plain `run --rm` executes whatever was baked
+# into the image at its last build - a newly added migration file silently
+# reports "all migrations up to date" and is never applied. `--build` costs a
+# cached no-op rebuild in dev and makes this target correct in both modes.
 migrate: check-env
-	docker compose $(COMPOSE_FILES) run --rm clickhouse-migrate
+	docker compose $(COMPOSE_FILES) run --build --rm clickhouse-migrate
+
+# Destructive, explicit reset of usage/session/trace/raw tracking data.
+# Preserves schema, migrations, users, Grafana, LiteLLM keys, and client
+# configuration.
+#
+# The worker is *stopped*, not paused, across the Redis cut + ClickHouse
+# truncate: a paused worker keeps its already-read, not-yet-flushed events in
+# process memory and would replay them into the freshly truncated tables the
+# moment it resumes (its flush window has long expired by then). Stopping
+# drops those buffers; on start the worker recreates the consumer group
+# (mkstream) and ingests only post-reset traffic. A manually stopped
+# container is not resurrected by restart:always or autoheal, so no pause
+# dance is needed around it.
+reset-tracking-data: check-env
+	@if [ "$(CONFIRM)" != "RESET-TRACKING-DATA" ]; then \
+		echo 'Refusing reset: pass CONFIRM=RESET-TRACKING-DATA'; exit 2; \
+	fi
+	@docker compose $(COMPOSE_FILES) build clickhouse-migrate
+	@docker stop receipt-goblin-worker >/dev/null && \
+	trap 'docker start receipt-goblin-worker >/dev/null 2>&1 || true' EXIT INT TERM; \
+	docker exec receipt-goblin-redis redis-cli FLUSHDB >/dev/null && \
+	docker compose $(COMPOSE_FILES) run --rm --no-deps clickhouse-migrate \
+		python -m src.reset_data --confirm "$(CONFIRM)"; \
+	code=$$?; \
+	docker start receipt-goblin-worker >/dev/null 2>&1 || true; \
+	trap - EXIT INT TERM; \
+	exit $$code
 
 # SERVICE is optional (default: whole stack). langfuse-down/observability-down
 # always run regardless of SERVICE - they only tear down their own opt-in
@@ -362,58 +461,43 @@ harness-index:
 ast-index:
 	uv run python3 scripts/ast_index.py build --all
 
-# Prints export statements to route Claude Code, Codex, and other OpenAI/
-# Anthropic-SDK-based tools through the local LiteLLM proxy, plus
-# AGENT_CLI_TRACKING_API_URL/LITELLM_VIRTUAL_KEY for hooks/report_git_branch.py
-# (neither has a fallback - the hook crashes if they aren't exported;
-# LITELLM_VIRTUAL_KEY also authenticates that hook's report, checked by
-# webhook against LiteLLM's own /key/info), followed by a ready-to-paste
-# config block for each CLI (see README "Configuring via config files instead
-# of shell exports"). The shell-export lines above are still required for
-# Codex regardless of the config.toml block below - Codex hooks just inherit
-# whatever environment the shell that launched `codex` already has, there's
-# no config.toml equivalent of Claude's "env" block for that. `<virtual key>`
-# is a placeholder unless LITELLM_VIRTUAL_KEY is already set in .env, in
-# which case it's substituted everywhere below.
-# LITELLM_AUTH_HEADER derives from $$LITELLM_VIRTUAL_KEY rather than repeating
-# the substituted value, so a hand-edited placeholder only needs replacing in
-# one line. The settings.json block below can't do the same - Claude Code
-# never expands $$VAR in an "env" value (README "Configuring via config files
-# instead of shell exports"), so those stay literal.
+# Prints only tracking/auth globals safe for every client. Codex routing stays
+# in config.toml; Claude proxy variables must be scoped to a normal CLI launch
+# so Desktop and Remote Control keep their direct Anthropic connection.
+# AGENT_CLI_TRACKING_API_URL/LITELLM_VIRTUAL_KEY are also used by hooks;
+# LITELLM_AUTH_HEADER derives from the key for Codex's env_http_headers.
+# The virtual key is substituted when LITELLM_VIRTUAL_KEY is in .env,
+# `<virtual key>` otherwise.
+#
+# Rendered by scripts/setup_client.py rather than a stack of `@echo` lines,
+# for two reasons. It shares every line with `setup-client-apply` below, which
+# has to build the same content in Python anyway to merge it into real files -
+# two renderers would drift. And the `@echo` version was silently broken on
+# Windows: GNU Make skips the shell for a recipe line with no shell-special
+# characters, and its own argument handling drops a `{` that ends a
+# single-quoted word - so `@echo '{'` printed an empty line and the
+# settings.json block came out as invalid JSON, missing its opening brace.
+# (`@echo '  "env": {'` survived only because the embedded double quotes made
+# Make hand that line to sh after all.)
 setup-client:
-	@echo '# --- ~/.zshrc / ~/.bashrc (paste as-is, or use the config blocks below instead) ---'
-	@echo 'export LITELLM_VIRTUAL_KEY="$(VKEY)"'
-	@echo 'export LITELLM_AUTH_HEADER="Bearer $$LITELLM_VIRTUAL_KEY"'
-	@echo '# Anthropic/OpenAI-wire fallback ports, not plain litellm - see'
-	@echo '# agent_docs/services/load-balancer.md. Auth headers below are NOT'
-	@echo '# translated once fallen back to the real provider.'
-	@echo 'export ANTHROPIC_BASE_URL="$(ANTHROPIC_PROXY_URI)"'
-	@echo 'export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: $$LITELLM_AUTH_HEADER"'
-	@echo 'export OPENAI_API_BASE="$(OPENAI_PROXY_URI)"'
-	@echo 'export AGENT_CLI_TRACKING_API_URL="$(INGEST_URI)"'
-	@echo ''
-	@echo '# --- ~/.codex/config.toml (merge in, keep any hooks/mcp_servers already there) ---'
-	@echo '# Only covers model routing - the export lines above are still needed'
-	@echo '# in your shell for hooks/report_git_branch.py, see comment above.'
-	@echo 'model_provider = "litellm"'
-	@echo ''
-	@echo '[model_providers.litellm]'
-	@echo 'name = "LiteLLM"'
-	@echo 'base_url = "$(OPENAI_PROXY_URI)"'
-	@echo 'wire_api = "responses"'
-	@echo 'requires_openai_auth = true'
-	@echo 'env_http_headers = { "x-litellm-api-key" = "LITELLM_AUTH_HEADER" }'
-	@echo ''
-	@echo '# --- ~/.claude/settings.json ("env" block - merge in, keep any hooks already there) ---'
-	@echo '{'
-	@echo '  "env": {'
-	@echo '    "ANTHROPIC_BASE_URL": "$(ANTHROPIC_PROXY_URI)",'
-	@echo '    "ANTHROPIC_CUSTOM_HEADERS": "x-litellm-api-key: Bearer $(VKEY)",'
-	@echo '    "AGENT_CLI_TRACKING_API_URL": "$(INGEST_URI)",'
-	@echo '    "LITELLM_VIRTUAL_KEY": "$(VKEY)"'
-	@echo '  }'
-	@echo '}'
+	@uv run python3 scripts/setup_client.py 	  --anthropic-uri "$(ANTHROPIC_PROXY_URI)" 	  --openai-uri "$(OPENAI_PROXY_URI)" 	  --ingest-uri "$(INGEST_URI)"
 
+# Writes what `setup-client` above prints, instead of leaving it to be pasted:
+# merges the "env" block into ~/.claude/settings.json (real JSON parse/merge,
+# every other setting kept) and a marked block into ~/.codex/config.toml (TOML
+# has no stdlib writer - see scripts/setup_client.py). Both files are backed up
+# first. Deliberately writes only the two globals `setup-client` deems safe -
+# ANTHROPIC_BASE_URL/ANTHROPIC_CUSTOM_HEADERS never go into global config,
+# because Claude Desktop and Remote Control must keep their direct Anthropic
+# connection; those belong on a per-launch wrapper only.
+# The shell exports Codex CLI's hooks read are only written with SHELL_RC=<path>,
+# never guessed:
+#   make setup-client-apply SHELL_RC=~/.zshrc
+# The virtual key comes from .env at *recipe* time (scripts/setup_client.py
+# re-reads it), not from Make's parse-time $(VKEY) snapshot - that's what lets
+# `make bootstrap APPLY_CLIENT=1` write a key issued earlier in the same run.
+setup-client-apply:
+	@uv run python3 scripts/setup_client.py --write 	  --anthropic-uri "$(ANTHROPIC_PROXY_URI)" 	  --openai-uri "$(OPENAI_PROXY_URI)" 	  --ingest-uri "$(INGEST_URI)" 	  $(if $(SHELL_RC),--shell-rc "$(SHELL_RC)",)
 # Reparses ingest_raw into agent_events/agent_usage/agent_messages/
 # agent_invocations using the current classification logic - see
 # services/webhook/src/reparse.py. ReplacingMergeTree-safe to re-run any
@@ -426,15 +510,15 @@ setup-client:
 # reminds to collapse them explicitly instead of waiting on a background merge.
 reparse: check-env
 	@if [ -z "$(SESSION)" ]; then echo "usage: make reparse SESSION=<session_id>"; exit 1; fi
-	docker compose $(COMPOSE_FILES) run --rm -e SESSION_ID=$(SESSION) metrics-reparse
+	docker compose $(COMPOSE_FILES) run --build --rm -e SESSION_ID=$(SESSION) metrics-reparse
 	@$(MAKE) print-reparse-final-hint
 
 reparse-all: check-env
-	docker compose $(COMPOSE_FILES) run --rm metrics-reparse
+	docker compose $(COMPOSE_FILES) run --build --rm metrics-reparse
 	@$(MAKE) print-reparse-final-hint
 
 reparse-dlq: check-env
-	docker compose $(COMPOSE_FILES) run --rm metrics-reparse python -m src.reparse_dlq $(if $(STAGE),--stage $(STAGE),)
+	docker compose $(COMPOSE_FILES) run --build --rm metrics-reparse python -m src.reparse_dlq $(if $(STAGE),--stage $(STAGE),)
 	@$(MAKE) print-reparse-final-hint
 
 print-reparse-final-hint:

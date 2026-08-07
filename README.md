@@ -28,6 +28,42 @@ Core services also self-heal from a stuck-but-alive `unhealthy` state (not just 
 
 ## Getting started
 
+### One command from clone to running
+
+Everything below this section still works step by step, and is worth reading once.
+But on a host that already has Docker, the whole sequence is one command:
+
+```bash
+make bootstrap
+```
+
+It runs, in order:
+
+| Step                | What it does                                                                                     | Standalone target        |
+| ------------------- | ------------------------------------------------------------------------------------------------ | ------------------------ |
+| `preflight`         | Read-only host check: docker daemon, `compose`/`buildx` plugins, Python, free host ports, CPU/RAM | `make preflight`         |
+| `init-auto`         | `.env` from `.env.example`, five ClickHouse roles, schema migrations, git hooks - **no prompts**  | `make init-auto`         |
+| `up`                | Builds and starts every core service                                                             | `make up`                |
+| `status`            | Blocks until every container reports healthy                                                     | `make status`            |
+| `litellm-provision` | LiteLLM team + user + your personal virtual key, written to `.env`                                | `make litellm-provision` |
+
+Nothing in that chain prompts, so an agent (or CI) can run it unattended, and every step is idempotent - re-running `make bootstrap` on a provisioned host reuses the existing `.env` credentials and an existing valid virtual key rather than reissuing either.
+
+Two things it deliberately does **not** do:
+
+- **Write outside this repo.** Client config (`~/.claude/settings.json`, `~/.codex/config.toml`) is only written with `make bootstrap APPLY_CLIENT=1`, or later via `make setup-client-apply`; otherwise the same content is just printed. Shell rc files are only touched when you name one: `SHELL_RC=~/.zshrc`. Neither ever writes `ANTHROPIC_BASE_URL`/`ANTHROPIC_CUSTOM_HEADERS` globally - see "Issue yourself a personal key" below for why those belong on a per-launch wrapper.
+- **Invent provider credentials.** Put `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` in `.env` (see `.env.example`) before bootstrapping and the `litellm` container picks them up; leave them out and the stack still comes up fully - those models simply 401 when called, while all tracking/ingest/dashboards work.
+
+So the shortest full path on a fresh machine is:
+
+```bash
+cp .env.example .env   # optional - only to add provider keys up front; init-auto copies it otherwise
+make bootstrap APPLY_CLIENT=1
+```
+
+If `preflight` fails, it prints the one thing to fix - that's the intended entry point for diagnosing a bad host, and it's safe to re-run at any time.
+Agent-facing runbook (what to run, what to never run, what needs a human): `agent_docs/deploy.md`.
+
 ### Prerequisites: Docker via Colima
 
 The stack is plain Docker Compose.
@@ -124,6 +160,9 @@ Continue to "Start the stack" below.
 make init
 ```
 
+The same ClickHouse-provisioning step without any prompt at all - reusing whatever is already in `.env`, defaulting the rest, generating every missing password - is `make init-auto` (what `make bootstrap` runs).
+A specific value can still be forced there by exporting it: `CLICKHOUSE_DATABASE=metrics make init-auto`.
+
 `make init` also installs this repo's tracked git hooks (`git config core.hooksPath .githooks`) - standalone via `make git-hooks-install` if you ever need to re-run just that step.
 
 If you'd rather fill in `.env` by hand instead:
@@ -146,6 +185,7 @@ cp .env.example .env
 | `CLICKHOUSE_BOOTSTRAP_PASSWORD`          | required          | `docker-compose.yml` refuses to start without it - see "Configuration" under "Reference" below.                                                                                                                                                                                          |
 | `LITELLM_MASTER_KEY`                     | required          | litellm - admin credential for `/ui` and `/key/generate`; also used by `make init` itself to auto-provision your first team/key, see "LiteLLM" below. Also used by webhook to call LiteLLM's `/key/info` when verifying `hooks/report_git_branch.py`'s virtual key.                      |
 | `LITELLM_DB_PASSWORD`                    | required          | `docker-compose.yml` refuses to start without it - see "Configuration" under "Reference" below.                                                                                                                                                                                          |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`  | optional          | Passed through to the `litellm` container. Every model in `services/litellm/config.yaml` is declared without an explicit `api_key`, so litellm falls back to these - the scriptable alternative to pasting the same keys into `/ui`. Unset just means those models 401; the stack still runs. |
 | `LITELLM_TEAM_ID`/`LITELLM_VIRTUAL_KEY`  | auto-provisioned  | your personal team/key - written by `make init` itself, nothing to fill in by hand; see "Issue yourself a personal key" below.                                                                                                                                                           |
 
 Everything else in `docker-compose.yml` (ports, ClickHouse host, etc.) has a sane default - you only need to touch `.env` for the rows above; see "Configuration" under "Reference" below for the full list.
@@ -188,8 +228,57 @@ make migrate
 ```
 
 `make migrate` brings up `clickhouse` itself if it isn't running yet, so it's safe to run before or after `make start`.
+To erase only tracking history while preserving schema, users, Grafana, LiteLLM keys, and client configuration, run:
+
+```bash
+make reset-tracking-data CONFIRM=RESET-TRACKING-DATA
+```
+
+This deletes session, token, cost, trace, raw-ingest, DLQ, and queued tracking data.
+It does not delete Codex or Claude chats.
 Langfuse and observability never start automatically - must be run explicitly via `make langfuse-up` and `make observability-up` respectively.
 Run `make langfuse-up`/`make langfuse-down`/`make langfuse-logs` directly to manage Langfuse on its own without touching the core stack; `make stop`/`make down` will tear down both Langfuse and observability automatically as a courtesy.
+
+### Keep it up without running `make start` (Windows)
+
+`make start` is a one-off.
+Because every coding agent routes its traffic through LiteLLM, a stack that isn't up doesn't merely stop recording - the calls themselves fail.
+So liveness belongs to the OS, not to whichever agent happens to start first: three clients use the proxy (Claude Code desktop app, Claude Code CLI, Codex CLI) and only one of them has hooks.
+
+Two pieces, installed from one script:
+
+- **Logon Scheduled Task `receipt-goblin-ensure-stack`** - the mechanism. Polls for the Docker daemon (Docker Desktop takes 30-60s after logon, so this waits for it rather than guessing a delay), runs `make start` under Git Bash, then waits for LiteLLM to answer its liveliness endpoint. This is the case `restart: always` cannot cover: `make down` removes the containers outright, leaving a restart policy nothing to restart.
+- **A `SessionStart` hook in your global `~/.claude/settings.json`** - a safety net, not the mechanism. Roughly 600ms, never blocks, always exits 0: it asks LiteLLM for `/health/liveliness` and, if that fails, warns into the session and starts a repair in the background. Global rather than this repo's `.claude/settings.json` on purpose, so it fires in every project including the desktop app. Codex CLI needs nothing of its own - the task covers it.
+
+Two things it does *not* do the obvious way, both of which fail silently if you "simplify" them back:
+
+- It calls `make start`, never `docker compose` directly - `docker-compose.yml` interpolates image tags only the `Makefile` produces, and refuses to run without them. Under Git Bash specifically, because `make` from PowerShell loses `$(shell cat .python-version)` for want of POSIX tools on `PATH`.
+- It health-checks over HTTP, never with a TCP connect - the proxy port belongs to the `load-balancer` (nginx) container, so a TCP connect succeeds while `litellm` is stopped and every agent call is 502ing.
+
+```powershell
+pwsh -File scripts\ensure-stack.ps1 -Install
+```
+
+That registers (or refreshes) the task and reports whether the global hook points at this clone.
+The hook itself is added by hand, since it lives outside the repo - add this to the `SessionStart` array in `~/.claude/settings.json`:
+
+```json
+{
+  "type": "command",
+  "command": "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"<absolute path to this clone>\\scripts\\ensure-stack.ps1\" -Probe",
+  "timeout": 10,
+  "statusMessage": "Checking token tracking stack..."
+}
+```
+
+`pwsh -File scripts\ensure-stack.ps1` on its own runs the same ensure logic in the foreground; `-Uninstall` removes the task and leaves running containers alone.
+It logs to `%LOCALAPPDATA%\receipt-goblin\ensure-stack.log`.
+
+**Both the task and the hook store an absolute path to this clone.** After moving the repo, re-run `-Install` and edit the hook's path - `-Install` warns when the hook points elsewhere. This matters more than it looks: two clones with the same directory name are the same compose project, so an autostart aimed at the wrong clone will recreate containers against that clone's files (same warning `make preflight` raises).
+
+Deliberately not done: a periodic watchdog, which would resurrect the stack after a deliberate `make down`, and `claude`/`codex` shell wrappers, which miss the desktop app and duplicate the logic once per client.
+
+On macOS there's no equivalent yet - Docker Desktop/Colima starting at login plus `restart: always` covers a reboot, but nothing covers `make down`.
 
 ### Issue yourself a personal key and route a coding agent through the proxy
 
@@ -201,7 +290,8 @@ There's nothing to do in the UI for your first key - just route a client through
    Lost that output, or changed `LITELLM_URI`/a port since? Re-run `make setup-client` any time to regenerate it - it reads straight out of `.env`, no placeholder to replace by hand.
 
 Want an additional, narrower key instead - e.g. scoped to specific models, or for a teammate?
-That's still a manual `/ui` job: **Teams** (http://localhost:4000/ui/teams) → **Create New Team** (or reuse the existing one) → **Keys** → **Create New Key** → restrict `Models` as needed → copy the generated `sk-...` key.
+Scripted alternative for extra identities (per person x device keys, no `/ui`): `make litellm-provision TEAM=<device> ALIAS=<name> USER_ID=<account-email>` - find-or-create over the admin API, idempotent, writes `LITELLM_VIRTUAL_KEY` to `.env` (or prints the key with `--write-env no` for a second profile).
+Or the manual `/ui` job: **Teams** (http://localhost:4000/ui/teams) → **Create New Team** (or reuse the existing one) → **Keys** → **Create New Key** → restrict `Models` as needed → copy the generated `sk-...` key.
 
 To confirm the proxy is actually seeing traffic: **Usage** (http://localhost:4000/ui/usage) for per-key/per-model spend and request counts, **Logs** (http://localhost:4000/ui/logs) for individual request/response payloads.
 
@@ -464,7 +554,11 @@ Most are covered in more depth elsewhere in this README - follow the section poi
 
 | Target                     | Args                              | What it does                                                                                                                             |
 | -------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `bootstrap`                | `APPLY_CLIENT=1`, `SHELL_RC=<path>` (optional) | Fresh clone to healthy stack in one prompt-free command: `preflight` → `init-auto` → `up` → `status` → `litellm-provision` - see "One command from clone to running" above. |
+| `preflight`         | Read-only host check: docker daemon, `compose`/`buildx` plugins, Python, free host ports, CPU/RAM | `make preflight`         |
 | `init`                     |                                   | Interactive first-run ClickHouse role/user provisioning, plus git hooks install - see "Environment variables" above.                     |
+| `init-auto`         | `.env` from `.env.example`, five ClickHouse roles, schema migrations, git hooks - **no prompts**  | `make init-auto`         |
+| `litellm-provision` | LiteLLM team + user + your personal virtual key, written to `.env`                                | `make litellm-provision` |
 | `git-hooks-install`        |                                   | Points git at the tracked `.githooks/` directory (also run by `init`) - see "Getting started" above.                                     |
 | `start`                    | `SERVICE=<name>` (optional)       | Brings up containers with existing images, no rebuild - see "Start the stack".                                                           |
 | `up`                       | `SERVICE=<name>` (optional)       | Rebuilds and recreates containers - see "Build or start a single service".                                                               |
@@ -473,9 +567,11 @@ Most are covered in more depth elsewhere in this README - follow the section poi
 | `build`                    | `SERVICE=<name>` (optional)       | Builds image(s) without starting anything - see "Build or start a single service".                                                       |
 | `status`                   |                                   | Waits for every service to report healthy, prints pass/fail - see "Wait until it's healthy".                                             |
 | `migrate`                  |                                   | Runs just the ClickHouse migration container (`migrations/*.sql` + Dictionaries), nothing else.                                          |
+| `reset-tracking-data`      | `CONFIRM=RESET-TRACKING-DATA`     | Deletes tracking rows and the Redis backlog while preserving schema, users, Grafana, LiteLLM keys, and client configuration.             |
 | `stop` / `down`            | `SERVICE=<name>` (optional)       | Tears down the core stack, scoped to SERVICE if provided; always tears down Langfuse/observability as a courtesy - see "Stop the stack". |
 | `logs`                     | `SERVICE=<name>` (optional)       | Tails logs for the core stack (or a single service with `SERVICE=<name>`).                                                               |
-| `setup-client`             |                                   | Prints shell-export/config-file snippets to route a CLI through the local LiteLLM proxy.                                                 |
+| `setup-client`             |                                   | Prints shell-export/config-file snippets to route a CLI through the local LiteLLM proxy. Writes nothing.                                 |
+| `setup-client-apply`       | `SHELL_RC=<path>` (optional)      | Writes the same safe globals into `~/.claude/settings.json` and `~/.codex/config.toml` (both backed up first), plus a shell rc if `SHELL_RC` is given. Never writes the Anthropic proxy vars. |
 | `test`                     |                                   | Runs both `test-services` and `test-hooks`.                                                                                              |
 | `test-services`            |                                   | Runs service pytest suites (webhook/worker/reparse/loadtest/_common) via `uv run pytest`.                                                |
 | `test-hooks`               |                                   | Runs harness audit and AST index unit tests (`hooks/harness_audit/tests`, `hooks/ast_index/tests`).                                     |
