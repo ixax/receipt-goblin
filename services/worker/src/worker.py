@@ -34,6 +34,7 @@ from common.side_ingest import (
     _litellm_alert_row,
     _plan_proposal_row,
     insert_git_branch_batch,
+    insert_git_branch_from_events,
     insert_litellm_alert_batch,
     insert_plan_proposal_batch,
 )
@@ -161,11 +162,24 @@ def _decode_side_into(
             logger.exception("failed to build row from queued side event (message_id=%s kind=%s)", message_id, kind)
 
 
+def _ingest_event_git_branches(events: list[dict]) -> None:
+    """The session_git_branch rows Codex payloads carry inline - see side_ingest.insert_git_branch_from_events.
+
+    Never raises, for the same reason ingest_events_batch doesn't: the batch's message ids still have to be
+    XACK'd whether or not this part succeeded.
+    """
+    try:
+        insert_git_branch_from_events(get_client(), events)
+    except Exception:
+        logger.exception("failed to ingest git-branch rows from event batch (n=%d)", len(events))
+
+
 def _flush(client: redis.Redis, message_ids: list[str], events: list[dict]) -> None:
     if not message_ids:
         return
     with FLUSH_LATENCY.time():
         ingest_events_batch(events)
+        _ingest_event_git_branches(events)
     client.xack(STREAM_KEY, CONSUMER_GROUP, *message_ids)
     BATCHES_FLUSHED.inc()
     EVENTS_INGESTED.inc(len(events))

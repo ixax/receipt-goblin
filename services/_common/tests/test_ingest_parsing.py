@@ -6,6 +6,7 @@ DB-touching functions are out of scope (see test_ingest_db.py)."""
 import json
 from datetime import datetime, timezone
 
+import pytest
 from common import ingest_parsing as ip
 from conftest import load_capture
 
@@ -960,3 +961,87 @@ def test_billing_mode_matches_usage_row_column_position():
     # The row builder writes billing_mode positionally - a column list that
     # drifts from _usage_row's tuple silently shifts every later value.
     assert ip._USAGE_COLUMNS.index("billing_mode") == ip._USAGE_COLUMNS.index("provider") + 1
+
+
+def _codex_payload(turn_metadata: dict) -> dict:
+    return {
+        "metadata": {
+            "requester_custom_headers": {"x-codex-turn-metadata": json.dumps(turn_metadata)},
+        }
+    }
+
+
+def test_codex_git_payload_reads_repo_from_the_workspace_origin_remote():
+    payload = _codex_payload({
+        "session_id": "019fd778-ebce-7932-ad03-cdad668e1f7b",
+        "workspaces": {
+            r"C:\Users\alice\projects\receipt-goblin": {
+                "associated_remote_urls": {"origin": "git@github.com:ixax/receipt-goblin.git"},
+                "latest_git_commit_hash": "43fdd2911b7b53bf11e3d676bbaa8a7887177470",
+            }
+        },
+    })
+
+    assert ip.codex_git_payload(payload) == {
+        "session_id": "019fd778-ebce-7932-ad03-cdad668e1f7b",
+        "git_branch": "",
+        "git_repo": "receipt-goblin",
+    }
+
+
+def test_codex_git_payload_agrees_with_the_hook_on_repos_reached_by_different_url_forms():
+    for origin in (
+        "git@github.com:ixax/receipt-goblin.git",
+        "https://github.com/ixax/receipt-goblin.git",
+        "https://github.com/ixax/receipt-goblin",
+        "https://github.com/ixax/receipt-goblin/",
+    ):
+        payload = _codex_payload({
+            "session_id": "s1",
+            "workspaces": {"/w": {"associated_remote_urls": {"origin": origin}}},
+        })
+
+        assert ip.codex_git_payload(payload)["git_repo"] == "receipt-goblin", origin
+
+
+def test_codex_git_payload_skips_a_turn_with_two_different_repos_open():
+    payload = _codex_payload({
+        "session_id": "s1",
+        "workspaces": {
+            "/a": {"associated_remote_urls": {"origin": "git@github.com:ixax/receipt-goblin.git"}},
+            "/b": {"associated_remote_urls": {"origin": "git@github.com:ixax/other-repo.git"}},
+        },
+    })
+
+    assert ip.codex_git_payload(payload) is None
+
+
+def test_codex_git_payload_tolerates_the_same_repo_open_under_two_paths():
+    payload = _codex_payload({
+        "session_id": "s1",
+        "workspaces": {
+            "/a": {"associated_remote_urls": {"origin": "git@github.com:ixax/receipt-goblin.git"}},
+            "/b": {"associated_remote_urls": {"origin": "https://github.com/ixax/receipt-goblin"}},
+        },
+    })
+
+    assert ip.codex_git_payload(payload)["git_repo"] == "receipt-goblin"
+
+
+@pytest.mark.parametrize(
+    "turn_metadata",
+    [
+        {"session_id": "s1"},
+        {"session_id": "s1", "workspaces": {}},
+        {"session_id": "s1", "workspaces": {"/a": {}}},
+        {"session_id": "s1", "workspaces": {"/a": {"associated_remote_urls": {}}}},
+        {"workspaces": {"/a": {"associated_remote_urls": {"origin": "git@github.com:ixax/rg.git"}}}},
+    ],
+)
+def test_codex_git_payload_is_none_without_both_a_session_and_one_repo(turn_metadata):
+    assert ip.codex_git_payload(_codex_payload(turn_metadata)) is None
+
+
+def test_codex_git_payload_is_none_for_a_claude_payload():
+    assert ip.codex_git_payload({"metadata": {"requester_custom_headers": {}}}) is None
+    assert ip.codex_git_payload({}) is None

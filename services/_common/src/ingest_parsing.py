@@ -291,21 +291,70 @@ def _failed_tool_call(messages: Any) -> tuple[str, str, str]:
     return "", "", ""
 
 
+def _codex_turn_metadata(headers: dict) -> dict:
+    """Decoded x-codex-turn-metadata, or {} when absent or unparseable.
+
+    Codex JSON-encodes one header with everything it knows about the turn: session/thread/turn ids, sandbox mode,
+    and a `workspaces` map of the directories the turn had open.
+    """
+    raw = headers.get("x-codex-turn-metadata")
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def _codex_session_id(headers: dict) -> str:
     """Codex CLI's equivalent of x-claude-code-session-id: a JSON-encoded
     header carrying session_id (stable across every turn of one Codex
     conversation, confirmed against real captures), falling back to
     thread_id for calls where session_id isn't set."""
-    raw = headers.get("x-codex-turn-metadata")
-    if not raw:
-        return ""
-    try:
-        data = json.loads(raw)
-    except (TypeError, ValueError):
-        return ""
-    if not isinstance(data, dict):
-        return ""
+    data = _codex_turn_metadata(headers)
     return data.get("session_id") or data.get("thread_id") or ""
+
+
+def _repo_name_from_remote_url(remote_url: str) -> str:
+    """Repo name out of a git remote URL, e.g. "receipt-goblin" from "git@github.com:ixax/receipt-goblin.git".
+
+    Deliberately the same derivation hooks/report_git_branch.py uses for Claude sessions.
+    Both feed the same session_git_branch.git_repo column, so a repo reached from either client has to produce
+    one name, not two.
+    """
+    name = (remote_url or "").strip().rstrip("/").rsplit("/", 1)[-1]
+    return name[:-4] if name.endswith(".git") else name
+
+
+def codex_git_payload(payload: dict) -> Optional[dict]:
+    """session_git_branch payload for a Codex call, in the same shape hooks/report_git_branch.py POSTs, or None.
+
+    Codex has no equivalent of that hook, so its sessions would otherwise never reach the Git Repos/Branches tabs.
+    Its turn metadata does carry each open workspace's origin remote, which is enough for the repo.
+    It carries no branch name - only `latest_git_commit_hash` - so git_branch stays blank rather than guessed.
+    A turn with more than one distinct repo open is skipped: session_git_branch holds one row per session, and
+    picking an arbitrary one of them would silently misattribute the whole session's spend.
+    """
+    headers = ((payload.get("metadata") or {}).get("requester_custom_headers")) or {}
+    workspaces = _codex_turn_metadata(headers).get("workspaces")
+    if not isinstance(workspaces, dict):
+        return None
+
+    repos = {
+        name
+        for workspace in workspaces.values()
+        if isinstance(workspace, dict)
+        for name in [_repo_name_from_remote_url(((workspace.get("associated_remote_urls") or {}).get("origin") or ""))]
+        if name
+    }
+    if len(repos) != 1:
+        return None
+
+    session_id = _codex_session_id(headers)
+    if not session_id:
+        return None
+    return {"session_id": session_id, "git_branch": "", "git_repo": repos.pop()}
 
 
 def session_and_trace_id(payload: dict) -> tuple[str, str]:
@@ -1407,4 +1456,7 @@ def build_event(payload: dict) -> dict:
         "message_row": _serialize_row_multi(message_row, _MESSAGE_TIMESTAMP_IDX, _MESSAGE_INGESTED_AT_IDX),
         "group_row": _serialize_row(_group_row(payload, now), _GROUP_UPDATED_AT_IDX),
         "user_row": _serialize_row(_user_row(payload, now), _USER_UPDATED_AT_IDX),
+        # Not a row: the same payload shape the session-git-branch hook POSTs, written by
+        # side_ingest.insert_git_branch_from_events() rather than by ingest_db's own table loop.
+        "git_branch": codex_git_payload(payload),
     }

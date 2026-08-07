@@ -17,7 +17,9 @@ from datetime import datetime, timezone
 from common import fastjson as json
 from common.ingest_adapters import CLAUDE_TRANSCRIPT_ADAPTER, build_ingest_event
 from common.ingest_db import get_client, ingest_built_events, reparse_event
+from common.ingest_parsing import codex_git_payload
 from common.logging_config import create_logger
+from common.side_ingest import insert_git_branch_from_events, insert_git_branch_payloads
 
 from .config import REPARSE_CHUNK_SIZE
 
@@ -37,12 +39,14 @@ def _reparse_one(client, litellm_call_id: str, source_session_id: str, raw_paylo
             "claude_desktop",
             "claude_remote_control",
         }:
-            ingest_built_events(
-                client,
-                [build_ingest_event(CLAUDE_TRANSCRIPT_ADAPTER, payload)],
-            )
+            event = build_ingest_event(CLAUDE_TRANSCRIPT_ADAPTER, payload)
+            ingest_built_events(client, [event])
+            insert_git_branch_from_events(client, [event])
         else:
             reparse_event(client, payload, litellm_call_id, source_session_id, now)
+            # reparse_event() builds its rows directly rather than through build_event(), so the git-branch
+            # payload that path carries has to be derived here - see side_ingest.insert_git_branch_payloads.
+            insert_git_branch_payloads(client, [codex_git_payload(payload)])
     except Exception:
         logger.exception("failed to reparse event (litellm_call_id=%s)", litellm_call_id)
 
