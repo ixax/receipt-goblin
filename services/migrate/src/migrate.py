@@ -191,30 +191,50 @@ def _sql_string_literal(value: str) -> str:
 # join key (see `clients`). ai_gateway_users/groups stay on their plain
 # String primary key - already LowCardinality, low cardinality, no
 # measurable benefit from a surrogate key.
+#
+# Grouped by the schema_migrations version each batch is recorded under, not
+# as one flat mapping: the version is what makes creation one-time, so a
+# dictionary added later needs its own version or an existing stack (which
+# already recorded the earlier one) would skip the whole block and never
+# create it.
 _DICTIONARIES = {
-    "session_git_branch_dict": (
-        "SELECT session_id_hash, "
-        "argMax(git_branch, captured_at) AS git_branch, "
-        "argMax(git_repo, captured_at) AS git_repo, "
-        "argMax(issue_id, captured_at) AS issue_id "
-        "FROM session_git_branch GROUP BY session_id_hash",
-        "(session_id_hash UInt64, git_branch String, git_repo String, issue_id String)",
-        "session_id_hash",
-    ),
-    "ai_gateway_users_dict": (
-        "SELECT user_id, "
-        "argMax(user_name, updated_at) AS user_name, "
-        "argMax(group_id, updated_at) AS group_id "
-        "FROM ai_gateway_users GROUP BY user_id",
-        "(user_id String, user_name String, group_id String)",
-        "user_id",
-    ),
-    "ai_gateway_groups_dict": (
-        "SELECT group_id, argMax(group_name, updated_at) AS group_name "
-        "FROM ai_gateway_groups GROUP BY group_id",
-        "(group_id String, group_name String)",
-        "group_id",
-    ),
+    "009_dashboard_dictionaries": {
+        "session_git_branch_dict": (
+            "SELECT session_id_hash, "
+            "argMax(git_branch, captured_at) AS git_branch, "
+            "argMax(git_repo, captured_at) AS git_repo, "
+            "argMax(issue_id, captured_at) AS issue_id "
+            "FROM session_git_branch GROUP BY session_id_hash",
+            "(session_id_hash UInt64, git_branch String, git_repo String, issue_id String)",
+            "session_id_hash",
+        ),
+        "ai_gateway_users_dict": (
+            "SELECT user_id, "
+            "argMax(user_name, updated_at) AS user_name, "
+            "argMax(group_id, updated_at) AS group_id "
+            "FROM ai_gateway_users GROUP BY user_id",
+            "(user_id String, user_name String, group_id String)",
+            "user_id",
+        ),
+        "ai_gateway_groups_dict": (
+            "SELECT group_id, argMax(group_name, updated_at) AS group_name "
+            "FROM ai_gateway_groups GROUP BY group_id",
+            "(group_id String, group_name String)",
+            "group_id",
+        ),
+    },
+    "017_person_identities_dict": {
+        # user_id (a LiteLLM key identity) -> person_id (who pays for it).
+        # Read by the subscription spend panels, which have to fold one
+        # person's several keys together before putting a flat monthly fee
+        # beside their usage - see person_identities' comment in schema.sql.
+        "person_identities_dict": (
+            "SELECT user_id, argMax(person_id, updated_at) AS person_id "
+            "FROM person_identities GROUP BY user_id",
+            "(user_id String, person_id String)",
+            "user_id",
+        ),
+    },
 }
 
 
@@ -230,32 +250,35 @@ def _create_dictionaries_once(client) -> None:
     module's docstring, {name:Type} substitution isn't usable inside
     SOURCE(CLICKHOUSE(...)) at all, so they're embedded as escaped string
     literals instead.
-    The embedded identity is the `ingest` role - the only role with SELECT
-    on all three source tables (session_git_branch, ai_gateway_users,
-    ai_gateway_groups).
+    The embedded identity is the `ingest` role - the only role with SELECT on
+    every source table (session_git_branch, ai_gateway_users,
+    ai_gateway_groups, person_identities). A new dictionary's source table
+    therefore needs an explicit ingest-role grant in services/init/config.yml
+    even when no ingest code path reads it; without one the dictionary is
+    created fine and then fails to load.
 
     IF NOT EXISTS (not CREATE OR REPLACE): a dictionary already serving
     dashboard queries shouldn't be silently swapped by a migration re-run.
     """
-    version = "009_dashboard_dictionaries"
-    if _is_recorded(client, version):
-        logger.info("skip %s (already recorded in schema_migrations)", version)
-        return
     user_lit = _sql_string_literal(os.environ["CLICKHOUSE_INGEST_USER"])
     password_lit = _sql_string_literal(os.environ["CLICKHOUSE_INGEST_PASSWORD"])
     db_lit = _sql_string_literal(CLICKHOUSE_DATABASE)
-    for name, (query, columns, primary_key) in _DICTIONARIES.items():
-        client.command(
-            f"CREATE DICTIONARY IF NOT EXISTS {name} {columns} "
-            f"PRIMARY KEY {primary_key} "
-            f"SOURCE(CLICKHOUSE(USER {user_lit} PASSWORD {password_lit} DB {db_lit} "
-            f"QUERY {_sql_string_literal(query)})) "
-            "LAYOUT(HASHED()) "
-            "LIFETIME(MIN 60 MAX 120)"
-        )
-        logger.info("created dictionary %s", name)
-    _mark_applied(client, version)
-    logger.info("applied %s", version)
+    for version, dictionaries in _DICTIONARIES.items():
+        if _is_recorded(client, version):
+            logger.info("skip %s (already recorded in schema_migrations)", version)
+            continue
+        for name, (query, columns, primary_key) in dictionaries.items():
+            client.command(
+                f"CREATE DICTIONARY IF NOT EXISTS {name} {columns} "
+                f"PRIMARY KEY {primary_key} "
+                f"SOURCE(CLICKHOUSE(USER {user_lit} PASSWORD {password_lit} DB {db_lit} "
+                f"QUERY {_sql_string_literal(query)})) "
+                "LAYOUT(HASHED()) "
+                "LIFETIME(MIN 60 MAX 120)"
+            )
+            logger.info("created dictionary %s", name)
+        _mark_applied(client, version)
+        logger.info("applied %s", version)
 
 
 def main() -> None:

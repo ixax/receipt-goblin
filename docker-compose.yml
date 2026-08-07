@@ -473,6 +473,9 @@ services:
       CLICKHOUSE_DATABASE: *clickhouse-database
       REDIS_HOST: *redis-host
       REDIS_PORT: *redis-port
+      # Direct transcript events use LiteLLM's live public cost map without
+      # routing the underlying Claude request through the proxy.
+      LITELLM_BASE_URL: *litellm-base-url
     expose:
       - "9200"
     # Was 256m - steady-state usage already sat at ~75% of that.
@@ -518,6 +521,7 @@ services:
       CLICKHOUSE_USER: *clickhouse-ingest-user
       CLICKHOUSE_PASSWORD: *clickhouse-ingest-password
       CLICKHOUSE_DATABASE: *clickhouse-database
+      LITELLM_BASE_URL: *litellm-base-url
       SESSION_ID: ${SESSION_ID:-}
     # reparse.py pages event_sources REPARSE_CHUNK_SIZE rows at a time instead of buffering the whole table client-side.
     # This doesn't need headroom for a full 300MB+ payload-text load.
@@ -525,6 +529,8 @@ services:
     logging: *default-logging
     depends_on:
       clickhouse:
+        condition: service_healthy
+      litellm:
         condition: service_healthy
     networks:
       - receipt-goblin
