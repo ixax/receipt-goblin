@@ -11034,7 +11034,7 @@
             "text": "All",
             "value": "$__all"
           },
-          "label": "Group",
+          "label": "Device",
           "hide": "dontHide",
           "refresh": "onTimeRangeChanged",
           "skipUrlSync": false,
@@ -11069,7 +11069,7 @@
             "text": "All",
             "value": "$__all"
           },
-          "label": "User",
+          "label": "Account",
           "hide": "dontHide",
           "refresh": "onTimeRangeChanged",
           "skipUrlSync": false,
