@@ -86,6 +86,23 @@ class ChatGPTAuthForwardHandlerTest(unittest.TestCase):
         self.assertEqual(result["extra_headers"]["ChatGPT-Account-Id"], "account-test")
         self.assertNotIn(token, repr(result["proxy_server_request"]))
 
+    def test_forwards_lowercase_bearer_scheme_normalized(self) -> None:
+        token = _jwt("account-case")
+        data = {
+            "secret_fields": {"raw_headers": {"authorization": f"bearer {token}"}},
+        }
+
+        result = asyncio.run(
+            self.callbacks.ChatGPTAuthForwardHandler().async_pre_call_hook(
+                user_api_key_dict=None,
+                cache=None,
+                data=data,
+                call_type="responses",
+            )
+        )
+
+        self.assertEqual(result["extra_headers"]["Authorization"], f"Bearer {token}")
+
     def test_does_not_forward_redacted_header_without_raw_secret(self) -> None:
         data = {"proxy_server_request": {"headers": {"authorization": "[REDACTED]"}}}
 

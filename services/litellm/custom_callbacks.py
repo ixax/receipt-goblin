@@ -9,6 +9,7 @@ import asyncio
 import base64
 import binascii
 import json
+import re
 from collections import OrderedDict
 from typing import Any, Literal, Optional, Tuple
 
@@ -130,13 +131,14 @@ class ChatGPTAuthForwardHandler(CustomLogger):
         )
         if not auth_header:
             return data
-        token = auth_header.removeprefix("Bearer ").strip()
+        # Scheme match is case-insensitive (RFC 7235); raw_headers carries the client's original casing.
+        token = re.sub(r"(?i)^bearer\s+", "", auth_header).strip()
         account_id = _chatgpt_account_id(token)
         if not account_id:
             return data
         data["extra_headers"] = {
             **(data.get("extra_headers") or {}),
-            "Authorization": auth_header if auth_header.startswith("Bearer ") else f"Bearer {token}",
+            "Authorization": f"Bearer {token}",
             "ChatGPT-Account-Id": account_id,
         }
         return data
