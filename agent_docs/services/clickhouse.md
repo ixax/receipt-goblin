@@ -57,18 +57,33 @@ The half-year `PARTITION BY` convention itself is documented in `AGENTS.md`'s Co
   No partitioning.
 - `clients` - one row per distinct calling-client user-agent string, `id = cityHash64(value)`.
   No partitioning.
-- `agent_events` - one row per lifecycle event (hook/tool call), the main trace table.
+- `agent_events` - one row per normalized model/tool lifecycle event, the main trace table.
+  `client_product`, `client_surface`, and `ingest_path` preserve normalized source attribution.
   Half-year `PARTITION BY`.
 - `agent_usage` - one row per model call (tokens/cost/provider).
+  It stores the same attribution columns plus `client_id` for exact client/version grouping without joining events.
+  LiteLLM rows use the proxy's calculated cost.
+  Direct Claude rows use an API-equivalent estimate from LiteLLM's live cost map, not Claude Max billing.
   Half-year `PARTITION BY`.
 - `agent_messages` - one row per turn, holding prompt/response text.
+  Only full LiteLLM payloads populate it.
+  The privacy-minimal direct transcript adapter emits no row.
   Half-year `PARTITION BY`.
-- `ingest_raw` - full untouched original payload per call, write-once, ZSTD(3)-compressed, the source for reparsing.
+- `ingest_raw` - the source payload used for reparsing, ZSTD(3)-compressed.
+  LiteLLM rows keep the full untouched `StandardLoggingPayload`.
+  Direct rows keep only the normalized `UsageEnvelopeV1`, which contains no prompt/response/messages.
   Half-year `PARTITION BY`.
 - `ingest_dlq` - dead-letter table for rows a table's `insert()` rejects; triage feed, not a source of truth.
   Half-year `PARTITION BY` (moved off a 30-day TTL by migration 011).
 - `litellm_alerts` - LiteLLM's native alerting webhook events (budget/spend crossings, outages, DB exceptions), raw-payload-preserving since only the budget-event shape is fully documented.
   Half-year `PARTITION BY`.
+
+## Direct-event dedupe
+
+The direct collector uses each transcript row's `requestId` as `UsageEnvelopeV1.event_id`.
+The worker stores it in the existing `litellm_call_id` columns.
+`agent_events`, `agent_usage`, and `ingest_raw` are `ReplacingMergeTree(ingested_at)` tables whose keys include that call ID, so an at-least-once collector retry collapses after ClickHouse merges the parts.
+Queries without `FINAL` can briefly observe both copies before the merge.
 
 ## Migrations (`services/clickhouse/migrations/`)
 
@@ -96,3 +111,11 @@ See `.claude/skills/clickhouse-migration/SKILL.md` before creating/editing a mig
   Auto-applied.
 - `012` - adds `litellm_alerts`.
   Auto-applied.
+- `013` - adds `agent_invocations.parent_agent_id` for nested subagent trees.
+  Auto-applied.
+- `014` - drops the unused `command_version` columns.
+  Auto-applied.
+- `015` - adds resolution metadata to `ingest_dlq`.
+  Auto-applied.
+- `016` - adds normalized client attribution to `agent_events`/`agent_usage`, plus `agent_usage.client_id` and small set indexes used by Grafana filters.
+  Auto-applied, backfill via `make reparse-all`.

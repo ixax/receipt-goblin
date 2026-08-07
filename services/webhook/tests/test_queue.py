@@ -28,6 +28,18 @@ class _FakeAsyncRedis:
     async def xadd(self, stream_key, fields, maxlen=None, approximate=None):
         self.xadd_calls.append((stream_key, fields, maxlen, approximate))
 
+    def pipeline(self, transaction=False):
+        calls = self.xadd_calls
+
+        class _Pipeline:
+            def xadd(self, stream_key, fields, maxlen=None, approximate=None):
+                calls.append((stream_key, fields, maxlen, approximate))
+
+            async def execute(self):
+                return [f"{index}-0" for index in range(len(calls))]
+
+        return _Pipeline()
+
 
 @pytest.fixture
 def fake_redis(monkeypatch):
@@ -115,3 +127,58 @@ def test_enqueue_side_unsuccess_xadd_failure_does_not_raise(monkeypatch):
     monkeypatch.setattr(queue, "get_async_redis", lambda: _BoomRedis())
 
     _run(queue.enqueue_side("plan_proposal", {"session_id": "s1"}))  # must not raise
+
+
+def test_enqueue_usage_event_success_tags_source_adapter(fake_redis):
+    payload = {"schema_version": 1, "event_id": "req-1"}
+
+    _run(queue.enqueue_usage_event(payload))
+
+    assert len(fake_redis.xadd_calls) == 1
+    stream_key, fields, maxlen, _ = fake_redis.xadd_calls[0]
+    assert stream_key == queue.STREAM_KEY
+    assert maxlen == queue.MAXLEN
+    assert fields["adapter"] == "claude_transcript"
+    assert json.loads(fields["event"]) == payload
+
+
+def test_enqueue_usage_events_success_pipelines_whole_batch(monkeypatch):
+    calls = []
+
+    class _Pipeline:
+        def xadd(self, stream_key, fields, maxlen=None, approximate=None):
+            calls.append((stream_key, fields, maxlen, approximate))
+
+        async def execute(self):
+            return ["1-0", "2-0"]
+
+    class _Redis:
+        def pipeline(self, transaction=False):
+            assert transaction is False
+            return _Pipeline()
+
+    monkeypatch.setattr(queue, "get_async_redis", lambda: _Redis())
+
+    _run(queue.enqueue_usage_events([{"event_id": "one"}, {"event_id": "two"}]))
+
+    assert len(calls) == 2
+    assert all(call[0] == queue.STREAM_KEY for call in calls)
+    assert [json.loads(call[1]["event"])["event_id"] for call in calls] == ["one", "two"]
+
+
+def test_enqueue_usage_events_unsuccess_propagates_redis_failure(monkeypatch):
+    class _Pipeline:
+        def xadd(self, *args, **kwargs):
+            return None
+
+        async def execute(self):
+            raise ConnectionError("redis down")
+
+    class _Redis:
+        def pipeline(self, transaction=False):
+            return _Pipeline()
+
+    monkeypatch.setattr(queue, "get_async_redis", lambda: _Redis())
+
+    with pytest.raises(ConnectionError, match="redis down"):
+        _run(queue.enqueue_usage_events([{"event_id": "one"}]))

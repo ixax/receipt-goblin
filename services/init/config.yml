@@ -24,6 +24,12 @@ roles:
       - "GRANT SELECT ON {database}.session_git_branch"
       - "GRANT SELECT ON {database}.ai_gateway_users"
       - "GRANT SELECT ON {database}.ai_gateway_groups"
+      # Not read by any ingest code path - this is the identity
+      # person_identities_dict's SOURCE(CLICKHOUSE(...)) connects as (see
+      # services/migrate/src/migrate.py's _create_dictionaries_once, which embeds
+      # the ingest role's credentials in every dictionary it creates).
+      # Without this the dictionary is created fine but fails to load.
+      - "GRANT SELECT ON {database}.person_identities"
       # build_fixtures.py's phase-1 row selection (litellm_call_id,
       # session_id, timestamp WHERE status='success').
       - "GRANT SELECT ON {database}.agent_events"
@@ -40,6 +46,14 @@ roles:
       - "GRANT SELECT ON {database}.ingest_dlq"
       - "GRANT SELECT ON {database}.ingest_dlq_resolved"
       - "GRANT SELECT ON {database}.ingest_dlq_unresolved"
+      # reparse_dlq.py's _already_recovered check: before it writes off a row it cannot replay, it confirms
+      # that row's event is actually present in the target table (recovered by `make reparse-all` from
+      # ingest_raw), so the unresolved count keeps meaning "data is missing".
+      # Column-scoped rather than whole-table: the check only ever reads litellm_call_id, and agent_messages
+      # in particular holds prompt/response text this role has no business selecting.
+      # agent_events already has a full-table SELECT above, for build_fixtures.py.
+      - "GRANT SELECT(litellm_call_id) ON {database}.agent_usage"
+      - "GRANT SELECT(litellm_call_id) ON {database}.agent_messages"
 
   - name: grafana
     user_env: CLICKHOUSE_GRAFANA_USER
@@ -67,6 +81,17 @@ roles:
       - "GRANT SELECT ON {database}.ai_gateway_users"
       - "GRANT dictGet ON {database}.ai_gateway_users_dict"
       - "GRANT dictGet ON {database}.session_git_branch_dict"
+      # subscription_cost_daily is the only one of these three any panel
+      # names directly, but its view definition reads `subscriptions`
+      # internally and ClickHouse requires SELECT on every table a view
+      # touches, not just the view name - same rule that already forces the
+      # ingest_dlq_resolved grant below. person_identities is granted for
+      # the spend-per-person panels, which resolve user_id -> person_id
+      # through person_identities_dict.
+      - "GRANT SELECT ON {database}.person_identities"
+      - "GRANT dictGet ON {database}.person_identities_dict"
+      - "GRANT SELECT ON {database}.subscriptions"
+      - "GRANT SELECT ON {database}.subscription_cost_daily"
       - "GRANT SELECT ON {database}.clients"
       - "GRANT SELECT ON {database}.agent_events"
       - "GRANT SELECT ON {database}.agent_usage"
@@ -89,6 +114,7 @@ roles:
       - "GRANT SYSTEM FLUSH LOGS ON *.*"
       - "GRANT dictGet ON {database}.ai_gateway_users_dict"
       - "GRANT dictGet ON {database}.session_git_branch_dict"
+      - "GRANT dictGet ON {database}.person_identities_dict"
 
   - name: mcp_stats
     user_env: CLICKHOUSE_MCP_STATS_USER

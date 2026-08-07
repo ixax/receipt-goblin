@@ -6,6 +6,7 @@ monkeypatched."""
 
 import json
 
+import pytest
 from src import reparse
 
 
@@ -25,6 +26,22 @@ def test_reparse_one_success_decodes_and_calls_reparse_event(monkeypatch):
     assert payload == {"litellm_call_id": "call-1", "messages": []}
     assert call_id == "call-1"
     assert session_id == "session-1"
+
+
+def test_reparse_one_success_routes_direct_usage_envelope_through_adapter(monkeypatch):
+    assert hasattr(reparse, "build_ingest_event")
+    assert hasattr(reparse, "ingest_built_events")
+    built = []
+    inserted = []
+    monkeypatch.setattr(reparse, "build_ingest_event", lambda adapter, payload: built.append((adapter, payload)) or {"event_row": []})
+    monkeypatch.setattr(reparse, "ingest_built_events", lambda client, events: inserted.append((client, events)))
+    monkeypatch.setattr(reparse, "reparse_event", lambda *args: pytest.fail("standard reparse path should not run"))
+    payload = {"schema_version": 1, "source": "claude_desktop", "session_id": "session-1"}
+
+    reparse._reparse_one("client", "call-1", "session-1", json.dumps(payload))
+
+    assert built == [("claude_transcript", payload)]
+    assert inserted == [("client", [{"event_row": []}])]
 
 
 def test_reparse_one_unsuccess_malformed_json_skips_reparse_event(monkeypatch):

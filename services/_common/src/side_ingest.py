@@ -12,7 +12,7 @@ the only part that touches ClickHouse, one multi-row client.insert() per
 table per flush.
 """
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from common import fastjson as json
 from common.ingest_db import insert_rows_with_dlq_fallback
@@ -78,6 +78,31 @@ def insert_git_branch_batch(client, rows: list[list]) -> None:
     insert_rows_with_dlq_fallback(
         client, "session_git_branch", rows, _GIT_BRANCH_COLUMNS, _GIT_BRANCH_COLUMN_TYPES, session_id_idx=0,
     )
+
+
+def insert_git_branch_payloads(client, payloads) -> None:
+    """The main-path counterpart to insert_git_branch_batch: session_git_branch rows for calls that had no hook.
+
+    Codex has no session-git-branch hook, so ingest_parsing.codex_git_payload derives the same payload shape from
+    the turn metadata already on its LiteLLM call - see that function for what it can and cannot recover.
+    `payloads` may contain None (a call that carried no usable git metadata), which is skipped.
+    Lives here rather than in ingest_db, which side_ingest already imports and so cannot be imported back from;
+    the owners of a built-event batch (worker.py, reparse.py) call it themselves.
+    Deduped by session_id within the batch, last one winning, matching how write_dimensions treats its own
+    ReplacingMergeTree rows.
+    """
+    now = datetime.now(timezone.utc)
+    payloads_by_session = {
+        payload["session_id"]: payload
+        for payload in payloads
+        if isinstance(payload, dict) and payload.get("session_id")
+    }
+    insert_git_branch_batch(client, [_git_branch_row(p, now) for p in payloads_by_session.values()])
+
+
+def insert_git_branch_from_events(client, events: list[dict]) -> None:
+    """insert_git_branch_payloads over a batch of build_event() outputs, each carrying its payload under "git_branch"."""
+    insert_git_branch_payloads(client, (event.get("git_branch") for event in events))
 
 
 def insert_plan_proposal_batch(client, rows: list[list]) -> None:

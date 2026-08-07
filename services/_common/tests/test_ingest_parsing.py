@@ -6,6 +6,7 @@ DB-touching functions are out of scope (see test_ingest_db.py)."""
 import json
 from datetime import datetime, timezone
 
+import pytest
 from common import ingest_parsing as ip
 from conftest import load_capture
 
@@ -730,6 +731,9 @@ def test_event_row_success_reports_status_and_latency():
     assert values["latency_ms"] is not None and values["latency_ms"] >= 0
     assert values["calculated_type"] == "title_gen"  # prompt starts with "<session>"
     assert values["group_id"] == "206ec527-2402-4c8b-b5b5-8bd65b8bca0f"  # capture's user_api_key_team_id
+    assert values["client_product"] == "claude"
+    assert values["client_surface"] == "cli"
+    assert values["ingest_path"] == "litellm_proxy"
 
 
 def test_event_row_unsuccess_failure_payload_has_no_tool_name_or_latency():
@@ -752,6 +756,9 @@ def test_usage_row_success_extracts_token_counts():
     assert values["input_tokens"] == 723
     assert values["output_tokens"] == 16
     assert values["group_id"] == "206ec527-2402-4c8b-b5b5-8bd65b8bca0f"
+    assert values["client_product"] == "claude"
+    assert values["client_surface"] == "cli"
+    assert values["ingest_path"] == "litellm_proxy"
 
 
 def test_usage_row_unsuccess_no_billable_tokens_returns_none():
@@ -928,3 +935,113 @@ def test_backfill_missing_skill_versions_ignores_rows_with_no_skill_name():
     ]
     ip._backfill_missing_skill_versions([(rows, 0, 1, 2)])
     assert rows[0] == ["sess-1", "", ""]
+
+
+# ---------------------------------------------------------------------------
+# _billing_mode_for_model
+# ---------------------------------------------------------------------------
+
+def test_billing_mode_success_marks_oauth_passthrough_models_as_subscription():
+    # Both families reach their provider on the caller's own subscription
+    # token, so their per-token cost is notional - see _SUBSCRIPTION_MODEL_PREFIXES.
+    assert ip._billing_mode_for_model("claude-opus-5") == "subscription"
+    assert ip._billing_mode_for_model("claude-haiku-4-5") == "subscription"
+    assert ip._billing_mode_for_model("gpt-5.6-sol") == "subscription"
+
+
+def test_billing_mode_unsuccess_defaults_unlisted_models_to_api():
+    # 'api' is the deliberate default: a real key-billed model must never be
+    # counted as notional, and gpt-4o is not one of the passthrough entries.
+    assert ip._billing_mode_for_model("gpt-4o") == "api"
+    assert ip._billing_mode_for_model("text-embedding-3-small") == "api"
+    assert ip._billing_mode_for_model("") == "api"
+
+
+def test_billing_mode_matches_usage_row_column_position():
+    # The row builder writes billing_mode positionally - a column list that
+    # drifts from _usage_row's tuple silently shifts every later value.
+    assert ip._USAGE_COLUMNS.index("billing_mode") == ip._USAGE_COLUMNS.index("provider") + 1
+
+
+def _codex_payload(turn_metadata: dict) -> dict:
+    return {
+        "metadata": {
+            "requester_custom_headers": {"x-codex-turn-metadata": json.dumps(turn_metadata)},
+        }
+    }
+
+
+def test_codex_git_payload_reads_repo_from_the_workspace_origin_remote():
+    payload = _codex_payload({
+        "session_id": "019fd778-ebce-7932-ad03-cdad668e1f7b",
+        "workspaces": {
+            r"C:\Users\alice\projects\receipt-goblin": {
+                "associated_remote_urls": {"origin": "git@github.com:ixax/receipt-goblin.git"},
+                "latest_git_commit_hash": "43fdd2911b7b53bf11e3d676bbaa8a7887177470",
+            }
+        },
+    })
+
+    assert ip.codex_git_payload(payload) == {
+        "session_id": "019fd778-ebce-7932-ad03-cdad668e1f7b",
+        "git_branch": "",
+        "git_repo": "receipt-goblin",
+    }
+
+
+def test_codex_git_payload_agrees_with_the_hook_on_repos_reached_by_different_url_forms():
+    for origin in (
+        "git@github.com:ixax/receipt-goblin.git",
+        "https://github.com/ixax/receipt-goblin.git",
+        "https://github.com/ixax/receipt-goblin",
+        "https://github.com/ixax/receipt-goblin/",
+    ):
+        payload = _codex_payload({
+            "session_id": "s1",
+            "workspaces": {"/w": {"associated_remote_urls": {"origin": origin}}},
+        })
+
+        assert ip.codex_git_payload(payload)["git_repo"] == "receipt-goblin", origin
+
+
+def test_codex_git_payload_skips_a_turn_with_two_different_repos_open():
+    payload = _codex_payload({
+        "session_id": "s1",
+        "workspaces": {
+            "/a": {"associated_remote_urls": {"origin": "git@github.com:ixax/receipt-goblin.git"}},
+            "/b": {"associated_remote_urls": {"origin": "git@github.com:ixax/other-repo.git"}},
+        },
+    })
+
+    assert ip.codex_git_payload(payload) is None
+
+
+def test_codex_git_payload_tolerates_the_same_repo_open_under_two_paths():
+    payload = _codex_payload({
+        "session_id": "s1",
+        "workspaces": {
+            "/a": {"associated_remote_urls": {"origin": "git@github.com:ixax/receipt-goblin.git"}},
+            "/b": {"associated_remote_urls": {"origin": "https://github.com/ixax/receipt-goblin"}},
+        },
+    })
+
+    assert ip.codex_git_payload(payload)["git_repo"] == "receipt-goblin"
+
+
+@pytest.mark.parametrize(
+    "turn_metadata",
+    [
+        {"session_id": "s1"},
+        {"session_id": "s1", "workspaces": {}},
+        {"session_id": "s1", "workspaces": {"/a": {}}},
+        {"session_id": "s1", "workspaces": {"/a": {"associated_remote_urls": {}}}},
+        {"workspaces": {"/a": {"associated_remote_urls": {"origin": "git@github.com:ixax/rg.git"}}}},
+    ],
+)
+def test_codex_git_payload_is_none_without_both_a_session_and_one_repo(turn_metadata):
+    assert ip.codex_git_payload(_codex_payload(turn_metadata)) is None
+
+
+def test_codex_git_payload_is_none_for_a_claude_payload():
+    assert ip.codex_git_payload({"metadata": {"requester_custom_headers": {}}}) is None
+    assert ip.codex_git_payload({}) is None

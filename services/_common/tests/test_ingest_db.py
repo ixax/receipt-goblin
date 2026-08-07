@@ -126,6 +126,10 @@ def test_ingest_events_batch_success_resolves_and_dedups_client_rows(monkeypatch
     event_client_id_idx = db._EVENT_COLUMNS.index("event_client_id")
     assert all(row[event_client_id_idx] == client_rows[0][0] for row in event_rows)
 
+    usage_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_usage")
+    usage_client_id_idx = db._USAGE_COLUMNS.index("client_id")
+    assert all(row[usage_client_id_idx] == client_rows[0][0] for row in usage_rows)
+
 
 def test_ingest_events_batch_unsuccess_empty_list_skips_client_entirely(monkeypatch):
     monkeypatch.setattr(db, "get_client", lambda: (_ for _ in ()).throw(AssertionError("get_client should not be called")))
@@ -354,5 +358,62 @@ def test_mark_dlq_rows_resolved_unsuccess_empty_list_skips_insert(monkeypatch):
     fake_client = _FakeClient()
 
     db.mark_dlq_rows_resolved(fake_client, [])
+
+    assert fake_client.inserts == []
+
+
+def test_insert_rows_with_dlq_fallback_quarantines_short_row_before_the_batch(monkeypatch):
+    # The regression this guards: a column added to _USAGE_COLUMNS but not yet to the row-builder produced
+    # 34-value rows against 35 columns, and ClickHouse rejected the whole batch with a message naming
+    # neither the table nor the missing column.
+    fake_client = _FakeClient()
+    good_row = ["v"] * len(db._USAGE_COLUMNS)
+    short_row = ["v"] * (len(db._USAGE_COLUMNS) - 1)
+    short_row[db._USAGE_CALL_ID_IDX] = "call-short"
+    short_row[db._USAGE_SESSION_ID_IDX] = "session-short"
+
+    db.insert_rows_with_dlq_fallback(
+        fake_client, "agent_usage", [good_row, short_row], db._USAGE_COLUMNS,
+        ["String"] * len(db._USAGE_COLUMNS), db._USAGE_CALL_ID_IDX, db._USAGE_SESSION_ID_IDX,
+    )
+
+    # The well-formed row still goes in as one batch insert, not row-by-row.
+    usage_inserts = [rows for table, rows, _cols in fake_client.inserts if table == "agent_usage"]
+    assert usage_inserts == [[good_row]]
+
+    failure_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "ingest_dlq")
+    values = dict(zip(db._FAILURE_COLUMNS, failure_rows[0]))
+    assert values["stage"] == "agent_usage"
+    assert values["litellm_call_id"] == "call-short"
+    assert values["session_id"] == "session-short"
+    assert "row/column contract mismatch" in values["error"]
+    assert db._USAGE_COLUMNS[-1] in values["error"]
+
+
+def test_insert_rows_with_dlq_fallback_quarantine_survives_a_row_shorter_than_its_key_indices():
+    fake_client = _FakeClient()
+
+    db.insert_rows_with_dlq_fallback(
+        fake_client, "agent_usage", [["only-one-value"]], db._USAGE_COLUMNS,
+        ["String"] * len(db._USAGE_COLUMNS), db._USAGE_CALL_ID_IDX, db._USAGE_SESSION_ID_IDX,
+    )
+
+    failure_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "ingest_dlq")
+    values = dict(zip(db._FAILURE_COLUMNS, failure_rows[0]))
+    assert values["litellm_call_id"] == ""
+    assert values["session_id"] == ""
+    assert json.loads(values["raw_row"]) == ["only-one-value"]
+
+
+def test_single_row_insert_raises_on_a_row_that_does_not_match_its_column_list():
+    fake_client = _FakeClient()
+
+    try:
+        db._insert_usage(fake_client, ["v"] * (len(db._USAGE_COLUMNS) - 1))
+    except ValueError as exc:
+        assert "agent_usage" in str(exc)
+        assert db._USAGE_COLUMNS[-1] in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
 
     assert fake_client.inserts == []

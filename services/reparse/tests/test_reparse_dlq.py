@@ -5,6 +5,7 @@ No real ClickHouse connection - replay_dlq_row, mark_dlq_rows_resolved, and
 get_client are monkeypatched."""
 
 import json
+from datetime import datetime, timezone
 
 from src import reparse_dlq
 
@@ -60,12 +61,16 @@ class _FakePagingClient:
         self.queries = []
 
     def query(self, query, parameters=None):
-        self.queries.append(parameters)
-
         class _Result:
             pass
 
         result = _Result()
+        # _already_recovered's per-row probe against the target table, not a page fetch.
+        # Answering "not there" keeps these tests about replay alone - recovery has its own tests below.
+        if "ingest_dlq_unresolved" not in query:
+            result.result_rows = [[0]]
+            return result
+        self.queries.append(parameters)
         result.result_rows = self.pages.pop(0) if self.pages else []
         return result
 
@@ -130,3 +135,73 @@ def test_reparse_dlq_unsuccess_zero_progress_page_stops_without_looping(monkeypa
     assert count == 2
     assert len(fake_client.queries) == 1
     assert resolved_calls == []
+
+
+_TS = datetime(2026, 8, 6, 20, 53, 16, tzinfo=timezone.utc)
+
+
+class _DlqClient:
+    """Fake ClickHouse client covering the three queries reparse_dlq issues.
+
+    Pages of ingest_dlq_unresolved shrink as rows are marked resolved, exactly like the real view does.
+    """
+
+    def __init__(self, unresolved, present_call_ids):
+        self._unresolved = list(unresolved)
+        self._present = set(present_call_ids)
+        self.resolved = []
+        self.inserted_stages = []
+
+    def query(self, query, parameters=None):
+        parameters = parameters or {}
+
+        class _Result:
+            result_rows = []
+
+            @staticmethod
+            def named_results():
+                # DESCRIBE TABLE, issued by ingest_db._column_type_names before the ingest_dlq_resolved insert.
+                return [{"name": c, "type": "String"} for c in ("occurred_at", "stage", "litellm_call_id")]
+
+        if "ingest_dlq_unresolved" in query:
+            stage = parameters.get("stage", "")
+            _Result.result_rows = [
+                row for row in self._unresolved
+                if (not stage or row[1] == stage) and (row[0], row[1], row[2]) not in self.resolved
+            ]
+        elif "count()" in query:
+            _Result.result_rows = [[1 if parameters.get("call_id") in self._present else 0]]
+        return _Result()
+
+    def insert(self, table, rows, column_names=None, column_type_names=None):
+        if table == "ingest_dlq_resolved":
+            self.resolved.extend(tuple(row) for row in rows)
+        else:
+            self.inserted_stages.append(table)
+
+
+def test_reparse_dlq_resolves_an_unreplayable_row_whose_event_is_already_in_the_table(monkeypatch):
+    # The 2026-08-06 backlog: rows rejected for a row/column contract mismatch can never be replayed from the
+    # stored row, but `make reparse-all` had already rebuilt them from ingest_raw.
+    client = _DlqClient(
+        unresolved=[(_TS, "agent_usage", "call-1", json.dumps(["too", "short"]))],
+        present_call_ids={"call-1"},
+    )
+    monkeypatch.setattr(reparse_dlq, "get_client", lambda: client)
+
+    reparse_dlq.reparse_dlq()
+
+    assert client.resolved == [(_TS, "agent_usage", "call-1")]
+    assert client.inserted_stages == []
+
+
+def test_reparse_dlq_leaves_an_unreplayable_row_whose_event_is_genuinely_missing(monkeypatch):
+    client = _DlqClient(
+        unresolved=[(_TS, "agent_usage", "call-1", json.dumps(["too", "short"]))],
+        present_call_ids=set(),
+    )
+    monkeypatch.setattr(reparse_dlq, "get_client", lambda: client)
+
+    reparse_dlq.reparse_dlq()
+
+    assert client.resolved == []

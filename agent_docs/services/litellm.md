@@ -1,6 +1,8 @@
 # `litellm`
 
-Proxy every LiteLLM-routed CLI call goes through - model list, virtual-key auth, and the callbacks feeding both ClickHouse (via `webhook`) and the optional Langfuse stack.
+Proxy every normal Claude CLI and Codex CLI/Desktop model call goes through - model list, virtual-key auth, and the callbacks feeding both ClickHouse (via `webhook`) and the optional Langfuse stack.
+Claude Desktop and Claude Code Remote Control call Anthropic directly, so LiteLLM is not their provider transport.
+The direct transcript path still uses LiteLLM for virtual-key identity and live model pricing metadata.
 
 ## `config.yaml`
 
@@ -25,6 +27,16 @@ Proxy every LiteLLM-routed CLI call goes through - model list, virtual-key auth,
 - `litellm_settings.success_callback`/`failure_callback: [langfuse]` - native LiteLLM integration, reads `LANGFUSE_*` env vars, no `callback_settings` block needed.
   Ships every call as a trace grouped by `metadata.session_id`.
 
+## Direct transcript support
+
+`webhook` validates `POST /api/v1/usage-events` bearer keys through LiteLLM's `/key/info` and uses the returned user/team fields for server-side identity enrichment.
+`/key/info` returns `team_id` but no `team_alias`, so the Team's name needs a separate `/team/info` call - `common.litellm_auth.team_alias` does it with a 300s in-process cache and never caches a failed lookup.
+The collector cannot choose its own stored user or team.
+
+`webhook-worker` reads `/public/litellm_model_cost_map` for direct Claude API-equivalent estimates.
+This reuses LiteLLM's current model/cache pricing without routing the actual Remote Control/Desktop model call through the proxy.
+The estimate is not Claude Max billing and becomes zero when the model has no cost-map entry.
+
 ## `custom_callbacks.py`
 
 - `SessionIdHandler` (`session_id_handler`) - a `CustomLogger` pre-call hook copying the `x-claude-code-session-id` header into `metadata.session_id`/`trace_user_id`, so Langfuse groups traces into sessions the same way ClickHouse does.
@@ -36,5 +48,6 @@ Proxy every LiteLLM-routed CLI call goes through - model list, virtual-key auth,
   Accumulates output items via `async_post_call_streaming_iterator_hook` as SSE chunks pass through, then injects them in `async_logging_hook` if `response.output` is still empty.
   The two hooks race (confirmed against live Codex traffic), so each pending `litellm_call_id` gets an `asyncio.Event` the logging hook waits on briefly (`_RECOVERY_WAIT_TIMEOUT_S`) before giving up.
 - `_patched_async_send_batch` (monkeypatches `GenericAPILogger.async_send_batch`, same class-attribute-reassignment style as the `is_anthropic_oauth_key` patch above) - the vendored method always does `finally: self.log_queue.clear()` regardless of whether the POST succeeded, so one failed flush (after `max_retries` above are exhausted) drops the entire accumulated batch, not just the failed request.
-  The patch clears the queue only on success; on failure it keeps unsent items queued for the next flush, capped at `_MAX_RETAINED_LOG_QUEUE = 2000` (mirrors `webhook`'s own Redis stream `MAXLEN~5000` bound - a retry buffer needs the same kind of cap or a sustained outage grows it unboundedly).
+  The patch clears the queue only on success.
+  On failure it keeps unsent items queued for the next flush, capped at `_MAX_RETAINED_LOG_QUEUE = 2000` (same bounded-buffer principle as Redis's approximate `MAXLEN~1500` - a retry buffer needs a cap or a sustained outage grows it unboundedly).
   Still loses data if an outage outlasts both the retry backoff and however long it takes to refill the capped buffer past 2000 events - this narrows the loss window, it doesn't eliminate it.

@@ -28,6 +28,76 @@ Single-service content (queue/worker split, gateway, per-file breakdowns, `fastj
 `{build}` is the commit hash, except `observability`/`langfuse`, which use a static SEMVER.
 Bump a tag when its Dockerfile or image code changes.
 
+## Hybrid usage tracking
+
+The stack has two source paths that converge before ClickHouse:
+
+- Codex CLI/Desktop and normal Claude CLI calls go through LiteLLM.
+  LiteLLM sends its full `StandardLoggingPayload` to `POST /api/v1/metrics`.
+- Claude Desktop and Claude Code Remote Control keep their provider connection direct to Anthropic.
+  A host-side transcript collector sends privacy-minimal `UsageEnvelopeV1` batches to authenticated `POST /api/v1/usage-events`.
+
+Both endpoints enqueue onto the same Redis usage stream.
+`webhook-worker` selects a source adapter, builds the existing ingest row bundle, and writes the same `agent_events`/`agent_usage`/`ingest_raw` tables.
+Remote Control therefore keeps its native direct channel instead of depending on LiteLLM behavior it does not support.
+
+### Client source attribution
+
+Each source adapter resolves client attribution once before ClickHouse insertion.
+The normalized result is stored as `client_product`, `client_surface`, and `ingest_path` on both `agent_events` and `agent_usage`.
+`agent_usage.client_id` stores the same exact-client dictionary ID as `agent_events.event_client_id`, so token and cost panels can group client versions without joining the event table.
+
+LiteLLM attribution accepts only allowlisted `x-rg-client-product`/`x-rg-client-surface` values, then checks the Codex originator, then falls back to known user-agent prefixes.
+`codex_cli_rs/*` without an explicit Codex originator is intentionally `codex/unknown` because that user-agent is shared by CLI and Desktop.
+Direct Claude attribution comes from the validated `UsageEnvelopeV1.source` value and records `claude_transcript` as its ingest path.
+
+Grafana reads these persisted columns directly.
+Its product, surface, and ingest-path variables filter token and cost panels without reclassifying raw payloads at query time.
+Reparse uses the same adapters, so historical rows improve when their stored source data is unambiguous and stay `unknown` when it is not.
+
+### Direct transcript collector
+
+`scripts/claude_usage_collector.py` is installed as the global Claude `Stop`/`SubagentStop` hook.
+It reads only complete JSONL transcript lines and advances a byte cursor per transcript.
+The hook is fail-open and its network flush is time-bounded, so a collector or network failure cannot block Claude from stopping.
+
+The collector writes extracted envelopes to a local SQLite WAL outbox before attempting HTTP delivery.
+It keeps transient failures and removes a valid batch only after a successful response.
+A `422` batch is retried one event at a time.
+A permanently rejected single event is logged and removed so it cannot block the rest of the outbox.
+Flushes default to 50 events per request and 100 events per second so a historical backfill cannot immediately overrun Redis's bounded stream.
+The server independently caps a request at 100 events.
+
+Delivery of valid events is at least once.
+A timeout or partial batch enqueue can cause a retry of an already-accepted event.
+The transcript `requestId` becomes `UsageEnvelopeV1.event_id` and then the existing `litellm_call_id` row key, so `ReplacingMergeTree` collapses retries for `agent_events`, `agent_usage`, and `ingest_raw`.
+Duplicates can remain visible briefly until ClickHouse merges those parts.
+
+### `UsageEnvelopeV1`
+
+`services/_common/src/usage_envelope.py` owns the versioned direct-source contract.
+It accepts only allowlisted source metadata and token counters.
+Unknown fields are rejected, so prompt, response, message, and tool-argument content cannot enter this path.
+The adapter also emits no `agent_messages` row.
+`ingest_raw` stores the normalized envelope, not the original transcript line.
+
+`POST /api/v1/usage-events` accepts one envelope or a batch of up to 100.
+It validates the caller's LiteLLM virtual key through `/key/info` and replaces any client-supplied identity with the key's server-resolved user/team identity.
+
+The direct adapter estimates cost from LiteLLM's live public model cost map.
+It prices input, output, cache-read, and 5-minute/1-hour cache-write tokens when the model entry provides those rates.
+This is an API-equivalent estimate, not the amount charged by a Claude Max subscription.
+Missing pricing produces zero cost with `cost_basis: unavailable`, not a guessed rate.
+
+Direct transcript events have no proxy timing data.
+Their request latency and TTFT are therefore unavailable rather than inferred.
+They also cannot reconstruct full agent/skill/command attribution without collecting conversation content.
+
+Automatic historical backfill is safe only for transcript rows with `entrypoint == "claude-desktop"`.
+Old `entrypoint == "cli"` transcripts do not record whether the call was proxied normal Claude or direct Remote Control, so replaying all of them would double-count some calls.
+For current Remote Control runs, the launcher sets `CLAUDE_TRANSCRIPT_TRACKING_MODE=direct`.
+Normal proxied Claude CLI transcripts are intentionally ignored.
+
 ## Codex CLI adapter notes
 
 `agent_docs/harness-index.md` lists every skill/agent for Codex discovery - read it when no explicit name was given.
@@ -36,8 +106,10 @@ Route a noisy agent to a cheaper model via a LiteLLM alias/virtual key, never fr
 
 ## Agent/skill/command attribution
 
-`agent_name`/`skill_name`/`command_name` on `agent_events`/`agent_usage` rows are Claude Code-only concepts (see `_agent_invocations_from_messages`/`_active_skill_name_and_version`/`_active_command_name` in `services/_common/src/ingest_parsing.py`).
+Full `agent_name`/`skill_name`/`command_name` attribution exists only for LiteLLM-proxied Claude Code payloads (see `_agent_invocations_from_messages`/`_active_skill_name_and_version`/`_active_command_name` in `services/_common/src/ingest_parsing.py`).
 Codex CLI traffic has no equivalent and always lands with all three blank - not a gap to fix.
+Direct Claude transcript events also leave these fields blank because `UsageEnvelopeV1` deliberately carries no prompt/response messages.
+They can still carry the transcript's opaque `agent_id` as `agent_invocation_id`.
 
 `agent_name` is joined from `agent_invocations` via a per-request `x-claude-code-agent-id` header, which has a known race: a spawned subagent's first call can outrun the orchestrator's own ingest.
 `make reparse-all` re-runs ingestion against `ingest_raw.raw_payload_full` afterward and fixes it up.
