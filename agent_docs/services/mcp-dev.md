@@ -1,7 +1,8 @@
 # `mcp-dev`
 
-Dev-only, unauthenticated FastMCP server (doesn't exist in `ENVIRONMENT=production` - see `agent_docs/services/load-balancer.md`'s `MCP_DEV_PORT` note), registered at `http://localhost:8001/mcp` in `.mcp.json`.
-Connects as its own `mcp` ClickHouse role (unrestricted read - see `agent_docs/services/clickhouse.md`).
+Opt-in, unauthenticated FastMCP server, registered at `http://localhost:8001/mcp` in `.mcp.json`.
+Defined in `docker-compose.yml` behind `profiles: [mcp]` and started only by `make mcp-up`, in either environment - see `agent_docs/services/load-balancer.md`'s `MCP_DEV_PORT` note for why its port is published whether or not it is running.
+Connects as its own `mcp` ClickHouse role: read-only across the database, minus `agent_messages.prompt_text`/`response_text`, which are revoked at column level so raw prompts and replies stay unreadable through this server (see `agent_docs/services/clickhouse.md`).
 App-level SQL validation below is the only thing preventing an unauthorized table read or write/DDL statement - there's no separate read-only DB user.
 
 ## `src/server.py`

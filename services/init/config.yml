@@ -89,6 +89,17 @@ roles:
       - "GRANT SYSTEM FLUSH LOGS ON *.*"
       - "GRANT dictGet ON {database}.ai_gateway_users_dict"
       - "GRANT dictGet ON {database}.session_git_branch_dict"
+      - "GRANT dictGet ON {database}.person_identities_dict"
+    # agent_messages.prompt_text/response_text are the raw prompts and replies.
+    # No statistic needs their content - only their length, which `grafana` computes for its own panels under
+    # its own role, so nothing an agent asks mcp-dev is worth handing it the text itself.
+    # Carved out of the wildcard SELECT above rather than replacing that wildcard with a table allowlist: this
+    # role's job is answering open questions about the data, so a table added later must stay readable by
+    # default, while these two columns must stay unreadable by default.
+    # Metadata columns of the same table (session_id, agent_name, timestamp, ...) are deliberately still
+    # readable - they carry no conversation content and joins need them.
+    revokes:
+      - "REVOKE SELECT(prompt_text, response_text) ON {database}.agent_messages"
 
   - name: mcp_stats
     user_env: CLICKHOUSE_MCP_STATS_USER
