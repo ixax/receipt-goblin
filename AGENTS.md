@@ -2,16 +2,21 @@
 
 Tracks cost/efficiency of AI coding agents (Claude Code, Codex CLI), full call-chain tracing.
 Queue-based ingest: LiteLLM -> `webhook` (enqueue-only) -> `redis` -> `webhook-worker` (batches into ClickHouse); Grafana reads ClickHouse; CLI reads back via `mcp-dev`/`mcp-stats`.
-Dev/prod split: `agent_docs/architecture.md`; per-service detail: `agent_docs/services/<name>.md`.
+Dev/prod split: `agent_docs/architecture.md`; per-service detail: `agent_docs/services/<name>.md`; standing the stack up on a host: `agent_docs/deploy.md`.
 
 ## Commands
 
-- `make init` - first-run ClickHouse role provisioning and migration application.
+- `make bootstrap` - clone to healthy stack, no prompts: preflight, init-auto, up, status, litellm-provision. Runbook: `agent_docs/deploy.md`.
+- `make preflight` - read-only host check; `make litellm-provision` - team/user/virtual key into `.env`.
+- `make init` - interactive first-run setup (environment, ClickHouse roles, migrations, LiteLLM key, client config); `make init-auto` is the promptless ClickHouse+migrations variant `bootstrap` uses.
 - `make start` / `make up [SERVICE=x]` - bring up (existing / rebuild+recreate).
 - `make migrate` - apply ClickHouse migrations; also applied automatically by `make init`, or run standalone after adding a new migration file.
+- `make reset-tracking-data CONFIRM=RESET-TRACKING-DATA` - delete tracking rows and queued events while preserving schema, users, dashboards, LiteLLM keys, and client configuration.
 - `make status` - wait until healthy.
 - `make stop` / `make down [SERVICE=x]` - tear down.
-- `make setup-client` - print CLI-proxy shell/config snippets.
+- `make setup-client` - print safe global tracking/auth vars, Codex proxy config, and per-launch Claude smart-wrapper routing hints.
+  Claude provider proxy vars stay per-launch, never global.
+- `make setup-client-apply` - writes those safe globals into `~/.claude/settings.json`/`~/.codex/config.toml` (backed up first, Anthropic proxy vars never written) - ask the user first, it writes outside the repo.
 - `make test` - umbrella: runs `test-services` + `test-hooks`.
 - `make test-services` - webhook pytest suite; always via `runner-test`, never inline.
 - `make test-hooks` - budget-audit unit tests.

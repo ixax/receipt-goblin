@@ -3,6 +3,11 @@
 `make init` (or directly: `python3 services/init/init_clickhouse_users.py -f
 docker-compose.yml -f docker-compose.dev.yml`).
 
+`--non-interactive` (`-y`/`--yes`, used by `make init-auto`/`make bootstrap`)
+answers every prompt itself: an exported env var wins, then the value already
+in .env, then the default; missing passwords are generated. That is what an
+agent or CI runs - the interactive flow below blocks on input() with no TTY.
+
 Stdlib-only, no venv/pip install needed - loads services/init/ch_roles.py
 (the single source of truth for the role/grant model, itself reading
 services/init/config.yml) and services/init/init_common.py (shared .env/
@@ -51,6 +56,12 @@ SCHEMA_PATH = REPO_ROOT / "services" / "clickhouse" / "schema.sql"
 
 DEFAULT_COMPOSE_FILES = ["-f", "docker-compose.yml", "-f", "docker-compose.dev.yml"]
 
+# Set once in main() from --non-interactive/-y. Module-level rather than
+# threaded through every _prompt call site: the flag is process-wide by
+# nature, and the alternative is an extra argument on every prompt below
+# that would always carry the same value.
+NON_INTERACTIVE = False
+
 
 def _load_module(name: str, path: pathlib.Path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -66,18 +77,36 @@ def _load_ch_roles():
 init_common = _load_module("init_common", INIT_COMMON_PATH)
 
 
-def _prompt(label: str, default: str = "") -> str:
+def _prompt(label: str, default: str = "", env_var: str = "") -> str:
+    # An exported env var always wins - it's the only way to force a specific
+    # value under --non-interactive, and in interactive mode a caller who
+    # bothered to export one didn't mean to be asked about it either.
+    override = os.environ.get(env_var, "").strip() if env_var else ""
+    if override:
+        print(f"{label}: {override} (from environment)")
+        return override
+    if NON_INTERACTIVE:
+        print(f"{label}: {default}")
+        return default
     suffix = f" [{default}]" if default else ""
     value = input(f"{label}{suffix}: ").strip()
     return value or default
 
 
-def _prompt_password(label: str) -> str:
-    value = getpass.getpass(f"{label} (blank = generate one): ").strip()
-    if value:
-        return value
+def _prompt_password(label: str, env_var: str = "") -> str:
+    override = os.environ.get(env_var, "").strip() if env_var else ""
+    if override:
+        print(f"{label}: taken from environment")
+        return override
+    if not NON_INTERACTIVE:
+        value = getpass.getpass(f"{label} (blank = generate one): ").strip()
+        if value:
+            return value
     generated = secrets.token_urlsafe(18)
-    print(f"  generated: {generated}")
+    # Printed in both modes on purpose: these land in .env either way, and a
+    # bootstrap log that shows which passwords were generated (rather than
+    # reused) is what makes an unattended run auditable after the fact.
+    print(f"  {label}: generated: {generated}")
     return generated
 
 
@@ -116,7 +145,10 @@ def main() -> None:
     if "-h" in sys.argv[1:] or "--help" in sys.argv[1:]:
         print(__doc__)
         sys.exit(0)
-    compose_files = sys.argv[1:] or DEFAULT_COMPOSE_FILES
+    global NON_INTERACTIVE
+    args = [a for a in sys.argv[1:] if a not in ("--non-interactive", "-y", "--yes")]
+    NON_INTERACTIVE = len(args) != len(sys.argv[1:])
+    compose_files = args or DEFAULT_COMPOSE_FILES
 
     ch_roles = _load_ch_roles()
     existing = init_common.read_existing_env(init_common.ENV_PATH)
@@ -126,25 +158,29 @@ def main() -> None:
 
     updates: dict[str, str] = {}
 
-    updates["CLICKHOUSE_DATABASE"] = _prompt("Main database name", existing.get("CLICKHOUSE_DATABASE", "default"))
+    updates["CLICKHOUSE_DATABASE"] = _prompt("Main database name", existing.get("CLICKHOUSE_DATABASE", "default"), env_var="CLICKHOUSE_DATABASE")
 
     print("\n-- Bootstrap superuser (used only to create the roles below) --")
     updates["CLICKHOUSE_BOOTSTRAP_USER"] = _prompt(
-        "Bootstrap username", existing.get("CLICKHOUSE_BOOTSTRAP_USER", "clickhouse_bootstrap")
+        "Bootstrap username", existing.get("CLICKHOUSE_BOOTSTRAP_USER", "clickhouse_bootstrap"),
+        env_var="CLICKHOUSE_BOOTSTRAP_USER",
     )
     updates["CLICKHOUSE_BOOTSTRAP_PASSWORD"] = existing.get("CLICKHOUSE_BOOTSTRAP_PASSWORD") or _prompt_password(
-        "Bootstrap password"
+        "Bootstrap password", env_var="CLICKHOUSE_BOOTSTRAP_PASSWORD"
     )
 
     for role in ch_roles.ROLES:
         print(f"\n-- Role: {role.name} --")
         if role.create_database:
             updates[role.database_env] = _prompt(
-                f"Database name for {role.name}", existing.get(role.database_env, role.default_user)
+                f"Database name for {role.name}", existing.get(role.database_env, role.default_user),
+                env_var=role.database_env,
             )
-        user = _prompt(f"{role.name} username", existing.get(role.user_env, role.default_user))
+        user = _prompt(f"{role.name} username", existing.get(role.user_env, role.default_user), env_var=role.user_env)
         updates[role.user_env] = user
-        updates[role.password_env] = existing.get(role.password_env) or _prompt_password(f"{role.name} password")
+        updates[role.password_env] = existing.get(role.password_env) or _prompt_password(
+            f"{role.name} password", env_var=role.password_env
+        )
 
     # docker-compose.yml requires these too (unrelated to ClickHouse) - avoid
     # a confusing Compose failure on `up -d clickhouse` if they're unset.
