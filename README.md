@@ -282,6 +282,16 @@ The script runs as the bootstrap superuser (see "Configuration" under "Reference
 
 Calls the `mcp-stats` MCP server (`mcp__stats__me`, see `.mcp.json`) and reports cost/tokens for the current session plus the last 30 days, and the 5 most expensive operations in this session - no need to open Grafana for a quick check.
 
+Grafana is the source of truth when comparing client sources (Codex CLI/Desktop, Claude Code) side by side.
+
+Open **Agents Overview** -> **Usage** -> **Clients** to compare normalized sources.
+The tab shows usage totals by `client_product`/`client_surface`/`ingest_path`, token trends over time, exact client versions, and the current unknown-attribution rate.
+The `Client product`, `Client surface`, and `Ingest path` variables filter the dashboard's token and cost panels without joining `agent_events` or parsing user-agent strings in Grafana.
+
+Current source values include `codex/cli`, `codex/desktop`, and `claude/cli`.
+`make reparse-all` can backfill attribution when the stored payload contains enough source metadata.
+Old Codex rows that only contain the ambiguous `codex_cli_rs/*` user-agent remain `codex/unknown` unless an originator was stored.
+
 ### Stop the stack
 
 ```bash

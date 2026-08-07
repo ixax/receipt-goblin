@@ -730,6 +730,9 @@ def test_event_row_success_reports_status_and_latency():
     assert values["latency_ms"] is not None and values["latency_ms"] >= 0
     assert values["calculated_type"] == "title_gen"  # prompt starts with "<session>"
     assert values["group_id"] == "206ec527-2402-4c8b-b5b5-8bd65b8bca0f"  # capture's user_api_key_team_id
+    assert values["client_product"] == "claude"
+    assert values["client_surface"] == "cli"
+    assert values["ingest_path"] == "litellm_proxy"
 
 
 def test_event_row_unsuccess_failure_payload_has_no_tool_name_or_latency():
@@ -752,6 +755,9 @@ def test_usage_row_success_extracts_token_counts():
     assert values["input_tokens"] == 723
     assert values["output_tokens"] == 16
     assert values["group_id"] == "206ec527-2402-4c8b-b5b5-8bd65b8bca0f"
+    assert values["client_product"] == "claude"
+    assert values["client_surface"] == "cli"
+    assert values["ingest_path"] == "litellm_proxy"
 
 
 def test_usage_row_unsuccess_no_billable_tokens_returns_none():
@@ -928,3 +934,29 @@ def test_backfill_missing_skill_versions_ignores_rows_with_no_skill_name():
     ]
     ip._backfill_missing_skill_versions([(rows, 0, 1, 2)])
     assert rows[0] == ["sess-1", "", ""]
+
+
+# ---------------------------------------------------------------------------
+# _billing_mode_for_model
+# ---------------------------------------------------------------------------
+
+def test_billing_mode_success_marks_oauth_passthrough_models_as_subscription():
+    # Both families reach their provider on the caller's own subscription
+    # token, so their per-token cost is notional - see _SUBSCRIPTION_MODEL_PREFIXES.
+    assert ip._billing_mode_for_model("claude-opus-5") == "subscription"
+    assert ip._billing_mode_for_model("claude-haiku-4-5") == "subscription"
+    assert ip._billing_mode_for_model("gpt-5.6-sol") == "subscription"
+
+
+def test_billing_mode_unsuccess_defaults_unlisted_models_to_api():
+    # 'api' is the deliberate default: a real key-billed model must never be
+    # counted as notional, and gpt-4o is not one of the passthrough entries.
+    assert ip._billing_mode_for_model("gpt-4o") == "api"
+    assert ip._billing_mode_for_model("text-embedding-3-small") == "api"
+    assert ip._billing_mode_for_model("") == "api"
+
+
+def test_billing_mode_matches_usage_row_column_position():
+    # The row builder writes billing_mode positionally - a column list that
+    # drifts from _usage_row's tuple silently shifts every later value.
+    assert ip._USAGE_COLUMNS.index("billing_mode") == ip._USAGE_COLUMNS.index("provider") + 1
