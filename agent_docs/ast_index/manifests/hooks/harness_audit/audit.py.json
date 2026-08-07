@@ -1,6 +1,6 @@
 {
   "path": "hooks/harness_audit/audit.py",
-  "line_count": 289,
+  "line_count": 292,
   "module_docstring": "Audit harness md-files for token budget violations. Stdlib only.\n\nUsage: uv run python3 audit.py [repo_root]\nExit 0 = clean, 1 = violations found.\n\nDual-harness aware: this repo tracks both Claude Code (.claude/) and Codex\n(.agents/, .codex/) equally.\nSkills/rules are matched by filename/path pattern, not a single CLI's\ndirectory.\nSkill content lives under .agents/skills/<name>/SKILL.md, the one real\ncopy; .claude/skills is a directory-level symlink to it, so os.walk()\n(followlinks=False) never descends into .claude/skills and each SKILL.md\nis only ever reached via the .agents/skills/ path.\nThe realpath dedup below stays in place for other symlink cases (e.g.\n.codex/ config), even though it's no longer load-bearing for skills\nspecifically.\nSubagents stay .claude-only - Codex has no Task-tool/subagent\nequivalent, so there's no .codex/agents to scan.",
   "imports": [
     {
@@ -343,7 +343,7 @@
       "docstring": null,
       "is_async": false,
       "line_start": 183,
-      "line_end": 230
+      "line_end": 233
     },
     {
       "qualname": "main",
@@ -353,9 +353,9 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 233,
-      "line_end": 285
+      "line_start": 236,
+      "line_end": 288
     }
   ],
-  "sha256": "935b43e0bddd6919f579b9cef8f84ba793d4d9d11268244356dbe663e4f0af28"
+  "sha256": "de503e2b846c2a7828b0eaca368ee5de0e2d17a390e14bf77bc8238fae9f7bb3"
 }

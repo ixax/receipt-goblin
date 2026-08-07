@@ -1,6 +1,6 @@
 {
   "path": "scripts/ast_index.py",
-  "line_count": 470,
+  "line_count": 472,
   "module_docstring": "Build/query agent_docs/ast_index/, a committed structural digest of every tracked .py file.\nCovers classes/methods/functions/signatures/docstrings, derived via stdlib `ast`.\nStdlib only - no third-party deps, but still runs via `uv run` for the pinned .python-version interpreter (not whatever bare `python3` resolves to).\n\nA navigation aid, not a Read replacement: answers \"what's in this file / where is X defined\" without a full read.\nNever substitutes for Read before an Edit (verbatim old_string needs real source).\n\nCache layout:\n  agent_docs/ast_index/cache/manifest.json        - relpath -> {sha256, size, cache_path}\n  agent_docs/ast_index/manifests/<relpath>.json   - one comprehensive-but-flat doc per file\n\nsha256 (not mtime) is the staleness signal - content hash is authoritative.\n\nUsage:\n  uv run python3 scripts/ast_index.py build --file <relpath>   # single-file incremental regen\n  uv run python3 scripts/ast_index.py build --all              # full rebuild, prunes stale entries\n  uv run python3 scripts/ast_index.py build --check             # exit 1 if any tracked file is stale\n\n  uv run python3 scripts/ast_index.py query <relpath> --view outline      # qualnames + line ranges\n  uv run python3 scripts/ast_index.py query <relpath> --view signatures   # + signature + 1-line docstring\n  uv run python3 scripts/ast_index.py query <relpath> --view full         # entire stored document\n  uv run python3 scripts/ast_index.py query <relpath> --symbol Class.method\n  uv run python3 scripts/ast_index.py query --grep <substring>            # cross-file qualname search\n  (add --json to any query for structured output)",
   "imports": [
     {
@@ -160,7 +160,7 @@
       "docstring": null,
       "is_async": false,
       "line_start": 75,
-      "line_end": 78
+      "line_end": 80
     },
     {
       "qualname": "get_docstring_first_line",
@@ -175,8 +175,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 83,
-      "line_end": 86
+      "line_start": 85,
+      "line_end": 88
     },
     {
       "qualname": "arg_entry",
@@ -191,8 +191,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 89,
-      "line_end": 90
+      "line_start": 91,
+      "line_end": 92
     },
     {
       "qualname": "extract_args",
@@ -207,8 +207,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 93,
-      "line_end": 103
+      "line_start": 95,
+      "line_end": 105
     },
     {
       "qualname": "format_signature",
@@ -223,8 +223,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 106,
-      "line_end": 110
+      "line_start": 108,
+      "line_end": 112
     },
     {
       "qualname": "function_entry",
@@ -243,8 +243,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 113,
-      "line_end": 124
+      "line_start": 115,
+      "line_end": 126
     },
     {
       "qualname": "class_entry",
@@ -259,8 +259,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 127,
-      "line_end": 141
+      "line_start": 129,
+      "line_end": 143
     },
     {
       "qualname": "import_entries",
@@ -275,8 +275,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 144,
-      "line_end": 148
+      "line_start": 146,
+      "line_end": 150
     },
     {
       "qualname": "module_constant_entries",
@@ -291,8 +291,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 151,
-      "line_end": 156
+      "line_start": 153,
+      "line_end": 158
     },
     {
       "qualname": "extract_module",
@@ -311,8 +311,8 @@
       "decorators": [],
       "docstring": "One level deep only: class bodies walk direct methods, not nested defs.",
       "is_async": false,
-      "line_start": 159,
-      "line_end": 180
+      "line_start": 161,
+      "line_end": 182
     },
     {
       "qualname": "build_one",
@@ -331,8 +331,8 @@
       "decorators": [],
       "docstring": "Update manifest in place for one file.\nReturns True if the cache entry changed.",
       "is_async": false,
-      "line_start": 185,
-      "line_end": 208
+      "line_start": 187,
+      "line_end": 210
     },
     {
       "qualname": "prune_orphans",
@@ -347,8 +347,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 211,
-      "line_end": 222
+      "line_start": 213,
+      "line_end": 224
     },
     {
       "qualname": "cmd_build_file",
@@ -363,8 +363,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 225,
-      "line_end": 236
+      "line_start": 227,
+      "line_end": 238
     },
     {
       "qualname": "cmd_build_all",
@@ -374,8 +374,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 239,
-      "line_end": 257
+      "line_start": 241,
+      "line_end": 259
     },
     {
       "qualname": "build_check",
@@ -385,8 +385,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 260,
-      "line_end": 274
+      "line_start": 262,
+      "line_end": 276
     },
     {
       "qualname": "cmd_build",
@@ -401,8 +401,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 277,
-      "line_end": 282
+      "line_start": 279,
+      "line_end": 284
     },
     {
       "qualname": "load_entry",
@@ -417,8 +417,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 287,
-      "line_end": 295
+      "line_start": 289,
+      "line_end": 297
     },
     {
       "qualname": "is_stale",
@@ -437,8 +437,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 298,
-      "line_end": 300
+      "line_start": 300,
+      "line_end": 302
     },
     {
       "qualname": "iter_entries",
@@ -453,8 +453,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 303,
-      "line_end": 307
+      "line_start": 305,
+      "line_end": 309
     },
     {
       "qualname": "project_view",
@@ -473,8 +473,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 310,
-      "line_end": 323
+      "line_start": 312,
+      "line_end": 325
     },
     {
       "qualname": "print_full",
@@ -489,8 +489,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 326,
-      "line_end": 360
+      "line_start": 328,
+      "line_end": 362
     },
     {
       "qualname": "query_view",
@@ -513,8 +513,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 363,
-      "line_end": 379
+      "line_start": 365,
+      "line_end": 381
     },
     {
       "qualname": "query_symbol",
@@ -537,8 +537,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 382,
-      "line_end": 395
+      "line_start": 384,
+      "line_end": 397
     },
     {
       "qualname": "query_grep",
@@ -557,8 +557,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 398,
-      "line_end": 416
+      "line_start": 400,
+      "line_end": 418
     },
     {
       "qualname": "cmd_query",
@@ -573,8 +573,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 419,
-      "line_end": 437
+      "line_start": 421,
+      "line_end": 439
     },
     {
       "qualname": "build_arg_parser",
@@ -584,8 +584,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 442,
-      "line_end": 461
+      "line_start": 444,
+      "line_end": 463
     },
     {
       "qualname": "main",
@@ -595,9 +595,9 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 464,
-      "line_end": 466
+      "line_start": 466,
+      "line_end": 468
     }
   ],
-  "sha256": "da6b58ca24556becaaf7c7d99ed948e1ba93d2207b2df209a80a45b3e285c773"
+  "sha256": "f8f04a6764cbd661208086910c4a63153f56127fa277997cefd0c996da8f8c78"
 }
