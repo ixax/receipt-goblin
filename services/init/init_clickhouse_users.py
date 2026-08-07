@@ -5,9 +5,10 @@ docker-compose.yml -f docker-compose.dev.yml`).
 
 Stdlib-only, no venv/pip install needed - loads services/init/ch_roles.py
 (the single source of truth for the role/grant model, itself reading
-services/init/config.yml) via importlib.util.spec_from_file_location rather
-than a package import, since this script runs on the host, outside any
-container.
+services/init/config.yml) and services/init/init_common.py (shared .env/
+docker-compose helpers, also used by init_litellm_key.py) via
+importlib.util.spec_from_file_location rather than a package import, since
+this script runs on the host, outside any container.
 
 This is the *only* place ClickHouse users/roles/grants get created - not on
 every `docker compose up` (see services/migrate/src/migrate.py's own
@@ -36,12 +37,10 @@ import pathlib
 import secrets
 import subprocess
 import sys
-import time
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 CH_ROLES_PATH = pathlib.Path(__file__).resolve().parent / "ch_roles.py"
-ENV_PATH = REPO_ROOT / ".env"
-ENV_EXAMPLE_PATH = REPO_ROOT / ".env.example"
+INIT_COMMON_PATH = pathlib.Path(__file__).resolve().parent / "init_common.py"
 # Applied to any role's database that this script itself creates
 # (role.create_database) - CLICKHOUSE_DATABASE gets its tables for free from
 # docker-entrypoint-initdb.d on the clickhouse container's own first boot,
@@ -53,11 +52,18 @@ SCHEMA_PATH = REPO_ROOT / "services" / "clickhouse" / "schema.sql"
 DEFAULT_COMPOSE_FILES = ["-f", "docker-compose.yml", "-f", "docker-compose.dev.yml"]
 
 
-def _load_ch_roles():
-    spec = importlib.util.spec_from_file_location("ch_roles", CH_ROLES_PATH)
+def _load_module(name: str, path: pathlib.Path):
+    spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _load_ch_roles():
+    return _load_module("ch_roles", CH_ROLES_PATH)
+
+
+init_common = _load_module("init_common", INIT_COMMON_PATH)
 
 
 def _prompt(label: str, default: str = "") -> str:
@@ -75,85 +81,12 @@ def _prompt_password(label: str) -> str:
     return generated
 
 
-def _read_existing_env(path: pathlib.Path) -> dict[str, str]:
-    if not path.exists():
-        return {}
-    values = {}
-    for line in path.read_text().splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, _, value = stripped.partition("=")
-        values[key.strip()] = value.strip()
-    return values
-
-
-def _write_env(path: pathlib.Path, updates: dict[str, str]) -> None:
-    if not path.exists():
-        if not ENV_EXAMPLE_PATH.exists():
-            print(f"error: neither {path} nor {ENV_EXAMPLE_PATH} exist", file=sys.stderr)
-            sys.exit(1)
-        path.write_text(ENV_EXAMPLE_PATH.read_text())
-        print(f"copied {ENV_EXAMPLE_PATH.name} -> {path.name}")
-
-    lines = path.read_text().splitlines()
-    remaining = dict(updates)
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key = stripped.partition("=")[0].strip()
-        if key in remaining:
-            lines[i] = f"{key}={remaining.pop(key)}"
-    for key, value in remaining.items():
-        lines.append(f"{key}={value}")
-
-    path.write_text("\n".join(lines) + "\n")
-
-
-def _compose(compose_files: list[str], *args: str, check: bool = True, timeout: float = 120) -> subprocess.CompletedProcess:
-    # stdin=DEVNULL, deliberately: none of these calls need input (queries go
-    # via --query, not stdin), and leaving stdin attached to this script's own
-    # controlling terminal is exactly what let a docker-compose-exec'd child
-    # inherit a terminal left in a half-raw state by getpass's echo-control
-    # fallback (see _prompt_password) - that combination produced a spurious
-    # SIGINT/KeyboardInterrupt with nobody touching the keyboard, observed
-    # while building this. A timeout is also set so a genuine hang fails
-    # loudly instead of sitting silent until someone gives up and Ctrl-Cs it.
-    cmd = ["docker", "compose", *compose_files, *args]
-    return subprocess.run(cmd, cwd=REPO_ROOT, check=check, stdin=subprocess.DEVNULL, timeout=timeout)
-
-
-def _clickhouse_already_running(compose_files: list[str]) -> bool:
-    result = subprocess.run(
-        ["docker", "compose", *compose_files, "ps", "--format", "{{.State}}", "clickhouse"],
-        cwd=REPO_ROOT, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=30,
-    )
-    return result.stdout.strip() == "running"
-
-
-def _wait_for_clickhouse_healthy(compose_files: list[str], timeout_s: int = 90) -> None:
-    print("waiting for clickhouse to become healthy...")
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        result = subprocess.run(
-            ["docker", "compose", *compose_files, "ps", "--format", "{{.Health}}", "clickhouse"],
-            cwd=REPO_ROOT, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=30,
-        )
-        if result.stdout.strip() == "healthy":
-            print("clickhouse is healthy")
-            return
-        time.sleep(2)
-    print("error: clickhouse did not become healthy in time", file=sys.stderr)
-    sys.exit(1)
-
-
 def _sql_string_literal(value: str) -> str:
     return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
 def _clickhouse_client(compose_files: list[str], user: str, password: str, query: str) -> None:
-    _compose(
+    init_common.run_compose(
         compose_files, "exec", "-T", "clickhouse", "clickhouse-client",
         "--user", user, "--password", password, "--query", query,
         timeout=30,
@@ -162,11 +95,12 @@ def _clickhouse_client(compose_files: list[str], user: str, password: str, query
 
 def _apply_schema(compose_files: list[str], user: str, password: str, database: str) -> None:
     # Piping schema.sql's actual text via input= (not stdin=DEVNULL like
-    # _compose's other calls) - subprocess.run(input=...) opens its own pipe
-    # for this one call, so it doesn't reintroduce the terminal-inheritance
-    # issue documented on _compose above; that issue was specifically about
-    # *inheriting* the parent's controlling tty when stdin wasn't redirected
-    # at all, not about deliberately piping known content through a fresh pipe.
+    # init_common.run_compose's other calls) - subprocess.run(input=...) opens
+    # its own pipe for this one call, so it doesn't reintroduce the
+    # terminal-inheritance issue documented on run_compose; that issue was
+    # specifically about *inheriting* the parent's controlling tty when stdin
+    # wasn't redirected at all, not about deliberately piping known content
+    # through a fresh pipe.
     cmd = [
         "docker", "compose", *compose_files, "exec", "-T", "clickhouse", "clickhouse-client",
         "--user", user, "--password", password, "--database", database, "--multiquery",
@@ -185,7 +119,7 @@ def main() -> None:
     compose_files = sys.argv[1:] or DEFAULT_COMPOSE_FILES
 
     ch_roles = _load_ch_roles()
-    existing = _read_existing_env(ENV_PATH)
+    existing = init_common.read_existing_env(init_common.ENV_PATH)
 
     print("=== ClickHouse setup (make init) ===")
     print("Answer the prompts below - nothing is written to .env until the end.\n")
@@ -219,16 +153,16 @@ def main() -> None:
             updates[key] = secrets.token_urlsafe(18)
             print(f"\n{key} was unset - generated a value (edit .env later if you need a specific one).")
 
-    _write_env(ENV_PATH, updates)
-    print(f"\nwrote {ENV_PATH.name}")
+    init_common.write_env(init_common.ENV_PATH, updates)
+    print(f"\nwrote {init_common.ENV_PATH.name}")
 
     os.environ.update(updates)
 
-    was_already_running = _clickhouse_already_running(compose_files)
+    was_already_running = init_common.service_already_running(compose_files, "clickhouse")
 
     print("\nstarting clickhouse...")
-    _compose(compose_files, "up", "-d", "--build", "clickhouse")
-    _wait_for_clickhouse_healthy(compose_files)
+    init_common.run_compose(compose_files, "up", "-d", "--build", "clickhouse", quiet=True)
+    init_common.wait_for_service_healthy(compose_files, "clickhouse")
 
     bootstrap_user = updates["CLICKHOUSE_BOOTSTRAP_USER"]
     bootstrap_password = updates["CLICKHOUSE_BOOTSTRAP_PASSWORD"]
@@ -268,13 +202,13 @@ def main() -> None:
             print("\nclickhouse was already running before this script started - leaving it up.")
         else:
             print("\nstopping clickhouse...")
-            _compose(compose_files, "stop", "clickhouse", check=False)
+            init_common.run_compose(compose_files, "stop", "clickhouse", check=False)
 
-    print("\n=== done ===")
+    print("\n✅ === done ===")
     print(f"Database: {updates['CLICKHOUSE_DATABASE']}")
     for role in ch_roles.ROLES:
         print(f"  {role.name}: user={updates[role.user_env]}")
-    print(f"\nCredentials are in {ENV_PATH.name}. Next: run `make up`.")
+    print(f"\nCredentials are in {init_common.ENV_PATH.name}. Next: run `make up`.")
 
 
 if __name__ == "__main__":

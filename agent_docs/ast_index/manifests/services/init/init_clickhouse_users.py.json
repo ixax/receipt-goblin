@@ -1,53 +1,47 @@
 {
   "path": "services/init/init_clickhouse_users.py",
-  "line_count": 293,
-  "module_docstring": "Interactive first-run ClickHouse provisioning for a fresh clone. Run via\n`make init` (or directly: `python3 services/init/init_clickhouse_users.py -f\ndocker-compose.yml -f docker-compose.dev.yml`).\n\nStdlib-only, no venv/pip install needed - loads services/init/ch_roles.py\n(the single source of truth for the role/grant model, itself reading\nservices/init/config.yml) via importlib.util.spec_from_file_location rather\nthan a package import, since this script runs on the host, outside any\ncontainer.\n\nThis is the *only* place ClickHouse users/roles/grants get created - not on\nevery `docker compose up` (see services/migrate/src/migrate.py's own\ndocstring for why that changed). Re-running this script is always safe\n(existing usernames/passwords already in .env are reused, not regenerated;\nevery `CREATE USER`/`GRANT` statement it issues is idempotent).\n\nFlow: ask every question first (database name, bootstrap creds, then per\nrole - a database name too for any role whose database isn't the main one,\ne.g. loadtest - username, password), THEN touch .env (copy from .env.example\nif missing, rewrite in place), bring up just the `clickhouse` service, create\nevery role via `docker compose exec clickhouse clickhouse-client` (the exact\nGRANT bodies services/init/config.yml defines), then hand control back to\n`make up`.\n\n`clickhouse` is only stopped again on the way out if this script is the one\nthat started it (a fresh clone's first run). Re-running this script later\nagainst an already-up stack - e.g. to pick up a new grant added to\nconfig.yml - leaves `clickhouse` running afterward instead of stopping it\nout from under the rest of the running stack.",
+  "line_count": 227,
+  "module_docstring": "Interactive first-run ClickHouse provisioning for a fresh clone. Run via\n`make init` (or directly: `python3 services/init/init_clickhouse_users.py -f\ndocker-compose.yml -f docker-compose.dev.yml`).\n\nStdlib-only, no venv/pip install needed - loads services/init/ch_roles.py\n(the single source of truth for the role/grant model, itself reading\nservices/init/config.yml) and services/init/init_common.py (shared .env/\ndocker-compose helpers, also used by init_litellm_key.py) via\nimportlib.util.spec_from_file_location rather than a package import, since\nthis script runs on the host, outside any container.\n\nThis is the *only* place ClickHouse users/roles/grants get created - not on\nevery `docker compose up` (see services/migrate/src/migrate.py's own\ndocstring for why that changed). Re-running this script is always safe\n(existing usernames/passwords already in .env are reused, not regenerated;\nevery `CREATE USER`/`GRANT` statement it issues is idempotent).\n\nFlow: ask every question first (database name, bootstrap creds, then per\nrole - a database name too for any role whose database isn't the main one,\ne.g. loadtest - username, password), THEN touch .env (copy from .env.example\nif missing, rewrite in place), bring up just the `clickhouse` service, create\nevery role via `docker compose exec clickhouse clickhouse-client` (the exact\nGRANT bodies services/init/config.yml defines), then hand control back to\n`make up`.\n\n`clickhouse` is only stopped again on the way out if this script is the one\nthat started it (a fresh clone's first run). Re-running this script later\nagainst an already-up stack - e.g. to pick up a new grant added to\nconfig.yml - leaves `clickhouse` running afterward instead of stopping it\nout from under the rest of the running stack.",
   "imports": [
     {
       "kind": "import",
       "module": "getpass",
       "names": [],
-      "line": 32
+      "line": 33
     },
     {
       "kind": "import",
       "module": "importlib.util",
       "names": [],
-      "line": 33
+      "line": 34
     },
     {
       "kind": "import",
       "module": "os",
       "names": [],
-      "line": 34
+      "line": 35
     },
     {
       "kind": "import",
       "module": "pathlib",
       "names": [],
-      "line": 35
+      "line": 36
     },
     {
       "kind": "import",
       "module": "secrets",
       "names": [],
-      "line": 36
+      "line": 37
     },
     {
       "kind": "import",
       "module": "subprocess",
       "names": [],
-      "line": 37
-    },
-    {
-      "kind": "import",
-      "module": "sys",
-      "names": [],
       "line": 38
     },
     {
       "kind": "import",
-      "module": "time",
+      "module": "sys",
       "names": [],
       "line": 39
     }
@@ -62,24 +56,44 @@
       "line": 42
     },
     {
-      "name": "ENV_PATH",
+      "name": "INIT_COMMON_PATH",
       "line": 43
     },
     {
-      "name": "ENV_EXAMPLE_PATH",
-      "line": 44
-    },
-    {
       "name": "SCHEMA_PATH",
-      "line": 51
+      "line": 50
     },
     {
       "name": "DEFAULT_COMPOSE_FILES",
-      "line": 53
+      "line": 52
+    },
+    {
+      "name": "init_common",
+      "line": 66
     }
   ],
   "classes": [],
   "functions": [
+    {
+      "qualname": "_load_module",
+      "signature": "(name: str, path: pathlib.Path)",
+      "args": [
+        {
+          "name": "name",
+          "annotation": "str"
+        },
+        {
+          "name": "path",
+          "annotation": "pathlib.Path"
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 55,
+      "line_end": 59
+    },
     {
       "qualname": "_load_ch_roles",
       "signature": "()",
@@ -88,8 +102,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 56,
-      "line_end": 60
+      "line_start": 62,
+      "line_end": 63
     },
     {
       "qualname": "_prompt",
@@ -108,8 +122,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 63,
-      "line_end": 66
+      "line_start": 69,
+      "line_end": 72
     },
     {
       "qualname": "_prompt_password",
@@ -124,108 +138,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 69,
-      "line_end": 75
-    },
-    {
-      "qualname": "_read_existing_env",
-      "signature": "(path: pathlib.Path) -> dict[str, str]",
-      "args": [
-        {
-          "name": "path",
-          "annotation": "pathlib.Path"
-        }
-      ],
-      "returns": "dict[str, str]",
-      "decorators": [],
-      "docstring": null,
-      "is_async": false,
-      "line_start": 78,
-      "line_end": 88
-    },
-    {
-      "qualname": "_write_env",
-      "signature": "(path: pathlib.Path, updates: dict[str, str]) -> None",
-      "args": [
-        {
-          "name": "path",
-          "annotation": "pathlib.Path"
-        },
-        {
-          "name": "updates",
-          "annotation": "dict[str, str]"
-        }
-      ],
-      "returns": "None",
-      "decorators": [],
-      "docstring": null,
-      "is_async": false,
-      "line_start": 91,
-      "line_end": 111
-    },
-    {
-      "qualname": "_compose",
-      "signature": "(compose_files: list[str], *args: str, check: bool=True, timeout: float=120) -> subprocess.CompletedProcess",
-      "args": [
-        {
-          "name": "compose_files",
-          "annotation": "list[str]"
-        },
-        {
-          "name": "*args",
-          "annotation": "str"
-        },
-        {
-          "name": "check",
-          "annotation": "bool"
-        },
-        {
-          "name": "timeout",
-          "annotation": "float"
-        }
-      ],
-      "returns": "subprocess.CompletedProcess",
-      "decorators": [],
-      "docstring": null,
-      "is_async": false,
-      "line_start": 114,
-      "line_end": 124
-    },
-    {
-      "qualname": "_clickhouse_already_running",
-      "signature": "(compose_files: list[str]) -> bool",
-      "args": [
-        {
-          "name": "compose_files",
-          "annotation": "list[str]"
-        }
-      ],
-      "returns": "bool",
-      "decorators": [],
-      "docstring": null,
-      "is_async": false,
-      "line_start": 127,
-      "line_end": 132
-    },
-    {
-      "qualname": "_wait_for_clickhouse_healthy",
-      "signature": "(compose_files: list[str], timeout_s: int=90) -> None",
-      "args": [
-        {
-          "name": "compose_files",
-          "annotation": "list[str]"
-        },
-        {
-          "name": "timeout_s",
-          "annotation": "int"
-        }
-      ],
-      "returns": "None",
-      "decorators": [],
-      "docstring": null,
-      "is_async": false,
-      "line_start": 135,
-      "line_end": 148
+      "line_start": 75,
+      "line_end": 81
     },
     {
       "qualname": "_sql_string_literal",
@@ -240,8 +154,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 151,
-      "line_end": 152
+      "line_start": 84,
+      "line_end": 85
     },
     {
       "qualname": "_clickhouse_client",
@@ -268,8 +182,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 155,
-      "line_end": 160
+      "line_start": 88,
+      "line_end": 93
     },
     {
       "qualname": "_apply_schema",
@@ -296,8 +210,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 163,
-      "line_end": 174
+      "line_start": 96,
+      "line_end": 108
     },
     {
       "qualname": "main",
@@ -307,9 +221,9 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 177,
-      "line_end": 277
+      "line_start": 111,
+      "line_end": 211
     }
   ],
-  "sha256": "c1fc55bcd752b854bd499e59449894fd64e63c9adb9e0625b0937f07a4db0f02"
+  "sha256": "6d2dd7f9c19a6c19e9fb4cf21b4c77b87965bbf3474806c663ac485ed8b19e45"
 }

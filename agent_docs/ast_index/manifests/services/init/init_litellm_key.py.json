@@ -1,0 +1,105 @@
+{
+  "path": "services/init/init_litellm_key.py",
+  "line_count": 126,
+  "module_docstring": "Auto-provisions a personal LiteLLM team + virtual key for a fresh clone.\nRun via `make init` (or directly: `python3 services/init/init_litellm_key.py\n-f docker-compose.yml -f docker-compose.dev.yml`), after\ninit_clickhouse_users.py.\n\nStdlib-only - loads services/init/init_common.py (shared .env/docker-compose\nhelpers, also used by init_clickhouse_users.py) via\nimportlib.util.spec_from_file_location rather than a package import, since\nthis script runs on the host, outside any container.\n\n`litellm` publishes no host port (only `load-balancer` does, once the full\nstack including load-balancer is up - which it isn't yet during `make init`),\nso its Admin API can't be reached over HTTP from the host at this point.\nInstead this brings up just the `litellm` service (and its `litellm-db`\ndependency, via `depends_on: condition: service_healthy`), waits for its\nexisting healthcheck, then pipes services/init/litellm_provision.py into\n`docker compose exec -T litellm python3 -` (same idiom\ninit_clickhouse_users.py uses to pipe schema.sql into clickhouse-client) so\nthe actual /team/new and /key/generate calls happen from inside the\ncontainer against its own http://localhost:4000.\nLITELLM_MASTER_KEY doesn't need to be injected separately - it's already set\nin that container's own environment\n(docker-compose.yml's litellm.environment.LITELLM_MASTER_KEY).\n\nSafe to re-run: skips entirely if .env already has a non-empty\nLITELLM_VIRTUAL_KEY. If .env has LITELLM_TEAM_ID but not yet\nLITELLM_VIRTUAL_KEY (e.g. a previous run crashed between the two API calls),\nthat team is reused instead of creating a second one.\n\n`litellm` is only stopped again on the way out if this script is the one\nthat started it - same \"leave it up if it was already running\" logic as\ninit_clickhouse_users.py's clickhouse handling.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "importlib.util",
+      "names": [],
+      "line": 35
+    },
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 36
+    },
+    {
+      "kind": "import",
+      "module": "pathlib",
+      "names": [],
+      "line": 37
+    },
+    {
+      "kind": "import",
+      "module": "subprocess",
+      "names": [],
+      "line": 38
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 39
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "REPO_ROOT",
+      "line": 41
+    },
+    {
+      "name": "INIT_COMMON_PATH",
+      "line": 42
+    },
+    {
+      "name": "PROVISION_SCRIPT_PATH",
+      "line": 43
+    },
+    {
+      "name": "DEFAULT_COMPOSE_FILES",
+      "line": 45
+    },
+    {
+      "name": "init_common",
+      "line": 55
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_load_init_common",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 48,
+      "line_end": 52
+    },
+    {
+      "qualname": "_provision",
+      "signature": "(compose_files: list[str], existing_team_id: str) -> dict",
+      "args": [
+        {
+          "name": "compose_files",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "existing_team_id",
+          "annotation": "str"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 58,
+      "line_end": 73
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 76,
+      "line_end": 110
+    }
+  ],
+  "sha256": "0cb52d1fb03b0a75f3a2cdbf456a859266b922e3e60529d4afc736715ef8921e"
+}

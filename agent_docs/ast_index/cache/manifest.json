@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-05T12:32:15.728077+00:00",
+  "generated_at": "2026-08-07T08:08:10.943498+00:00",
   "files": {
     "hooks/ast_index/sync_hook.py": {
       "sha256": "c8959b7bd47119783c7c14eefd46cb4c76a873f6238107e6cca27706f4e89b48",
@@ -268,8 +268,8 @@
       "cache_path": "manifests/services/init/ch_roles.py.json"
     },
     "services/init/init_clickhouse_users.py": {
-      "sha256": "c1fc55bcd752b854bd499e59449894fd64e63c9adb9e0625b0937f07a4db0f02",
-      "size": 13190,
+      "sha256": "6d2dd7f9c19a6c19e9fb4cf21b4c77b87965bbf3474806c663ac485ed8b19e45",
+      "size": 10422,
       "cache_path": "manifests/services/init/init_clickhouse_users.py.json"
     },
     "services/litellm/custom_callbacks.py": {
@@ -416,6 +416,31 @@
       "sha256": "4d89ceb23bf03873351269e5a54b7207b7a38ca0f576ff0273f1b1e70b2a47c5",
       "size": 7026,
       "cache_path": "manifests/services/worker/tests/test_worker.py.json"
+    },
+    "services/init/init_common.py": {
+      "sha256": "a5e7a2985dcd1e905bddc8659dd64cb1a66ad95501e181867aa5f5f300b5198c",
+      "size": 4379,
+      "cache_path": "manifests/services/init/init_common.py.json"
+    },
+    "services/init/litellm_provision.py": {
+      "sha256": "0e14d1e4c3178d561bf325e3ac534f4144b06316beb9dfdb43a19810c84df4ab",
+      "size": 1863,
+      "cache_path": "manifests/services/init/litellm_provision.py.json"
+    },
+    "services/init/init_litellm_key.py": {
+      "sha256": "0cb52d1fb03b0a75f3a2cdbf456a859266b922e3e60529d4afc736715ef8921e",
+      "size": 5518,
+      "cache_path": "manifests/services/init/init_litellm_key.py.json"
+    },
+    "services/init/init_environment.py": {
+      "sha256": "f748d6271e527f416f8877084a4030d33cac2d5d74a59ff9af9589f7d858f803",
+      "size": 2871,
+      "cache_path": "manifests/services/init/init_environment.py.json"
+    },
+    "../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/26f4eff0-7ee3-432c-b6f1-5ccbd5900728/scratchpad/test_init_environment.py": {
+      "sha256": "84ac20a38b91aea32b85fb35011f60df1425f49f29a637c15f1a113e8970dfae",
+      "size": 1753,
+      "cache_path": "manifests/../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/26f4eff0-7ee3-432c-b6f1-5ccbd5900728/scratchpad/test_init_environment.py.json"
     }
   }
 }

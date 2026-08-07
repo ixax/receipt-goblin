@@ -67,6 +67,18 @@ VKEY := $(if $(strip $(LITELLM_VIRTUAL_KEY)),$(LITELLM_VIRTUAL_KEY),<virtual key
 # resolution logic, shared with `make build` below rather than
 # reimplemented in Make.
 #
+# uv is a hard requirement for parsing this file at all (see the
+# resolve_image_version.py $(shell ...) call a few lines down, and
+# check-env's own `uv run` below) - not just for `make init` - so a
+# completely fresh clone with no uv on PATH needs it installed here,
+# before that call, rather than gated behind any one target.
+# PATH is exported (not just checked) so a uv *just* installed by the
+# line below is still found a few lines down - each $(shell ...)/recipe
+# line is its own fresh non-interactive shell, so it won't pick up a
+# rc-file PATH update on its own.
+export PATH := $(HOME)/.local/bin:$(PATH)
+$(shell command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh)
+
 # Regenerated via a `$(shell ... > file)` side effect (not captured into a
 # Make variable) specifically so the real newlines between each
 # `export FOO_TAG=...` line survive onto disk - `$(shell ...)`'s return
@@ -85,7 +97,7 @@ include .image-tags.mk
 PYTHON_VERSION := $(shell cat .python-version)
 export PYTHON_VERSION
 
-.PHONY: check-env git-hooks-install install-uv init start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit lock harness-index ast-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all reparse-dlq print-reparse-final-hint \
+.PHONY: check-env git-hooks-install install-uv init _init_provision start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit lock harness-index ast-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all reparse-dlq print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	archive-prometheus archive-clickhouse-logs \
@@ -117,9 +129,58 @@ git-hooks-install:
 install-uv:
 	curl -LsSf https://astral.sh/uv/install.sh | sh
 
-init: check-env git-hooks-install
+# The environment prompt has to be the literal first thing `make init` does
+# (before check-env/git-hooks-install, which are plain prerequisites and
+# would otherwise run first) and everything downstream of it needs the
+# freshly-chosen ENVIRONMENT, not the value COMPOSE_FILES was already frozen
+# to at this `make` invocation's own parse time. `$(MAKE) <target>` is the
+# fix - it spawns a real new `make` process, which re-parses the Makefile
+# (and re-`include`s .env) from scratch, so _init_provision below sees
+# whatever was just written.
+#
+# Every step below prints a "Step N/5  NAME" banner plus a one-line
+# description before it runs, and a blank line after it finishes - a fresh
+# clone's first run is the longest, most unfamiliar output this Makefile
+# produces, so it's broken into scannable chunks instead of one wall of text.
+# docker build/pull noise is deliberately suppressed within these steps only
+# (see init_common.run_compose's quiet= and the migrate wrapper below) -
+# `make build`/`make up`/`make migrate` run standalone stay fully verbose.
+init:
+	@echo '🔷 Step 1/5  ENVIRONMENT'
+	@echo 'Choose development or production, and write ENVIRONMENT to .env.'
+	uv run python3 services/init/init_environment.py
+	@echo ''
+	@echo '🔷 Step 2/5  GIT HOOKS'
+	@echo 'Install the repo git hooks.'
+	$(MAKE) git-hooks-install
+	@echo ''
+	$(MAKE) _init_provision
+
+_init_provision: check-env
+	@echo '🔷 Step 3/5  CLICKHOUSE'
+	@echo 'Provision ClickHouse roles and apply schema migrations.'
 	uv run python3 services/init/init_clickhouse_users.py $(COMPOSE_FILES)
-	$(MAKE) migrate
+	@out=$$(mktemp); \
+	if ! docker compose $(COMPOSE_FILES) run --rm clickhouse-migrate >"$$out" 2>&1; then \
+	  cat "$$out"; rm -f "$$out"; exit 1; \
+	fi; \
+	rm -f "$$out"
+	@echo 'migrations applied.'
+	@echo ''
+	@echo '🔷 Step 4/5  LITELLM'
+	@echo 'Create your personal LiteLLM team and virtual key.'
+	uv run python3 services/init/init_litellm_key.py $(COMPOSE_FILES)
+	@echo ''
+	@echo '🔷 Step 5/5  CLIENT CONFIG'
+	@echo 'Print ready-to-paste config for Claude Code / Codex.'
+	$(MAKE) setup-client
+	@echo ''
+	@echo '✅ === make init done ==='
+	@echo 'Paste the config above into your shell/CLI config, then start the stack:'
+	@echo ''
+	@echo '  make up'
+	@echo ''
+	@echo '(optional: `make observability-up` for Prometheus/Loki/etc - see README "Observability")'
 
 # `start`: Brings up containers with existing images (no rebuild/recreate).
 # `up`: Rebuilds and recreates containers - the fix for baked-in config/env/file changes.

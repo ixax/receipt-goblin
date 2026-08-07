@@ -1,0 +1,74 @@
+{
+  "path": "services/init/litellm_provision.py",
+  "line_count": 44,
+  "module_docstring": "Creates the first personal LiteLLM team + virtual key via LiteLLM's own\nAdmin API. Not a tracked entry point run directly - piped via stdin into\n`docker compose exec -T litellm python3 -` by init_litellm_key.py, so it runs\n*inside* the litellm container against its own http://localhost:4000, since\nlitellm publishes no host port (see init_litellm_key.py's docstring).\n\nReads LITELLM_MASTER_KEY from its own environment (already set inside the\ncontainer by docker-compose.yml) and an optional EXISTING_TEAM_ID (passed in\nby init_litellm_key.py via `exec -e`) to skip team creation on a resumed run.\nPrints a single JSON line to stdout: {\"team_id\": ..., \"key\": ...}.\nAny HTTP error raises uncaught, so the exec'd python3 exits non-zero and\ninit_litellm_key.py's own subprocess.run(check=True) surfaces the failure.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "json",
+      "names": [],
+      "line": 14
+    },
+    {
+      "kind": "import",
+      "module": "os",
+      "names": [],
+      "line": 15
+    },
+    {
+      "kind": "import",
+      "module": "urllib.request",
+      "names": [],
+      "line": 16
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "BASE_URL",
+      "line": 18
+    },
+    {
+      "name": "MASTER_KEY",
+      "line": 19
+    },
+    {
+      "name": "HEADERS",
+      "line": 23
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_post",
+      "signature": "(path: str, payload: dict) -> dict",
+      "args": [
+        {
+          "name": "path",
+          "annotation": "str"
+        },
+        {
+          "name": "payload",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "dict",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 29,
+      "line_end": 34
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 37,
+      "line_end": 40
+    }
+  ],
+  "sha256": "0e14d1e4c3178d561bf325e3ac534f4144b06316beb9dfdb43a19810c84df4ab"
+}

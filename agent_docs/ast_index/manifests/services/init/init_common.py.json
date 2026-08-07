@@ -1,0 +1,161 @@
+{
+  "path": "services/init/init_common.py",
+  "line_count": 102,
+  "module_docstring": "Shared host-side helpers for services/init/*.py first-run provisioning\nscripts (currently init_clickhouse_users.py and init_litellm_key.py).\n\nStdlib-only, loaded via importlib.util.spec_from_file_location (not a package\nimport) since these scripts run on the host, outside any container - see\ninit_clickhouse_users.py's own docstring for why.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "pathlib",
+      "names": [],
+      "line": 8
+    },
+    {
+      "kind": "import",
+      "module": "subprocess",
+      "names": [],
+      "line": 9
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 10
+    },
+    {
+      "kind": "import",
+      "module": "time",
+      "names": [],
+      "line": 11
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "REPO_ROOT",
+      "line": 13
+    },
+    {
+      "name": "ENV_PATH",
+      "line": 14
+    },
+    {
+      "name": "ENV_EXAMPLE_PATH",
+      "line": 15
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "read_existing_env",
+      "signature": "(path: pathlib.Path) -> dict[str, str]",
+      "args": [
+        {
+          "name": "path",
+          "annotation": "pathlib.Path"
+        }
+      ],
+      "returns": "dict[str, str]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 18,
+      "line_end": 28
+    },
+    {
+      "qualname": "write_env",
+      "signature": "(path: pathlib.Path, updates: dict[str, str]) -> None",
+      "args": [
+        {
+          "name": "path",
+          "annotation": "pathlib.Path"
+        },
+        {
+          "name": "updates",
+          "annotation": "dict[str, str]"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 31,
+      "line_end": 51
+    },
+    {
+      "qualname": "run_compose",
+      "signature": "(compose_files: list[str], *args: str, check: bool=True, timeout: float=120, quiet: bool=False) -> subprocess.CompletedProcess",
+      "args": [
+        {
+          "name": "compose_files",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "*args",
+          "annotation": "str"
+        },
+        {
+          "name": "check",
+          "annotation": "bool"
+        },
+        {
+          "name": "timeout",
+          "annotation": "float"
+        },
+        {
+          "name": "quiet",
+          "annotation": "bool"
+        }
+      ],
+      "returns": "subprocess.CompletedProcess",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 54,
+      "line_end": 78
+    },
+    {
+      "qualname": "service_already_running",
+      "signature": "(compose_files: list[str], service: str) -> bool",
+      "args": [
+        {
+          "name": "compose_files",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "service",
+          "annotation": "str"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 81,
+      "line_end": 86
+    },
+    {
+      "qualname": "wait_for_service_healthy",
+      "signature": "(compose_files: list[str], service: str, timeout_s: int=90) -> None",
+      "args": [
+        {
+          "name": "compose_files",
+          "annotation": "list[str]"
+        },
+        {
+          "name": "service",
+          "annotation": "str"
+        },
+        {
+          "name": "timeout_s",
+          "annotation": "int"
+        }
+      ],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 89,
+      "line_end": 102
+    }
+  ],
+  "sha256": "a5e7a2985dcd1e905bddc8659dd64cb1a66ad95501e181867aa5f5f300b5198c"
+}

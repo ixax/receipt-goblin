@@ -1,0 +1,81 @@
+{
+  "path": "services/init/init_environment.py",
+  "line_count": 65,
+  "module_docstring": "Interactive ENVIRONMENT (development/production) prompt for `make init`.\nRun via `make init` (or directly: `python3 services/init/init_environment.py`) - always the first init step, before any ClickHouse/LiteLLM provisioning, since those steps' own `$(COMPOSE_FILES)` depend on this choice.\n\nStdlib-only - loads services/init/init_common.py (shared .env helpers, also used by init_clickhouse_users.py/init_litellm_key.py) via importlib.util.spec_from_file_location rather than a package import, since this script runs on the host, outside any container.\n\nUnlike the ClickHouse/LiteLLM steps, this always asks - it's not a secret and re-confirming (or switching dev<->prod) is cheap, so there's no \"skip if already set\" idempotency check.\nThe current .env value (or \"development\" if unset) is offered as the default, so a repeat run is just Enter.\n\nThe typed value must exactly match the Makefile's `ifeq ($(ENVIRONMENT), production)`, so unlike init_clickhouse_users.py's free-text `_prompt`, this validates against a fixed set of accepted spellings and re-prompts on anything else instead of silently writing a typo into .env.",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "importlib.util",
+      "names": [],
+      "line": 12
+    },
+    {
+      "kind": "import",
+      "module": "pathlib",
+      "names": [],
+      "line": 13
+    },
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 14
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "INIT_COMMON_PATH",
+      "line": 16
+    },
+    {
+      "name": "CHOICES",
+      "line": 18
+    },
+    {
+      "name": "init_common",
+      "line": 35
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "_load_init_common",
+      "signature": "()",
+      "args": [],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 28,
+      "line_end": 32
+    },
+    {
+      "qualname": "_prompt_environment",
+      "signature": "(default: str) -> str",
+      "args": [
+        {
+          "name": "default",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 38,
+      "line_end": 48
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> None",
+      "args": [],
+      "returns": "None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 51,
+      "line_end": 57
+    }
+  ],
+  "sha256": "f748d6271e527f416f8877084a4030d33cac2d5d74a59ff9af9589f7d858f803"
+}

@@ -24,12 +24,12 @@ Dev/prod split: `agent_docs/architecture.md`; per-service detail: `agent_docs/se
 
 ## Python
 
+- NEVER USE BARE `python`/`python3`/`pip install`.
+- Every Python invocation in this repo runs via `uv run` (`uv run python3 ...`, `uv run pytest`, `uv run ruff`, etc.) - even stdlib-only scripts with no third-party deps, since the point is pinning the interpreter to `.python-version`, not just resolving dependencies.
+- If `uv` isn't installed: `make install-uv`
 - Python version: `.python-version`
 - Every Python-based `Dockerfile`'s `FROM python:${PYTHON_VERSION}-slim` reads that value via a `PYTHON_VERSION` build-arg, propagated through `Makefile` and `docker-compose.yml`'s `build.args`
 - bump `.python-version` -> run `make build`, every image rebuilds against the new version in one shot
-- Every Python invocation in this repo runs via `uv run` (`uv run python3 ...`, `uv run pytest`, `uv run ruff`, etc.) - even stdlib-only scripts with no third-party deps, since the point is pinning the interpreter to `.python-version`, not just resolving dependencies.
-  Never a bare `python3`/`pip install`.
-- If `uv` isn't installed: `make install-uv`
 
 Service dependency edits are a three-step chain - stopping early leaves the change with no effect anywhere:
 
