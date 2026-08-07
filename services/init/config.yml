@@ -46,6 +46,14 @@ roles:
       - "GRANT SELECT ON {database}.ingest_dlq"
       - "GRANT SELECT ON {database}.ingest_dlq_resolved"
       - "GRANT SELECT ON {database}.ingest_dlq_unresolved"
+      # reparse_dlq.py's _already_recovered check: before it writes off a row it cannot replay, it confirms
+      # that row's event is actually present in the target table (recovered by `make reparse-all` from
+      # ingest_raw), so the unresolved count keeps meaning "data is missing".
+      # Column-scoped rather than whole-table: the check only ever reads litellm_call_id, and agent_messages
+      # in particular holds prompt/response text this role has no business selecting.
+      # agent_events already has a full-table SELECT above, for build_fixtures.py.
+      - "GRANT SELECT(litellm_call_id) ON {database}.agent_usage"
+      - "GRANT SELECT(litellm_call_id) ON {database}.agent_messages"
 
   - name: grafana
     user_env: CLICKHOUSE_GRAFANA_USER

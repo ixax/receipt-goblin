@@ -18,6 +18,30 @@ from .config import REPARSE_CHUNK_SIZE
 logger = create_logger("webhook.reparse_dlq")
 
 
+_STAGE_TABLES = {"agent_events", "agent_usage", "agent_messages"}
+
+
+def _already_recovered(client, stage: str, litellm_call_id: str) -> bool:
+    """True when this DLQ row's event is already sitting in its target table.
+
+    A row can be unreplayable and yet not lost: `make reparse-all` rebuilds every table from
+    ingest_raw.raw_payload_full, which is the untouched source payload rather than the rejected row, so it
+    recovers events whose stored row is itself malformed.
+    The classic case is a row/column contract mismatch (see ingest_db._row_width_mismatch), where replaying the
+    stored row can only reproduce the original rejection.
+    Leaving those in ingest_dlq_unresolved forever means the unresolved count stops meaning "data is missing",
+    which is the only thing that count is good for.
+    Checked per row against the real table rather than assumed, so nothing is written off unverified.
+    """
+    if stage not in _STAGE_TABLES or not litellm_call_id:
+        return False
+    result = client.query(
+        f"SELECT count() FROM {stage} WHERE litellm_call_id = {{call_id:String}} LIMIT 1",
+        parameters={"call_id": litellm_call_id},
+    )
+    return bool(result.result_rows and result.result_rows[0][0])
+
+
 def _replay_one(client, stage: str, litellm_call_id: str, raw_row: str) -> bool:
     try:
         row = json.loads(raw_row)
@@ -57,6 +81,7 @@ def reparse_dlq(stage: str = "") -> int:
 
     count = 0
     succeeded = 0
+    recovered = 0
     while True:
         result = client.query(query, parameters={"stage": stage, "chunk_size": REPARSE_CHUNK_SIZE})
         rows = result.result_rows
@@ -68,10 +93,13 @@ def reparse_dlq(stage: str = "") -> int:
             if _replay_one(client, row_stage, litellm_call_id, raw_row):
                 succeeded += 1
                 resolved_this_page.append((occurred_at, row_stage, litellm_call_id))
+            elif _already_recovered(client, row_stage, litellm_call_id):
+                recovered += 1
+                resolved_this_page.append((occurred_at, row_stage, litellm_call_id))
         if not resolved_this_page:
             logger.warning(
-                "stopping: a page of %d row(s) made zero progress (all still failing) - "
-                "check the logged errors above rather than looping forever", len(rows),
+                "stopping: a page of %d row(s) made zero progress (neither replayable nor already recovered "
+                "in their target table) - check the logged errors above rather than looping forever", len(rows),
             )
             break
         mark_dlq_rows_resolved(client, resolved_this_page)
@@ -79,8 +107,8 @@ def reparse_dlq(stage: str = "") -> int:
             logger.info("replayed %d DLQ rows so far...", count)
 
     logger.info(
-        "reparse-dlq complete (n=%d, succeeded=%d, still_failing=%d, stage=%r)",
-        count, succeeded, count - succeeded, stage or "<all>",
+        "reparse-dlq complete (n=%d, succeeded=%d, already_recovered=%d, still_failing=%d, stage=%r)",
+        count, succeeded, recovered, count - succeeded - recovered, stage or "<all>",
     )
     if succeeded:
         logger.info(

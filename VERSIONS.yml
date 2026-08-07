@@ -31,9 +31,9 @@ CLICKHOUSE_VERSION: 24.8.14.39
 # five independent keys by the webhook-worker-split refactor, see
 # plans/webhook-worker-split.md.
 
-WEBHOOK_TAG: 0.3.0
-WORKER_TAG: 0.2.0
-REPARSE_TAG: 0.1.0
+WEBHOOK_TAG: 0.4.1
+WORKER_TAG: 0.3.1
+REPARSE_TAG: 0.2.1
 MIGRATE_TAG: 0.1.0
 LOADTEST_TAG: 0.1.0
 LOADTEST_FIXTURES_TAG: 0.1.0
