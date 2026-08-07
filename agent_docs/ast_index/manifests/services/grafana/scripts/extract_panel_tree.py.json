@@ -1,6 +1,6 @@
 {
   "path": "services/grafana/scripts/extract_panel_tree.py",
-  "line_count": 123,
+  "line_count": 142,
   "module_docstring": "Parse agents_overview.json into a panel tree model for build_query_perf_dashboard.py.\n\nWalks every top-level tab of services/grafana/dashboards/agents_overview.json\n(and one level of nested sub-tabs, same shape parse_dashboard.py's module\ndocstring describes) and records, for each panel referenced anywhere in that\nlayout, its id/title and whether it's already tagged with\n`SETTINGS log_comment = 'agents_overview:panel_<id>'` (see tag_panel_queries.py\nfor how that tag gets onto a panel's rawSql).\n\nThis is the \"parse\" half of a two-script pipeline - the other half,\nbuild_query_perf_dashboard.py, takes this tree's --out JSON and stamps it onto\nthe query_performance.json template. Splitting these means a full rebuild of\nevery tab is one build_query_perf_dashboard.py invocation over a tree that\nalready covers the whole dashboard, instead of one build invocation per tab\neach re-parsing agents_overview.json from scratch.\n\nOutput tree shape:\n  {\"tabs\": [\n    {\"title\": \"Top N\", \"groups\": [\n      {\"subtitle\": \"Issues\", \"panels\": [{\"id\": 95, \"title\": \"...\", \"tagged\": true}, ...]},\n      {\"subtitle\": \"Models\", \"panels\": [...]}\n    ]},\n    {\"title\": \"Overview\", \"groups\": [{\"subtitle\": null, \"panels\": [...]}]}\n  ]}\n\nA tab with no sub-tabs gets a single group with subtitle: null (mirrors\nbuild_query_perf_dashboard.py's build_tab_layout, which collapses that case to\na flat RowsLayout instead of a nested TabsLayout).\n\nThe tree is a regenerated intermediate artifact (services/grafana/scripts/\npanel_tree.json is gitignored) - re-run this any time agents_overview.json's\npanels/tags/tabs change before rendering, since build_query_perf_dashboard.py\nonly ever reads the tree, never the source dashboard directly.\n\nUsage:\n  extract_panel_tree.py --source services/grafana/dashboards/agents_overview.json \\\n      --out services/grafana/scripts/panel_tree.json",
   "imports": [
     {
@@ -75,10 +75,10 @@
       ],
       "returns": null,
       "decorators": [],
-      "docstring": "Yield (path_titles, [panel_refs]) for every leaf GridLayout under layout.",
+      "docstring": "Yield (path_titles, [panel_refs]) for every leaf GridLayout/AutoGridLayout under layout.\n\nA tab's own layout can also be a RowsLayout (rows of GridLayout, nested\nTabsLayout, or AutoGridLayout - e.g. \"Overview\"'s \"Cache\"/\"Event mix\" rows,\n\"Cost & Tokens\"'s top-level panel-1/panel-3 row plus its nested subtabs\nrow) rather than a GridLayout/TabsLayout directly.\nA row with a visible header (hideHeader falsy) acts like a named sub-tab\nand extends path with its own title.\nA hideHeader row (purely a structural/organizational grouping, e.g.\n\"New row\", \"Subtabs\") passes path through unchanged so its contents fall\nunder the parent tab's own subtitle (None, or the enclosing named tab)\ninstead of a meaningless row-title subtitle.",
       "is_async": false,
       "line_start": 59,
-      "line_end": 71
+      "line_end": 90
     },
     {
       "qualname": "build_tree",
@@ -93,8 +93,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 74,
-      "line_end": 102
+      "line_start": 93,
+      "line_end": 121
     },
     {
       "qualname": "main",
@@ -104,9 +104,9 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 105,
-      "line_end": 119
+      "line_start": 124,
+      "line_end": 138
     }
   ],
-  "sha256": "b82b9e1e2784b21a7f302b1635fdf05b9081c1b737bda4dc64e504e1c1475a44"
+  "sha256": "374232895f35a6cbd3bce64dc53e310001041cd5eaedac2907d9a74ec3d6eec7"
 }

@@ -57,18 +57,37 @@ def is_tagged(panel_spec, panel_id):
 
 
 def walk_layout(layout, path):
-    """Yield (path_titles, [panel_refs]) for every leaf GridLayout under layout."""
-    if layout.get("kind") == "GridLayout":
+    """Yield (path_titles, [panel_refs]) for every leaf GridLayout/AutoGridLayout under layout.
+
+    A tab's own layout can also be a RowsLayout (rows of GridLayout, nested
+    TabsLayout, or AutoGridLayout - e.g. "Overview"'s "Cache"/"Event mix" rows,
+    "Cost & Tokens"'s top-level panel-1/panel-3 row plus its nested subtabs
+    row) rather than a GridLayout/TabsLayout directly.
+    A row with a visible header (hideHeader falsy) acts like a named sub-tab
+    and extends path with its own title.
+    A hideHeader row (purely a structural/organizational grouping, e.g.
+    "New row", "Subtabs") passes path through unchanged so its contents fall
+    under the parent tab's own subtitle (None, or the enclosing named tab)
+    instead of a meaningless row-title subtitle.
+    """
+    kind = layout.get("kind")
+    if kind in ("GridLayout", "AutoGridLayout"):
         ids = []
         for item in layout["spec"]["items"]:
             el = item["spec"]["element"]
             if el.get("kind") == "ElementReference":
                 ids.append(el["name"])
         yield path, ids
-    elif layout.get("kind") == "TabsLayout":
+    elif kind == "TabsLayout":
         for tab in layout["spec"]["tabs"]:
             tspec = tab["spec"]
             yield from walk_layout(tspec["layout"], path + [tspec["title"]])
+    elif kind == "RowsLayout":
+        for row in layout["spec"]["rows"]:
+            rspec = row["spec"]
+            title = rspec.get("title")
+            row_path = path if rspec.get("hideHeader") or not title else path + [title]
+            yield from walk_layout(rspec["layout"], row_path)
 
 
 def build_tree(src_spec):

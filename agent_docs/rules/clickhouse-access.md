@@ -1,5 +1,3 @@
-# ClickHouse access rule
-
 Full rule content for `AGENTS.md`'s "ClickHouse access" pointer.
 
 Never run `docker exec .../clickhouse-client` against any ClickHouse container.

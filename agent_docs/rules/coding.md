@@ -1,5 +1,3 @@
-# Code style & anti-patterns
-
 Full rule content for `AGENTS.md`'s "Code & anti-patterns" pointer.
 Read before writing or editing code in this repo.
 Skip for a pure analysis/investigation task that touches no code.

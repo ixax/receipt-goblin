@@ -63,7 +63,7 @@ Root-level:
 - `.claude/` - agents/rules
 - `.agents/skills/` - canonical skill content; `.claude/skills` is a symlink to it
 - `.claude/data/` - gitignored scratch, one subdir per purpose
-- `plans/` - approved `/plan` outputs, one file per plan
+- `plans/` - approved `/plan` outputs, one file per plan, filename numeric-prefixed (`NN-name.md`); resolved plans move to `plans/resolved/`
 
 ## Agent & skill routing
 
@@ -114,6 +114,10 @@ Skip for a pure analysis/investigation task.
 
 Writing or restructuring README.md or another top-level doc: read `agent_docs/rules/docs.md` first (keep it short, `<details>` for secondary content).
 
+## Grafana dashboards
+
+Creating/editing a panel, query, variable, or layout in a dashboard JSON under `services/grafana/dashboards/` or `dashboards-health/`: read `agent_docs/rules/grafana_dashboards.md` first (schema/layout, variables, panel/query/legend conventions, query-perf workflows, Dynamic Text safe-editing).
+
 ## Boundaries & safety
 
 - Git - before any git action, read `agent_docs/git-safety.md` first.
@@ -127,10 +131,12 @@ Writing or restructuring README.md or another top-level doc: read `agent_docs/ru
 ## Working conventions
 
 - Build a `TodoWrite` list for multiple asks; keep current.
-- `/plan` output always saves directly to `plans/<name>.md` - never via a plan-mode scratch file.
+- `/plan` output always saves directly to `plans/<NN-name>.md` - never via a plan-mode scratch file.
+- Every plan filename carries a numeric prefix (`01-`, `02-`, ...) ordering plans, e.g. `01-remove-services-common-symlink.md`, `02-agent-invocations-tracking-gap.md`.
+  Applies going forward - existing unprefixed files in `plans/` are not retroactively renamed.
 - Any plan presented for approval (EnterPlanMode/ExitPlanMode or a plan doc) carries frontmatter `date` and `context` fields.
   `context` summarizes the session before the decision to plan; empty if the session opened with the plan request.
-- After a plan's work is done, offer to delete its `plans/` file - never delete it unasked.
+- After a plan's work is done, move its file into `plans/resolved/` - still an explicit action, never automatic or unasked.
 - Translate non-English subagent prompts to English (1:1 meaning).
 - A dispatch's `prompt`/`description` carry the content - no prose recap alongside.
 - After a significant change, check `.env.example`/`README.md`/`AGENTS.md` for updates.

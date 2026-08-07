@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-07T09:15:21.466858+00:00",
+  "generated_at": "2026-08-07T12:37:29.424778+00:00",
   "files": {
     "hooks/ast_index/sync_hook.py": {
       "sha256": "c8959b7bd47119783c7c14eefd46cb4c76a873f6238107e6cca27706f4e89b48",
@@ -243,8 +243,8 @@
       "cache_path": "manifests/services/grafana/scripts/build_query_perf_dashboard.py.json"
     },
     "services/grafana/scripts/extract_panel_tree.py": {
-      "sha256": "b82b9e1e2784b21a7f302b1635fdf05b9081c1b737bda4dc64e504e1c1475a44",
-      "size": 4736,
+      "sha256": "374232895f35a6cbd3bce64dc53e310001041cd5eaedac2907d9a74ec3d6eec7",
+      "size": 5752,
       "cache_path": "manifests/services/grafana/scripts/extract_panel_tree.py.json"
     },
     "services/grafana/scripts/parse_dashboard.py": {
@@ -441,6 +441,26 @@
       "sha256": "84ac20a38b91aea32b85fb35011f60df1425f49f29a637c15f1a113e8970dfae",
       "size": 1753,
       "cache_path": "manifests/../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/26f4eff0-7ee3-432c-b6f1-5ccbd5900728/scratchpad/test_init_environment.py.json"
+    },
+    "../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/279b7a75-a993-4a91-b78e-0649fe7230e8/scratchpad/analyze_layout.py": {
+      "sha256": "84076f2bd916c854c568dfd590e3f7a030224db0f9bc366d753e7442913b9b97",
+      "size": 9967,
+      "cache_path": "manifests/../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/279b7a75-a993-4a91-b78e-0649fe7230e8/scratchpad/analyze_layout.py.json"
+    },
+    "../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/279b7a75-a993-4a91-b78e-0649fe7230e8/scratchpad/analyze_layout_v2.py": {
+      "sha256": "81e07be2c61e1e838fc516b8950b16adb9be2c05916f36c2c627dc00a466e801",
+      "size": 11163,
+      "cache_path": "manifests/../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/279b7a75-a993-4a91-b78e-0649fe7230e8/scratchpad/analyze_layout_v2.py.json"
+    },
+    "../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/279b7a75-a993-4a91-b78e-0649fe7230e8/scratchpad/analyze_layout_v3.py": {
+      "sha256": "de37e42bec1af73a2ada05a38d22471b0d277a9c438d22bfa53d87e33c9e406a",
+      "size": 13029,
+      "cache_path": "manifests/../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/279b7a75-a993-4a91-b78e-0649fe7230e8/scratchpad/analyze_layout_v3.py.json"
+    },
+    "../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/f21b0dbf-8a1c-413a-b189-853aa9ba7185/scratchpad/legend_bottom.py": {
+      "sha256": "b7a12c49b7becc1a9125a80df0dcdd04323db231ef5a33647f10287e639c8bd0",
+      "size": 1809,
+      "cache_path": "manifests/../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/f21b0dbf-8a1c-413a-b189-853aa9ba7185/scratchpad/legend_bottom.py.json"
     }
   }
 }

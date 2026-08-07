@@ -95,7 +95,7 @@
         "spec": {
           "id": 1,
           "title": "Tokens by dimension over time",
-          "description": "Goal: Compare token footprint across agents, skills, commands, MCP tools, or models over time, with the dimension user-selectable.\nDescription: Buckets input/output tokens by time and by the metric named for $cost_dimension (agent+version, skill+version, command, mcp_tool_name, or model), rendering each as a separate \u2193/\u2191 series pair.",
+          "description": "Goal: Compare token footprint across agents, skills, commands, MCP tools, or models over time, with the dimension user-selectable, or see one aggregate line via the \"All\" option.\nDescription: Buckets input/output tokens by time and by the metric named for $cost_dimension (agent+version, skill+version, command, mcp_tool_name, or model; a single 'Total' series when $cost_dimension is 'all'), rendering each as a separate \u2193/\u2191 series pair.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -114,7 +114,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    toStartOfInterval(u.timestamp, INTERVAL ${window} SECOND) AS time,\n    multiIf(\n      '$cost_dimension' = 'agent', if(u.agent_name = '', 'main agent', if(u.agent_version = '', u.agent_name, concat(u.agent_name, ' v', u.agent_version))),\n      '$cost_dimension' = 'skill', if(u.skill_name = '', 'main agent', if(u.skill_version = '', u.skill_name, concat(u.skill_name, ' v', u.skill_version))),\n      '$cost_dimension' = 'command', u.command_name,\n      '$cost_dimension' = 'mcp', u.mcp_tool_name,\n      u.model\n    ) AS metric,\n    sum((u.input_tokens - (1 - $include_cache_tokens) * (u.cache_creation_tokens + u.cache_read_tokens))) AS in_val,\n    sum(u.output_tokens) AS out_val\n  FROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n    AND multiIf(\n      '$cost_dimension' = 'agent', (u.agent_name != '' OR u.skill_name = ''),\n      '$cost_dimension' = 'skill', u.skill_name != '',\n      '$cost_dimension' = 'command', u.command_name != '',\n      '$cost_dimension' = 'mcp', u.mcp_tool_name != '',\n      (u.agent_name != '' OR u.skill_name = '')\n    )\n    AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], u.user_id))\n    AND (has([${group_id:singlequote}], '__all__') OR has([${group_id:singlequote}], u.group_id))\n    AND (has([${model:singlequote}], '__all__') OR has([${model:singlequote}], u.model)) AND ('$provider' = 'all' OR u.provider = '$provider')\n    AND (has([${agent_name:singlequote}], '__all__') OR has([${agent_name:singlequote}], u.agent_name))\n    AND (has([${skill_name:singlequote}], '__all__') OR has([${skill_name:singlequote}], u.skill_name))\n    AND (has([${session_id:singlequote}], '') OR has([${session_id:singlequote}], u.session_id))\n  AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_branch', cityHash64(u.session_id), ''))) AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_repo', cityHash64(u.session_id), ''))) AND (has([${issue_id:singlequote}], '__all__') OR has([${issue_id:singlequote}], coalesce(nullIf(dictGetOrDefault('session_git_branch_dict', 'issue_id', cityHash64(u.session_id), ''), ''), 'empty')))\n    AND (has([${command_name:singlequote}], '__all__') OR has([${command_name:singlequote}], u.command_name))\n    AND (has([${mcp_tool:singlequote}], '__all__') OR has([${mcp_tool:singlequote}], u.mcp_tool_name))\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, toInt64(in_val) AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, toInt64(out_val) AS value FROM filtered\n) ORDER BY time\nSETTINGS log_comment = 'agents_overview:panel_1'"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    toStartOfInterval(u.timestamp, INTERVAL ${window} SECOND) AS time,\n    multiIf(\n      '$cost_dimension' = 'agent', if(u.agent_name = '', 'main agent', if(u.agent_version = '', u.agent_name, concat(u.agent_name, ' v', u.agent_version))),\n      '$cost_dimension' = 'skill', if(u.skill_name = '', 'main agent', if(u.skill_version = '', u.skill_name, concat(u.skill_name, ' v', u.skill_version))),\n      '$cost_dimension' = 'command', u.command_name,\n      '$cost_dimension' = 'mcp', u.mcp_tool_name,\n      '$cost_dimension' = 'all', 'Total',\n      u.model\n    ) AS metric,\n    sum((u.input_tokens - (1 - $include_cache_tokens) * (u.cache_creation_tokens + u.cache_read_tokens))) AS in_val,\n    sum(u.output_tokens) AS out_val\n  FROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n    AND multiIf(\n      '$cost_dimension' = 'agent', (u.agent_name != '' OR u.skill_name = ''),\n      '$cost_dimension' = 'skill', u.skill_name != '',\n      '$cost_dimension' = 'command', u.command_name != '',\n      '$cost_dimension' = 'mcp', u.mcp_tool_name != '',\n      '$cost_dimension' = 'all', true,\n      (u.agent_name != '' OR u.skill_name = '')\n    )\n    AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], u.user_id))\n    AND (has([${group_id:singlequote}], '__all__') OR has([${group_id:singlequote}], u.group_id))\n    AND (has([${model:singlequote}], '__all__') OR has([${model:singlequote}], u.model)) AND ('$provider' = 'all' OR u.provider = '$provider')\n    AND (has([${agent_name:singlequote}], '__all__') OR has([${agent_name:singlequote}], u.agent_name))\n    AND (has([${skill_name:singlequote}], '__all__') OR has([${skill_name:singlequote}], u.skill_name))\n    AND (has([${session_id:singlequote}], '') OR has([${session_id:singlequote}], u.session_id))\n  AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_branch', cityHash64(u.session_id), ''))) AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_repo', cityHash64(u.session_id), ''))) AND (has([${issue_id:singlequote}], '__all__') OR has([${issue_id:singlequote}], coalesce(nullIf(dictGetOrDefault('session_git_branch_dict', 'issue_id', cityHash64(u.session_id), ''), ''), 'empty')))\n    AND (has([${command_name:singlequote}], '__all__') OR has([${command_name:singlequote}], u.command_name))\n    AND (has([${mcp_tool:singlequote}], '__all__') OR has([${mcp_tool:singlequote}], u.mcp_tool_name))\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, toInt64(in_val) AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, toInt64(out_val) AS value FROM filtered\n) ORDER BY time\nSETTINGS log_comment = 'agents_overview:panel_1'"
                       }
                     },
                     "refId": "A",
@@ -134,7 +134,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -207,7 +207,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "xField": "user_id"
@@ -266,6 +266,10 @@
                           "fixedColor": "white",
                           "mode": "fixed"
                         }
+                      },
+                      {
+                        "id": "custom.axisPlacement",
+                        "value": "right"
                       }
                     ]
                   }
@@ -314,20 +318,40 @@
           "vizConfig": {
             "kind": "VizConfig",
             "group": "marcusolsson-dynamictext-panel",
-            "version": "",
+            "version": "6.3.0",
             "spec": {
               "options": {
+                "afterRender": "",
                 "content": "{{#each data}}\n<iframe id=\"trace-frame\" src=\"/public/receipt-goblin/session-trace.html\" style=\"width:100%;height:600px;border:0;\" data-trace=\"{{this.trace_json}}\" onload=\"this.contentWindow.postMessage(JSON.parse(this.getAttribute('data-trace')), window.location.origin)\"></iframe>\n{{/each}}",
+                "contentPartials": [],
                 "defaultContent": "",
                 "editor": {
                   "format": "html",
                   "language": "html"
                 },
+                "editors": [],
+                "externalStyles": [],
+                "helpers": "",
                 "renderMode": "allRows",
+                "styles": "",
                 "wrap": false
               },
               "fieldConfig": {
-                "defaults": {},
+                "defaults": {
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  }
+                },
                 "overrides": []
               }
             }
@@ -422,84 +446,6 @@
           }
         }
       },
-      "panel-102": {
-        "kind": "Panel",
-        "spec": {
-          "id": 102,
-          "title": "Event mix by type over time",
-          "description": "Goal: See whether the event-type mix is drifting over time - e.g. delegation share rising or transcript-handoff overhead growing - which a single snapshot can't show.\nDescription: Buckets calculated_type counts into ${window}-sized time intervals, one stacked series per type.",
-          "links": [],
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "query": {
-                      "kind": "DataQuery",
-                      "group": "grafana-clickhouse-datasource",
-                      "version": "v0",
-                      "datasource": {
-                        "name": "clickhouse"
-                      },
-                      "spec": {
-                        "editorType": "sql",
-                        "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    toStartOfInterval(timestamp, INTERVAL ${window} SECOND) AS time,\n    calculated_type AS metric,\n    count() AS value\n  FROM agent_events\n  WHERE $__timeFilter(timestamp)\n    AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], user_id))\n    AND (has([${group_id:singlequote}], '__all__') OR has([${group_id:singlequote}], group_id))\n    AND (has([${session_id:singlequote}], '') OR has([${session_id:singlequote}], session_id))\n    AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_branch', cityHash64(session_id), '')))\n    AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_repo', cityHash64(session_id), '')))\n    AND (has([${issue_id:singlequote}], '__all__') OR has([${issue_id:singlequote}], coalesce(nullIf(dictGetOrDefault('session_git_branch_dict', 'issue_id', cityHash64(session_id), ''), ''), 'empty')))\n    AND ((has([${model:singlequote}], '__all__') AND '$provider' = 'all') OR session_id IN (\n      SELECT session_id FROM agent_usage\n      WHERE (has([${model:singlequote}], '__all__') OR has([${model:singlequote}], model))\n        AND ('$provider' = 'all' OR provider = '$provider')\n    ))\n    AND (has([${agent_name:singlequote}], '__all__') OR has([${agent_name:singlequote}], agent_name))\n    AND (has([${skill_name:singlequote}], '__all__') OR has([${skill_name:singlequote}], skill_name))\n    AND (has([${command_name:singlequote}], '__all__') OR has([${command_name:singlequote}], command_name))\n    AND (NOT startsWith(tool_name, 'mcp__') OR (has([${mcp_tool:singlequote}], '__all__') OR has([${mcp_tool:singlequote}], tool_name)))\n  GROUP BY time, metric\n)\nSELECT time, metric, value\nFROM filtered\nORDER BY time\nSETTINGS log_comment = 'agents_overview:panel_102'"
-                      }
-                    },
-                    "refId": "A",
-                    "hidden": false
-                  }
-                }
-              ],
-              "transformations": [],
-              "queryOptions": {}
-            }
-          },
-          "vizConfig": {
-            "kind": "VizConfig",
-            "group": "timeseries",
-            "version": "",
-            "spec": {
-              "options": {
-                "legend": {
-                  "displayMode": "list",
-                  "placement": "right",
-                  "showLegend": true
-                },
-                "tooltip": {
-                  "mode": "multi"
-                }
-              },
-              "fieldConfig": {
-                "defaults": {
-                  "displayName": "${__field.labels.metric}",
-                  "unit": "short",
-                  "custom": {
-                    "drawStyle": "line",
-                    "fillOpacity": 20,
-                    "lineInterpolation": "smooth",
-                    "lineWidth": 1,
-                    "pointSize": 4,
-                    "showPoints": "auto",
-                    "spanNulls": true,
-                    "stacking": {
-                      "group": "A",
-                      "mode": "normal"
-                    },
-                    "thresholdsStyle": {
-                      "mode": "off"
-                    }
-                  }
-                },
-                "overrides": []
-              }
-            }
-          }
-        }
-      },
       "panel-103": {
         "kind": "Panel",
         "spec": {
@@ -539,14 +485,54 @@
           "vizConfig": {
             "kind": "VizConfig",
             "group": "histogram",
-            "version": "",
+            "version": "13.1.0",
             "spec": {
-              "options": {},
+              "options": {
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "overflow": "ellipsis",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "single",
+                  "sort": "none"
+                }
+              },
               "fieldConfig": {
                 "defaults": {
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
                   "color": {
                     "mode": "fixed",
                     "fixedColor": "blue"
+                  },
+                  "custom": {
+                    "fillOpacity": 80,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "lineWidth": 1,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    }
                   }
                 },
                 "overrides": []
@@ -594,30 +580,77 @@
           "vizConfig": {
             "kind": "VizConfig",
             "group": "timeseries",
-            "version": "",
+            "version": "13.1.0",
             "spec": {
               "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "enableFacetedFilter": false,
+                  "overflow": "ellipsis",
+                  "placement": "bottom",
                   "showLegend": false
                 },
                 "tooltip": {
-                  "mode": "single"
+                  "hideZeros": false,
+                  "mode": "single",
+                  "sort": "none"
                 }
               },
               "fieldConfig": {
                 "defaults": {
                   "unit": "short",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
                   "color": {
                     "mode": "fixed",
                     "fixedColor": "blue"
                   },
                   "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
                     "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
                     "lineInterpolation": "smooth",
                     "lineWidth": 1,
                     "pointSize": 4,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
                     "showPoints": "auto",
+                    "showValues": false,
                     "spanNulls": true,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
                     "thresholdsStyle": {
                       "mode": "off"
                     }
@@ -668,13 +701,14 @@
           "vizConfig": {
             "kind": "VizConfig",
             "group": "stat",
-            "version": "",
+            "version": "13.1.0",
             "spec": {
               "options": {
                 "colorMode": "value",
                 "graphMode": "none",
                 "justifyMode": "auto",
                 "orientation": "vertical",
+                "percentChangeColorMode": "standard",
                 "reduceOptions": {
                   "calcs": [
                     "lastNotNull"
@@ -682,12 +716,26 @@
                   "fields": "/.*/",
                   "values": false
                 },
+                "showPercentChange": false,
                 "textMode": "value_and_name",
                 "wideLayout": false
               },
               "fieldConfig": {
                 "defaults": {
                   "unit": "none",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
                   "color": {
                     "mode": "fixed",
                     "fixedColor": "white"
@@ -738,19 +786,72 @@
           "vizConfig": {
             "kind": "VizConfig",
             "group": "barchart",
-            "version": "",
+            "version": "13.1.0",
             "spec": {
               "options": {
+                "barRadius": 0,
+                "barWidth": 0.97,
+                "fullHighlight": false,
+                "groupWidth": 0.7,
                 "legend": {
+                  "calcs": [],
                   "displayMode": "list",
+                  "overflow": "ellipsis",
                   "placement": "right",
                   "showLegend": false
                 },
-                "xField": "spawn_kind"
+                "orientation": "auto",
+                "showValue": "auto",
+                "stacking": "none",
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "single",
+                  "sort": "none"
+                },
+                "xField": "spawn_kind",
+                "xTickLabelRotation": 0,
+                "xTickLabelSpacing": 0
               },
               "fieldConfig": {
                 "defaults": {
-                  "unit": "locale"
+                  "unit": "locale",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "fillOpacity": 80,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "lineWidth": 1,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
                 },
                 "overrides": [
                   {
@@ -813,9 +914,11 @@
           "vizConfig": {
             "kind": "VizConfig",
             "group": "table",
-            "version": "",
+            "version": "13.1.0",
             "spec": {
               "options": {
+                "cellHeight": "sm",
+                "showHeader": true,
                 "sortBy": [
                   {
                     "desc": true,
@@ -824,7 +927,31 @@
                 ]
               },
               "fieldConfig": {
-                "defaults": {},
+                "defaults": {
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "footer": {
+                      "reducers": []
+                    },
+                    "inspect": false
+                  }
+                },
                 "overrides": [
                   {
                     "matcher": {
@@ -895,19 +1022,72 @@
           "vizConfig": {
             "kind": "VizConfig",
             "group": "barchart",
-            "version": "",
+            "version": "13.1.0",
             "spec": {
               "options": {
+                "barRadius": 0,
+                "barWidth": 0.97,
+                "fullHighlight": false,
+                "groupWidth": 0.7,
                 "legend": {
+                  "calcs": [],
                   "displayMode": "list",
+                  "overflow": "ellipsis",
                   "placement": "right",
                   "showLegend": false
                 },
-                "xField": "depth_bucket"
+                "orientation": "auto",
+                "showValue": "auto",
+                "stacking": "none",
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "single",
+                  "sort": "none"
+                },
+                "xField": "depth_bucket",
+                "xTickLabelRotation": 0,
+                "xTickLabelSpacing": 0
               },
               "fieldConfig": {
                 "defaults": {
-                  "unit": "locale"
+                  "unit": "locale",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "fillOpacity": 80,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "lineWidth": 1,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
                 },
                 "overrides": [
                   {
@@ -926,6 +1106,127 @@
                     ]
                   }
                 ]
+              }
+            }
+          }
+        }
+      },
+      "panel-109": {
+        "kind": "Panel",
+        "spec": {
+          "id": 109,
+          "title": "Event mix by type over time",
+          "description": "Goal: See whether the event-type mix is drifting over time - e.g. delegation share rising or transcript-handoff overhead growing - which a single snapshot can't show.\nDescription: Buckets calculated_type counts into ${window}-sized time intervals, one stacked series per type.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-clickhouse-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "clickhouse"
+                      },
+                      "spec": {
+                        "editorType": "sql",
+                        "format": 0,
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    toStartOfInterval(timestamp, INTERVAL ${window} SECOND) AS time,\n    calculated_type AS metric,\n    count() AS value\n  FROM agent_events\n  WHERE $__timeFilter(timestamp)\n    AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], user_id))\n    AND (has([${group_id:singlequote}], '__all__') OR has([${group_id:singlequote}], group_id))\n    AND (has([${session_id:singlequote}], '') OR has([${session_id:singlequote}], session_id))\n    AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_branch', cityHash64(session_id), '')))\n    AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_repo', cityHash64(session_id), '')))\n    AND (has([${issue_id:singlequote}], '__all__') OR has([${issue_id:singlequote}], coalesce(nullIf(dictGetOrDefault('session_git_branch_dict', 'issue_id', cityHash64(session_id), ''), ''), 'empty')))\n    AND ((has([${model:singlequote}], '__all__') AND '$provider' = 'all') OR session_id IN (\n      SELECT session_id FROM agent_usage\n      WHERE (has([${model:singlequote}], '__all__') OR has([${model:singlequote}], model))\n        AND ('$provider' = 'all' OR provider = '$provider')\n    ))\n    AND (has([${agent_name:singlequote}], '__all__') OR has([${agent_name:singlequote}], agent_name))\n    AND (has([${skill_name:singlequote}], '__all__') OR has([${skill_name:singlequote}], skill_name))\n    AND (has([${command_name:singlequote}], '__all__') OR has([${command_name:singlequote}], command_name))\n    AND (NOT startsWith(tool_name, 'mcp__') OR (has([${mcp_tool:singlequote}], '__all__') OR has([${mcp_tool:singlequote}], tool_name)))\n  GROUP BY time, metric\n)\nSELECT time, metric, value\nFROM filtered\nORDER BY time\nSETTINGS log_comment = 'agents_overview:panel_109'"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.1.0",
+            "spec": {
+              "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "enableFacetedFilter": false,
+                  "overflow": "ellipsis",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "none"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "displayName": "${__field.labels.metric}",
+                  "unit": "short",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 20,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 1,
+                    "pointSize": 4,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "showValues": false,
+                    "spanNulls": true,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "normal"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
+                },
+                "overrides": []
               }
             }
           }
@@ -1263,7 +1564,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -1336,7 +1637,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -1581,7 +1882,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -1998,7 +2299,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -2032,7 +2333,7 @@
         "spec": {
           "id": 29,
           "title": "Active users & sessions",
-          "description": "Goal: Track whether the number of active people/sessions is growing or shrinking, smoothed to avoid day-to-day noise.\nDescription: Computes distinct daily users/sessions from agent_events bucketed by calendar day, then applies a 7-day rolling average window function over those daily buckets, independent of the Window variable used elsewhere.",
+          "description": "Goal: Track whether the number of active people/sessions is growing or shrinking over the selected time window.\nDescription: Computes distinct users/sessions from agent_events bucketed into ${window}-sized intervals, matching the bucketing used across the rest of the dashboard.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2051,7 +2352,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH daily AS (\n  SELECT\n    toStartOfInterval(timestamp, INTERVAL 1 DAY) AS time,\n    uniqExact(user_id) AS users_day,\n    uniqExact(session_id) AS sessions_day\n  FROM agent_events\n  WHERE $__timeFilter(timestamp)\n  AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], user_id))\n  AND (has([${group_id:singlequote}], '__all__') OR has([${group_id:singlequote}], group_id))\n  AND (has([${session_id:singlequote}], '') OR has([${session_id:singlequote}], agent_events.session_id))\n  AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_branch', cityHash64(agent_events.session_id), ''))) AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_repo', cityHash64(agent_events.session_id), ''))) AND (has([${issue_id:singlequote}], '__all__') OR has([${issue_id:singlequote}], coalesce(nullIf(dictGetOrDefault('session_git_branch_dict', 'issue_id', cityHash64(agent_events.session_id), ''), ''), 'empty')))\n  AND ((has([${model:singlequote}], '__all__') AND '$provider' = 'all') OR agent_events.session_id IN (\n    SELECT session_id FROM agent_usage\n    WHERE (has([${model:singlequote}], '__all__') OR has([${model:singlequote}], model))\n      AND ('$provider' = 'all' OR provider = '$provider')\n  ))\n  AND (has([${agent_name:singlequote}], '__all__') OR has([${agent_name:singlequote}], agent_name))\n  AND (has([${skill_name:singlequote}], '__all__') OR has([${skill_name:singlequote}], skill_name))\n  AND (has([${command_name:singlequote}], '__all__') OR has([${command_name:singlequote}], command_name))\n  AND (NOT startsWith(tool_name, 'mcp__') OR (has([${mcp_tool:singlequote}], '__all__') OR has([${mcp_tool:singlequote}], tool_name)))\n  GROUP BY time\n)\nSELECT\n  time,\n  avg(sessions_day) OVER (ORDER BY time ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS sessions,\n  avg(users_day) OVER (ORDER BY time ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS users\nFROM daily\nORDER BY time\nSETTINGS log_comment = 'agents_overview:panel_29'"
+                        "rawSql": "SELECT\n  toStartOfInterval(timestamp, INTERVAL ${window} SECOND) AS time,\n  uniqExact(user_id) AS users,\n  uniqExact(session_id) AS sessions\nFROM agent_events\nWHERE $__timeFilter(timestamp)\n  AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], user_id))\n  AND (has([${group_id:singlequote}], '__all__') OR has([${group_id:singlequote}], group_id))\n  AND (has([${session_id:singlequote}], '') OR has([${session_id:singlequote}], agent_events.session_id))\n  AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_branch', cityHash64(agent_events.session_id), ''))) AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_repo', cityHash64(agent_events.session_id), ''))) AND (has([${issue_id:singlequote}], '__all__') OR has([${issue_id:singlequote}], coalesce(nullIf(dictGetOrDefault('session_git_branch_dict', 'issue_id', cityHash64(agent_events.session_id), ''), ''), 'empty')))\n  AND ((has([${model:singlequote}], '__all__') AND '$provider' = 'all') OR agent_events.session_id IN (\n    SELECT session_id FROM agent_usage\n    WHERE (has([${model:singlequote}], '__all__') OR has([${model:singlequote}], model))\n      AND ('$provider' = 'all' OR provider = '$provider')\n  ))\n  AND (has([${agent_name:singlequote}], '__all__') OR has([${agent_name:singlequote}], agent_name))\n  AND (has([${skill_name:singlequote}], '__all__') OR has([${skill_name:singlequote}], skill_name))\n  AND (has([${command_name:singlequote}], '__all__') OR has([${command_name:singlequote}], command_name))\n  AND (NOT startsWith(tool_name, 'mcp__') OR (has([${mcp_tool:singlequote}], '__all__') OR has([${mcp_tool:singlequote}], tool_name)))\nGROUP BY time\nORDER BY time\nSETTINGS log_comment = 'agents_overview:panel_29'"
                       }
                     },
                     "refId": "A",
@@ -2135,7 +2436,7 @@
         "spec": {
           "id": 3,
           "title": "Cost by dimension over time",
-          "description": "Goal: Compare dollar cost across agents, skills, commands, MCP tools, or models over time, with the dimension user-selectable.\nDescription: Cost counterpart to 'Tokens by dimension over time' - sums input_cost/output_cost per time bucket, grouped by the metric named for $cost_dimension.",
+          "description": "Goal: Compare dollar cost across agents, skills, commands, MCP tools, or models over time, with the dimension user-selectable, or see one aggregate line via the \"All\" option.\nDescription: Cost counterpart to 'Tokens by dimension over time' - sums input_cost/output_cost per time bucket, grouped by the metric named for $cost_dimension (a single 'Total' series when $cost_dimension is 'all').",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2154,7 +2455,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "WITH filtered AS (\n  SELECT\n    toStartOfInterval(u.timestamp, INTERVAL ${window} SECOND) AS time,\n    multiIf(\n      '$cost_dimension' = 'agent', if(u.agent_name = '', 'main agent', if(u.agent_version = '', u.agent_name, concat(u.agent_name, ' v', u.agent_version))),\n      '$cost_dimension' = 'skill', if(u.skill_name = '', 'main agent', if(u.skill_version = '', u.skill_name, concat(u.skill_name, ' v', u.skill_version))),\n      '$cost_dimension' = 'command', u.command_name,\n      '$cost_dimension' = 'mcp', u.mcp_tool_name,\n      u.model\n    ) AS metric,\n    sum(u.input_cost) AS in_val,\n    sum(u.output_cost) AS out_val\n  FROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n    AND multiIf(\n      '$cost_dimension' = 'agent', (u.agent_name != '' OR u.skill_name = ''),\n      '$cost_dimension' = 'skill', u.skill_name != '',\n      '$cost_dimension' = 'command', u.command_name != '',\n      '$cost_dimension' = 'mcp', u.mcp_tool_name != '',\n      (u.agent_name != '' OR u.skill_name = '')\n    )\n    AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], u.user_id))\n    AND (has([${group_id:singlequote}], '__all__') OR has([${group_id:singlequote}], u.group_id))\n    AND (has([${model:singlequote}], '__all__') OR has([${model:singlequote}], u.model)) AND ('$provider' = 'all' OR u.provider = '$provider')\n    AND (has([${agent_name:singlequote}], '__all__') OR has([${agent_name:singlequote}], u.agent_name))\n    AND (has([${skill_name:singlequote}], '__all__') OR has([${skill_name:singlequote}], u.skill_name))\n    AND (has([${session_id:singlequote}], '') OR has([${session_id:singlequote}], u.session_id))\n  AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_branch', cityHash64(u.session_id), ''))) AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_repo', cityHash64(u.session_id), ''))) AND (has([${issue_id:singlequote}], '__all__') OR has([${issue_id:singlequote}], coalesce(nullIf(dictGetOrDefault('session_git_branch_dict', 'issue_id', cityHash64(u.session_id), ''), ''), 'empty')))\n    AND (has([${command_name:singlequote}], '__all__') OR has([${command_name:singlequote}], u.command_name))\n    AND (has([${mcp_tool:singlequote}], '__all__') OR has([${mcp_tool:singlequote}], u.mcp_tool_name))\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time\nSETTINGS log_comment = 'agents_overview:panel_3'"
+                        "rawSql": "WITH filtered AS (\n  SELECT\n    toStartOfInterval(u.timestamp, INTERVAL ${window} SECOND) AS time,\n    multiIf(\n      '$cost_dimension' = 'agent', if(u.agent_name = '', 'main agent', if(u.agent_version = '', u.agent_name, concat(u.agent_name, ' v', u.agent_version))),\n      '$cost_dimension' = 'skill', if(u.skill_name = '', 'main agent', if(u.skill_version = '', u.skill_name, concat(u.skill_name, ' v', u.skill_version))),\n      '$cost_dimension' = 'command', u.command_name,\n      '$cost_dimension' = 'mcp', u.mcp_tool_name,\n      '$cost_dimension' = 'all', 'Total',\n      u.model\n    ) AS metric,\n    sum(u.input_cost) AS in_val,\n    sum(u.output_cost) AS out_val\n  FROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n    AND multiIf(\n      '$cost_dimension' = 'agent', (u.agent_name != '' OR u.skill_name = ''),\n      '$cost_dimension' = 'skill', u.skill_name != '',\n      '$cost_dimension' = 'command', u.command_name != '',\n      '$cost_dimension' = 'mcp', u.mcp_tool_name != '',\n      '$cost_dimension' = 'all', true,\n      (u.agent_name != '' OR u.skill_name = '')\n    )\n    AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], u.user_id))\n    AND (has([${group_id:singlequote}], '__all__') OR has([${group_id:singlequote}], u.group_id))\n    AND (has([${model:singlequote}], '__all__') OR has([${model:singlequote}], u.model)) AND ('$provider' = 'all' OR u.provider = '$provider')\n    AND (has([${agent_name:singlequote}], '__all__') OR has([${agent_name:singlequote}], u.agent_name))\n    AND (has([${skill_name:singlequote}], '__all__') OR has([${skill_name:singlequote}], u.skill_name))\n    AND (has([${session_id:singlequote}], '') OR has([${session_id:singlequote}], u.session_id))\n  AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_branch', cityHash64(u.session_id), ''))) AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_repo', cityHash64(u.session_id), ''))) AND (has([${issue_id:singlequote}], '__all__') OR has([${issue_id:singlequote}], coalesce(nullIf(dictGetOrDefault('session_git_branch_dict', 'issue_id', cityHash64(u.session_id), ''), ''), 'empty')))\n    AND (has([${command_name:singlequote}], '__all__') OR has([${command_name:singlequote}], u.command_name))\n    AND (has([${mcp_tool:singlequote}], '__all__') OR has([${mcp_tool:singlequote}], u.mcp_tool_name))\n  GROUP BY time, metric\n)\nSELECT * FROM (\n  SELECT time, concat(metric, ' \u2193') AS metric, in_val AS value FROM filtered\n  UNION ALL\n  SELECT time, concat(metric, ' \u2191') AS metric, out_val AS value FROM filtered\n) ORDER BY time\nSETTINGS log_comment = 'agents_overview:panel_3'"
                       }
                     },
                     "refId": "A",
@@ -2174,7 +2475,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -2797,7 +3098,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -2870,7 +3171,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -3087,12 +3388,12 @@
           }
         }
       },
-      "panel-41": {
+      "panel-110": {
         "kind": "Panel",
         "spec": {
-          "id": 41,
-          "title": "Tokens per call by agent/version (bloat detector)",
-          "description": "Goal: Catch a prompt/tool-set regression that makes an agent version 'heavier' per call even if total volume looks flat.\nDescription: Averages input+output tokens per litellm_call, bucketed by time, per agent_name+agent_version - a rising line for the same agent means each individual call is getting more expensive, not just more frequent.",
+          "id": 110,
+          "title": "Tokens per call by dimension (bloat detector)",
+          "description": "Goal: Catch a prompt/tool-set regression that makes an agent, skill, command, MCP tool, or model 'heavier' per call even if total volume looks flat, with the dimension user-selectable.\nDescription: Averages input+output tokens per litellm_call, bucketed by time, grouped by the metric named for $cost_dimension (agent+version, skill+version, command, mcp_tool_name, or model; a single 'Total' series when $cost_dimension is 'all') - a rising line means each individual call is getting more expensive, not just more frequent.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -3111,7 +3412,7 @@
                       "spec": {
                         "editorType": "sql",
                         "format": 0,
-                        "rawSql": "SELECT\n  toStartOfInterval(u.timestamp, INTERVAL ${window} SECOND) AS time,\n  if(u.agent_name = '', 'main agent', if(u.agent_version = '', u.agent_name, concat(u.agent_name, ' v', u.agent_version))) AS metric,\n  avg((u.input_tokens - (1 - $include_cache_tokens) * (u.cache_creation_tokens + u.cache_read_tokens)) + u.output_tokens) AS value\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND (u.agent_name != '' OR u.skill_name = '')\n  AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], u.user_id))\n  AND (has([${group_id:singlequote}], '__all__') OR has([${group_id:singlequote}], u.group_id))\n  AND (has([${model:singlequote}], '__all__') OR has([${model:singlequote}], u.model)) AND ('$provider' = 'all' OR u.provider = '$provider')\n  AND (has([${agent_name:singlequote}], '__all__') OR has([${agent_name:singlequote}], u.agent_name))\n  AND (has([${skill_name:singlequote}], '__all__') OR has([${skill_name:singlequote}], u.skill_name))\n  AND (has([${session_id:singlequote}], '') OR has([${session_id:singlequote}], u.session_id))\n  AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_branch', cityHash64(u.session_id), ''))) AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_repo', cityHash64(u.session_id), ''))) AND (has([${issue_id:singlequote}], '__all__') OR has([${issue_id:singlequote}], coalesce(nullIf(dictGetOrDefault('session_git_branch_dict', 'issue_id', cityHash64(u.session_id), ''), ''), 'empty')))\n  AND (has([${command_name:singlequote}], '__all__') OR has([${command_name:singlequote}], u.command_name))\n  AND (has([${mcp_tool:singlequote}], '__all__') OR has([${mcp_tool:singlequote}], u.mcp_tool_name))\nGROUP BY time, metric\nORDER BY time\nSETTINGS log_comment = 'agents_overview:panel_41'"
+                        "rawSql": "SELECT\n  toStartOfInterval(u.timestamp, INTERVAL ${window} SECOND) AS time,\n  multiIf(\n    '$cost_dimension' = 'agent', if(u.agent_name = '', 'main agent', if(u.agent_version = '', u.agent_name, concat(u.agent_name, ' v', u.agent_version))),\n    '$cost_dimension' = 'skill', if(u.skill_name = '', 'main agent', if(u.skill_version = '', u.skill_name, concat(u.skill_name, ' v', u.skill_version))),\n    '$cost_dimension' = 'command', u.command_name,\n    '$cost_dimension' = 'mcp', u.mcp_tool_name,\n    '$cost_dimension' = 'all', 'Total',\n    u.model\n  ) AS metric,\n  avg((u.input_tokens - (1 - $include_cache_tokens) * (u.cache_creation_tokens + u.cache_read_tokens)) + u.output_tokens) AS value\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND multiIf(\n    '$cost_dimension' = 'agent', (u.agent_name != '' OR u.skill_name = ''),\n    '$cost_dimension' = 'skill', u.skill_name != '',\n    '$cost_dimension' = 'command', u.command_name != '',\n    '$cost_dimension' = 'mcp', u.mcp_tool_name != '',\n    '$cost_dimension' = 'all', true,\n    (u.agent_name != '' OR u.skill_name = '')\n  )\n  AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], u.user_id))\n  AND (has([${group_id:singlequote}], '__all__') OR has([${group_id:singlequote}], u.group_id))\n  AND (has([${model:singlequote}], '__all__') OR has([${model:singlequote}], u.model)) AND ('$provider' = 'all' OR u.provider = '$provider')\n  AND (has([${agent_name:singlequote}], '__all__') OR has([${agent_name:singlequote}], u.agent_name))\n  AND (has([${skill_name:singlequote}], '__all__') OR has([${skill_name:singlequote}], u.skill_name))\n  AND (has([${session_id:singlequote}], '') OR has([${session_id:singlequote}], u.session_id))\n  AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_branch', cityHash64(u.session_id), ''))) AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_repo', cityHash64(u.session_id), ''))) AND (has([${issue_id:singlequote}], '__all__') OR has([${issue_id:singlequote}], coalesce(nullIf(dictGetOrDefault('session_git_branch_dict', 'issue_id', cityHash64(u.session_id), ''), ''), 'empty')))\n  AND (has([${command_name:singlequote}], '__all__') OR has([${command_name:singlequote}], u.command_name))\n  AND (has([${mcp_tool:singlequote}], '__all__') OR has([${mcp_tool:singlequote}], u.mcp_tool_name))\nGROUP BY time, metric\nORDER BY time\nSETTINGS log_comment = 'agents_overview:panel_110'"
                       }
                     },
                     "refId": "A",
@@ -3131,85 +3432,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
-                  "showLegend": true
-                },
-                "tooltip": {
-                  "mode": "multi"
-                }
-              },
-              "fieldConfig": {
-                "defaults": {
-                  "displayName": "${__field.labels.metric}",
-                  "unit": "locale",
-                  "custom": {
-                    "drawStyle": "line",
-                    "fillOpacity": 0,
-                    "lineInterpolation": "smooth",
-                    "lineWidth": 1,
-                    "pointSize": 4,
-                    "showPoints": "auto",
-                    "spanNulls": true,
-                    "stacking": {
-                      "group": "A",
-                      "mode": "none"
-                    },
-                    "thresholdsStyle": {
-                      "mode": "off"
-                    }
-                  }
-                },
-                "overrides": []
-              }
-            }
-          }
-        }
-      },
-      "panel-42": {
-        "kind": "Panel",
-        "spec": {
-          "id": 42,
-          "title": "Tokens per call by skill/version (bloat detector)",
-          "description": "Goal: Same regression-detector as 'Tokens per call by agent/version', but for skills, since a skill's own instructions/examples can grow independently of the agent that invokes it.\nDescription: Averages input+output tokens per litellm_call, bucketed by time, per skill_name+skill_version.",
-          "links": [],
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "query": {
-                      "kind": "DataQuery",
-                      "group": "grafana-clickhouse-datasource",
-                      "version": "v0",
-                      "datasource": {
-                        "name": "clickhouse"
-                      },
-                      "spec": {
-                        "editorType": "sql",
-                        "format": 0,
-                        "rawSql": "SELECT\n  toStartOfInterval(u.timestamp, INTERVAL ${window} SECOND) AS time,\n  if(u.skill_version = '', u.skill_name, concat(u.skill_name, ' v', u.skill_version)) AS metric,\n  avg((u.input_tokens - (1 - $include_cache_tokens) * (u.cache_creation_tokens + u.cache_read_tokens)) + u.output_tokens) AS value\nFROM agent_usage u\nWHERE $__timeFilter(u.timestamp)\n  AND u.skill_name != ''\n  AND (has([${user_id:singlequote}], '__all__') OR has([${user_id:singlequote}], u.user_id))\n  AND (has([${group_id:singlequote}], '__all__') OR has([${group_id:singlequote}], u.group_id))\n  AND (has([${model:singlequote}], '__all__') OR has([${model:singlequote}], u.model)) AND ('$provider' = 'all' OR u.provider = '$provider')\n  AND (has([${agent_name:singlequote}], '__all__') OR has([${agent_name:singlequote}], u.agent_name))\n  AND (has([${skill_name:singlequote}], '__all__') OR has([${skill_name:singlequote}], u.skill_name))\n  AND (has([${session_id:singlequote}], '') OR has([${session_id:singlequote}], u.session_id))\n  AND (has([${git_branch:singlequote}], '__all__') OR has([${git_branch:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_branch', cityHash64(u.session_id), ''))) AND (has([${git_repo:singlequote}], '__all__') OR has([${git_repo:singlequote}], dictGetOrDefault('session_git_branch_dict', 'git_repo', cityHash64(u.session_id), ''))) AND (has([${issue_id:singlequote}], '__all__') OR has([${issue_id:singlequote}], coalesce(nullIf(dictGetOrDefault('session_git_branch_dict', 'issue_id', cityHash64(u.session_id), ''), ''), 'empty')))\n  AND (has([${command_name:singlequote}], '__all__') OR has([${command_name:singlequote}], u.command_name))\n  AND (has([${mcp_tool:singlequote}], '__all__') OR has([${mcp_tool:singlequote}], u.mcp_tool_name))\nGROUP BY time, metric\nORDER BY time\nSETTINGS log_comment = 'agents_overview:panel_42'"
-                      }
-                    },
-                    "refId": "A",
-                    "hidden": false
-                  }
-                }
-              ],
-              "transformations": [],
-              "queryOptions": {}
-            }
-          },
-          "vizConfig": {
-            "kind": "VizConfig",
-            "group": "timeseries",
-            "version": "",
-            "spec": {
-              "options": {
-                "legend": {
-                  "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -3287,7 +3510,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -3365,7 +3588,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -3443,7 +3666,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -3521,7 +3744,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -3599,7 +3822,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -3677,7 +3900,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -3755,7 +3978,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -4102,29 +4325,72 @@
           "vizConfig": {
             "kind": "VizConfig",
             "group": "timeseries",
-            "version": "",
+            "version": "13.1.0",
             "spec": {
               "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
+                  "calcs": [],
                   "displayMode": "list",
-                  "placement": "right",
+                  "enableFacetedFilter": false,
+                  "overflow": "ellipsis",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
-                  "mode": "multi"
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "none"
                 }
               },
               "fieldConfig": {
                 "defaults": {
                   "displayName": "${__field.labels.metric}",
                   "unit": "locale",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
                   "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
                     "drawStyle": "bars",
                     "fillOpacity": 20,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
                     "lineInterpolation": "smooth",
                     "lineWidth": 1,
                     "pointSize": 4,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
                     "showPoints": "auto",
+                    "showValues": false,
                     "spanNulls": true,
                     "stacking": {
                       "group": "A",
@@ -4236,29 +4502,72 @@
           "vizConfig": {
             "kind": "VizConfig",
             "group": "timeseries",
-            "version": "",
+            "version": "13.1.0",
             "spec": {
               "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
+                  "calcs": [],
                   "displayMode": "list",
-                  "placement": "right",
+                  "enableFacetedFilter": false,
+                  "overflow": "ellipsis",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
-                  "mode": "multi"
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "none"
                 }
               },
               "fieldConfig": {
                 "defaults": {
                   "displayName": "${__field.labels.metric}",
                   "unit": "currencyUSD",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
                   "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
                     "drawStyle": "bars",
                     "fillOpacity": 20,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
                     "lineInterpolation": "smooth",
                     "lineWidth": 1,
                     "pointSize": 4,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
                     "showPoints": "auto",
+                    "showValues": false,
                     "spanNulls": true,
                     "stacking": {
                       "group": "A",
@@ -4314,29 +4623,72 @@
           "vizConfig": {
             "kind": "VizConfig",
             "group": "timeseries",
-            "version": "",
+            "version": "13.1.0",
             "spec": {
               "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
+                  "calcs": [],
                   "displayMode": "list",
-                  "placement": "right",
+                  "enableFacetedFilter": false,
+                  "overflow": "ellipsis",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
-                  "mode": "multi"
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "none"
                 }
               },
               "fieldConfig": {
                 "defaults": {
                   "displayName": "${__field.labels.metric}",
                   "unit": "locale",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
                   "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
                     "drawStyle": "bars",
                     "fillOpacity": 20,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
                     "lineInterpolation": "smooth",
                     "lineWidth": 1,
                     "pointSize": 4,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
                     "showPoints": "auto",
+                    "showValues": false,
                     "spanNulls": true,
                     "stacking": {
                       "group": "A",
@@ -4488,19 +4840,72 @@
           "vizConfig": {
             "kind": "VizConfig",
             "group": "barchart",
-            "version": "",
+            "version": "13.1.0",
             "spec": {
               "options": {
+                "barRadius": 0,
+                "barWidth": 0.97,
+                "fullHighlight": false,
+                "groupWidth": 0.7,
                 "legend": {
+                  "calcs": [],
                   "displayMode": "list",
-                  "placement": "right",
+                  "overflow": "ellipsis",
+                  "placement": "bottom",
                   "showLegend": true
                 },
-                "xField": "subagent_type"
+                "orientation": "auto",
+                "showValue": "auto",
+                "stacking": "none",
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "single",
+                  "sort": "none"
+                },
+                "xField": "subagent_type",
+                "xTickLabelRotation": 0,
+                "xTickLabelSpacing": 0
               },
               "fieldConfig": {
                 "defaults": {
-                  "unit": "currencyUSD"
+                  "unit": "currencyUSD",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "fillOpacity": 80,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "lineWidth": 1,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
                 },
                 "overrides": [
                   {
@@ -4560,29 +4965,72 @@
           "vizConfig": {
             "kind": "VizConfig",
             "group": "timeseries",
-            "version": "",
+            "version": "13.1.0",
             "spec": {
               "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
+                  "calcs": [],
                   "displayMode": "list",
-                  "placement": "right",
+                  "enableFacetedFilter": false,
+                  "overflow": "ellipsis",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
-                  "mode": "multi"
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "none"
                 }
               },
               "fieldConfig": {
                 "defaults": {
                   "displayName": "${__field.labels.metric}",
                   "unit": "locale",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
                   "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
                     "drawStyle": "bars",
                     "fillOpacity": 40,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
                     "lineInterpolation": "smooth",
                     "lineWidth": 1,
                     "pointSize": 4,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
                     "showPoints": "auto",
+                    "showValues": false,
                     "spanNulls": true,
                     "stacking": {
                       "group": "A",
@@ -4643,7 +5091,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -5496,7 +5944,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "xField": "git_repo"
@@ -5612,7 +6060,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -5766,7 +6214,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "xField": "git_repo"
@@ -6282,7 +6730,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "xField": "git_branch"
@@ -6326,6 +6774,10 @@
                           "fixedColor": "white",
                           "mode": "fixed"
                         }
+                      },
+                      {
+                        "id": "custom.axisPlacement",
+                        "value": "right"
                       }
                     ]
                   },
@@ -6600,7 +7052,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
@@ -6678,7 +7130,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "xField": "git_branch"
@@ -6794,7 +7246,7 @@
               "options": {
                 "legend": {
                   "displayMode": "list",
-                  "placement": "right",
+                  "placement": "bottom",
                   "showLegend": true
                 },
                 "xField": "git_branch"
@@ -7736,9 +8188,11 @@
           "vizConfig": {
             "kind": "VizConfig",
             "group": "table",
-            "version": "",
+            "version": "13.1.0",
             "spec": {
               "options": {
+                "cellHeight": "sm",
+                "showHeader": true,
                 "sortBy": [
                   {
                     "desc": false,
@@ -7747,7 +8201,31 @@
                 ]
               },
               "fieldConfig": {
-                "defaults": {},
+                "defaults": {
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "footer": {
+                      "reducers": []
+                    },
+                    "inspect": false
+                  }
+                },
                 "overrides": [
                   {
                     "matcher": {
@@ -7818,16 +8296,18 @@
           "vizConfig": {
             "kind": "VizConfig",
             "group": "piechart",
-            "version": "",
+            "version": "13.1.0",
             "spec": {
               "options": {
                 "displayLabels": [],
                 "legend": {
-                  "displayMode": "list",
+                  "displayMode": "table",
+                  "overflow": "ellipsis",
                   "placement": "right",
                   "showLegend": true,
                   "values": [
-                    "value"
+                    "value",
+                    "percent"
                   ]
                 },
                 "pieType": "pie",
@@ -7838,7 +8318,9 @@
                   "fields": "",
                   "values": true
                 },
+                "sort": "desc",
                 "tooltip": {
+                  "hideZeros": false,
                   "mode": "single",
                   "sort": "none"
                 }
@@ -7846,10 +8328,43 @@
               "fieldConfig": {
                 "defaults": {
                   "color": {
-                    "mode": "palette-classic"
+                    "mode": "palette-classic",
+                    "fixedColor": "#73BF69"
+                  },
+                  "custom": {
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    }
                   }
                 },
-                "overrides": []
+                "overrides": [
+                  {
+                    "__systemRef": "hideSeriesFrom",
+                    "matcher": {
+                      "id": "byNames",
+                      "options": {
+                        "mode": "exclude",
+                        "names": [
+                          "sessions"
+                        ],
+                        "prefix": "All except:",
+                        "readOnly": true
+                      }
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.hideFrom",
+                        "value": {
+                          "legend": false,
+                          "tooltip": true,
+                          "viz": true
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -8267,188 +8782,169 @@
             "spec": {
               "title": "Overview",
               "layout": {
-                "kind": "GridLayout",
+                "kind": "RowsLayout",
                 "spec": {
-                  "items": [
+                  "rows": [
                     {
-                      "kind": "GridLayoutItem",
+                      "kind": "RowsLayoutRow",
                       "spec": {
-                        "x": 0,
-                        "y": 0,
-                        "width": 12,
-                        "height": 6,
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-73"
+                        "title": "New row",
+                        "collapse": false,
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 6,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-73"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 6,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-74"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 6,
+                                  "width": 24,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-66"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 14,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-31"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 14,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-30"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 22,
+                                  "width": 24,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-29"
+                                  }
+                                }
+                              }
+                            ]
+                          }
                         }
                       }
                     },
                     {
-                      "kind": "GridLayoutItem",
+                      "kind": "RowsLayoutRow",
                       "spec": {
-                        "x": 12,
-                        "y": 0,
-                        "width": 12,
-                        "height": 6,
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-74"
+                        "title": "Cache",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "maxColumnCount": 3,
+                            "columnWidthMode": "standard",
+                            "rowHeightMode": "standard",
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-65"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-64"
+                                  }
+                                }
+                              }
+                            ]
+                          }
                         }
                       }
                     },
                     {
-                      "kind": "GridLayoutItem",
+                      "kind": "RowsLayoutRow",
                       "spec": {
-                        "x": 0,
-                        "y": 6,
-                        "width": 12,
-                        "height": 8,
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-101"
-                        }
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "x": 12,
-                        "y": 6,
-                        "width": 12,
-                        "height": 8,
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-66"
-                        }
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "x": 0,
-                        "y": 14,
-                        "width": 12,
-                        "height": 8,
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-30"
-                        }
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "x": 12,
-                        "y": 14,
-                        "width": 12,
-                        "height": 8,
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-31"
-                        }
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "x": 0,
-                        "y": 22,
-                        "width": 12,
-                        "height": 8,
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-64"
-                        }
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "x": 12,
-                        "y": 22,
-                        "width": 12,
-                        "height": 8,
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-65"
-                        }
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "x": 0,
-                        "y": 30,
-                        "width": 24,
-                        "height": 8,
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-29"
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          {
-            "kind": "TabsLayoutTab",
-            "spec": {
-              "title": "Task Shape",
-              "layout": {
-                "kind": "GridLayout",
-                "spec": {
-                  "items": [
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "x": 0,
-                        "y": 0,
-                        "width": 24,
-                        "height": 8,
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-102"
-                        }
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "x": 0,
-                        "y": 8,
-                        "width": 12,
-                        "height": 8,
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-103"
-                        }
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "x": 12,
-                        "y": 8,
-                        "width": 12,
-                        "height": 8,
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-104"
-                        }
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "x": 0,
-                        "y": 16,
-                        "width": 12,
-                        "height": 6,
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-105"
+                        "title": "Event mix",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "maxColumnCount": 3,
+                            "columnWidthMode": "standard",
+                            "rowHeightMode": "standard",
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-101"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-109"
+                                  }
+                                }
+                              }
+                            ]
+                          }
                         }
                       }
                     }
@@ -8604,6 +9100,28 @@
             "kind": "TabsLayoutTab",
             "spec": {
               "title": "Git",
+              "variables": [
+                {
+                  "kind": "CustomVariable",
+                  "spec": {
+                    "name": "git_dimension",
+                    "query": "Repo : repo, Branch : branch",
+                    "current": {
+                      "text": "Repo",
+                      "value": "repo"
+                    },
+                    "options": [],
+                    "multi": false,
+                    "includeAll": false,
+                    "label": "Git dimension",
+                    "hide": "dontHide",
+                    "skipUrlSync": false,
+                    "description": "Switches the Git tab's panels between grouping by repo or by branch (branch grouping prefixes the repo name, since branch names aren't unique across repos).",
+                    "allowCustomValue": false,
+                    "valuesFormat": "csv"
+                  }
+                }
+              ],
               "layout": {
                 "kind": "GridLayout",
                 "spec": {
@@ -8786,31 +9304,63 @@
             "kind": "TabsLayoutTab",
             "spec": {
               "title": "Cost & Tokens",
+              "variables": [
+                {
+                  "kind": "CustomVariable",
+                  "spec": {
+                    "name": "cost_dimension",
+                    "query": "All : all, Agent : agent, Skill : skill, Command : command, MCP Tool : mcp, Model : model",
+                    "current": {
+                      "text": "All",
+                      "value": "all"
+                    },
+                    "options": [],
+                    "multi": false,
+                    "includeAll": false,
+                    "label": "Cost dimension",
+                    "hide": "dontHide",
+                    "skipUrlSync": false,
+                    "description": "Switches the Cost & Tokens tab's panels between grouping by agent/version, skill/version, command, MCP tool, or model, or collapsing to one aggregate 'Total' series via All.",
+                    "allowCustomValue": false,
+                    "valuesFormat": "csv"
+                  }
+                }
+              ],
               "layout": {
-                "kind": "TabsLayout",
+                "kind": "RowsLayout",
                 "spec": {
-                  "tabs": [
+                  "rows": [
                     {
-                      "kind": "TabsLayoutTab",
+                      "kind": "RowsLayoutRow",
                       "spec": {
-                        "title": "Scope \u00d7 Model",
+                        "title": "Subtabs",
+                        "collapse": false,
+                        "hideHeader": true,
                         "layout": {
-                          "kind": "GridLayout",
+                          "kind": "TabsLayout",
                           "spec": {
-                            "items": [
+                            "tabs": [
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "TabsLayoutTab",
                                 "spec": {
-                                  "x": 0,
-                                  "y": 0,
-                                  "width": 12,
-                                  "height": 8,
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "panel-16"
-                                  }
-                                }
-                              },
+                                  "title": "Scope \u00d7 Model",
+                                  "layout": {
+                                    "kind": "GridLayout",
+                                    "spec": {
+                                      "items": [
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 0,
+                                            "width": 12,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-16"
+                                            }
+                                          }
+                                        },
                               {
                                 "kind": "GridLayoutItem",
                                 "spec": {
@@ -8842,24 +9392,11 @@
                                 "spec": {
                                   "x": 0,
                                   "y": 0,
-                                  "width": 12,
+                                  "width": 24,
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-41"
-                                  }
-                                }
-                              },
-                              {
-                                "kind": "GridLayoutItem",
-                                "spec": {
-                                  "x": 12,
-                                  "y": 0,
-                                  "width": 12,
-                                  "height": 8,
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "panel-42"
+                                    "name": "panel-110"
                                   }
                                 }
                               },
@@ -8972,6 +9509,11 @@
                         }
                       }
                     }
+                  ]
+                }
+              }
+            }
+          }
                   ]
                 }
               }
@@ -9552,7 +10094,7 @@
           {
             "kind": "TabsLayoutTab",
             "spec": {
-              "title": "Sessions & Debugging",
+              "title": "Session & Debugging",
               "layout": {
                 "kind": "TabsLayout",
                 "spec": {
@@ -9632,6 +10174,58 @@
                               }
                             ]
                           }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "title": "Task Shape",
+              "layout": {
+                "kind": "GridLayout",
+                "spec": {
+                  "items": [
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 0,
+                        "width": 12,
+                        "height": 8,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-103"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 12,
+                        "y": 0,
+                        "width": 12,
+                        "height": 8,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-104"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 8,
+                        "width": 12,
+                        "height": 6,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-105"
                         }
                       }
                     }
@@ -9810,46 +10404,6 @@
           "hide": "dontHide",
           "skipUrlSync": false,
           "description": "Filters the Model list below. Claude = claude-*, OpenAI = gpt-*/o-series/etc., Other = everything else.",
-          "allowCustomValue": false,
-          "valuesFormat": "csv"
-        }
-      },
-      {
-        "kind": "CustomVariable",
-        "spec": {
-          "name": "git_dimension",
-          "query": "Repo : repo, Branch : branch",
-          "current": {
-            "text": "Repo",
-            "value": "repo"
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "label": "Git dimension",
-          "hide": "dontHide",
-          "skipUrlSync": false,
-          "description": "Switches the Git tab's panels between grouping by repo or by branch (branch grouping prefixes the repo name, since branch names aren't unique across repos).",
-          "allowCustomValue": false,
-          "valuesFormat": "csv"
-        }
-      },
-      {
-        "kind": "CustomVariable",
-        "spec": {
-          "name": "cost_dimension",
-          "query": "Agent : agent, Skill : skill, Command : command, MCP Tool : mcp, Model : model",
-          "current": {
-            "text": "Agent",
-            "value": "agent"
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "label": "Cost dimension",
-          "hide": "dontHide",
-          "skipUrlSync": false,
-          "description": "Switches the Cost & Tokens \u203a By Dimension panels between grouping by agent/version, skill/version, command, MCP tool, or model.",
           "allowCustomValue": false,
           "valuesFormat": "csv"
         }
@@ -10039,7 +10593,7 @@
             "text": "All",
             "value": "$__all"
           },
-          "label": "Group",
+          "label": "Team",
           "hide": "dontHide",
           "refresh": "onTimeRangeChanged",
           "skipUrlSync": false,

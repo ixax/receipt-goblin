@@ -18,10 +18,11 @@ def load(path):
 
 def _iter_leaf_tabs(layout, title=None):
     # A tab's own layout can itself be a TabsLayout (nested sub-tabs, e.g.
-    # "Sessions & Debugging" -> "Trace"/"Fork tree"/"Graph"/...) rather than a
+    # "Sessions & Debugging" -> "Trace"/"Fork tree"/"Graph"/...) or a
+    # RowsLayout (rows of GridLayout or nested TabsLayout) rather than a
     # GridLayout directly.
     # Recurse until we hit an actual GridLayout leaf, yielding that leaf's own
-    # title - otherwise every panel under a nested tab silently vanishes from
+    # title - otherwise every panel under a nested tab/row silently vanishes from
     # iteration (tab reports 0 panels) even though panel_by_ref/find_panel
     # (which reads spec.elements directly, not through layout) can still see
     # it fine.
@@ -31,6 +32,11 @@ def _iter_leaf_tabs(layout, title=None):
             tspec = tab.get("spec", {})
             ttitle = tspec.get("title", "(untitled)")
             yield from _iter_leaf_tabs(tspec.get("layout", {}), ttitle)
+    elif kind == "RowsLayout":
+        for row in layout.get("spec", {}).get("rows", []):
+            rspec = row.get("spec", {})
+            rtitle = rspec.get("title", title if title is not None else "(untitled)")
+            yield from _iter_leaf_tabs(rspec.get("layout", {}), rtitle)
     elif kind == "GridLayout":
         yield (title if title is not None else "(untitled)"), layout
 

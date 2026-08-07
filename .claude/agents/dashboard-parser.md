@@ -26,7 +26,6 @@ Cross-check against the panel count in `summary` (reads `spec.elements` directly
 
 Always run `services/grafana/scripts/parse_dashboard.py` from the repo root with whatever subcommand fits the request.
 Don't hand-write jq or ad hoc python for this - the script already knows the schema:
-
 - `list-tabs <file>` - tab titles and panel counts
 - `list-panels <file> [--tab TITLE]` - id, title, panel kind, per panel
 - `show-panel <file> --id ID` or `--title TITLE` - full panel spec (title, description, query, panel type)
