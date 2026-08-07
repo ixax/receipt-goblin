@@ -15,7 +15,8 @@ set -eu
 # YAML parser - relies on this file's shape being fully under our control.
 CONFIG=/etc/grafana/config.yml
 yml_get() {
-    sed -n "s/^$1: *\"\{0,1\}\([^\"]*\)\"\{0,1\}\$/\1/p" "$CONFIG"
+    # Normalize CRLF before stripping quotes; config.yml is copied from Windows.
+    sed -n "s/^$1: *//p" "$CONFIG" | tr -d '\r' | sed 's/^"//; s/"$//'
 }
 export GF_INSTALL_PLUGINS="$(yml_get install_plugins)"
 export GF_AUTH_ANONYMOUS_ENABLED="$(yml_get auth_anonymous_enabled)"

@@ -27,15 +27,17 @@ def is_harness_path(rel: str) -> bool:
     Any other .md file gets audit.py's "other_md" kind - md-format's one-sentence-
     per-line and dead-reference checks, no token budget.
     Dual-harness aware - this repo tracks .claude/, .agents/, and .codex/ equally.
+    Expects a posix-style rel path (main() normalizes) - audit.py's violation
+    lines use the same form, so relevant_violations() can prefix-match them.
     """
     return rel.endswith(".md") or (
-        rel.startswith(".claude" + os.sep)
-        or rel.startswith(".agents" + os.sep)
-        or rel.startswith(".codex" + os.sep)
-        or rel.startswith("agent_docs" + os.sep)
+        rel.startswith(".claude/")
+        or rel.startswith(".agents/")
+        or rel.startswith(".codex/")
+        or rel.startswith("agent_docs/")
         or os.path.basename(rel) in ("AGENTS.md", "CLAUDE.md")
-        or os.sep + "AGENTS.md" in rel
-        or os.sep + "CLAUDE.md" in rel
+        or "/AGENTS.md" in rel
+        or "/CLAUDE.md" in rel
     )
 
 
@@ -61,7 +63,7 @@ def relevant_violations(report: str, rel: str):
         if body.startswith(rel + ":") or body.startswith(GLOBAL_VIOLATION_PREFIXES):
             lines.append(line)
         elif ": CLAUDE.md and AGENTS.md are separate files" in body and (
-            rel in ("CLAUDE.md", "AGENTS.md") or rel.endswith((os.sep + "CLAUDE.md", os.sep + "AGENTS.md"))
+            rel in ("CLAUDE.md", "AGENTS.md") or rel.endswith(("/CLAUDE.md", "/AGENTS.md"))
         ):
             lines.append(line)
     return "\n".join(lines)
@@ -73,7 +75,7 @@ def main() -> int:
     # Resolve both sides before relpath: os.getcwd() returns a symlink-resolved
     # path, so an unresolved file_path (e.g. through a symlinked tmp dir) would
     # otherwise produce a "../../.." relpath that fails the prefix checks below.
-    rel = os.path.relpath(os.path.realpath(path), os.getcwd()) if path else ""
+    rel = os.path.relpath(os.path.realpath(path), os.getcwd()).replace(os.sep, "/") if path else ""
 
     if not is_harness_path(rel):
         return 0

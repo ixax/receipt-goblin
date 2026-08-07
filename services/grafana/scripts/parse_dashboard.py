@@ -12,7 +12,10 @@ import sys
 
 
 def load(path):
-    with open(path) as f:
+    # Explicit utf-8: the dashboard JSON carries non-ASCII panel text, and on a
+    # Windows host Python's default locale encoding (cp1252) raises
+    # UnicodeDecodeError on it.
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 

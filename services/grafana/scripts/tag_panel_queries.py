@@ -75,7 +75,9 @@ def main():
             text = text.replace(old_encoded, new_encoded, 1)
         changed.append(panel_id)
 
-    with open(args.file, "w", encoding="utf-8") as f:
+    # newline="": these files are LF-only, and Windows would otherwise translate
+    # every line ending to CRLF and rewrite the whole file.
+    with open(args.file, "w", encoding="utf-8", newline="") as f:
         f.write(text)
 
     print(f"tagged {len(changed)} panel(s): {changed}")

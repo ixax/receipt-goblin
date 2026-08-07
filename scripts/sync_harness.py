@@ -78,7 +78,9 @@ def collect() -> str:
             desc = clean(fm.get("description", "(no description)"))
             model = fm.get("model", "")
             model_note = f" *(model: {model})*" if model else ""
-            rel = agent_md.relative_to(ROOT)
+            # as_posix(): the index is committed, so its paths must not depend on the
+            # generating host's separator (Windows would write backslashes).
+            rel = agent_md.relative_to(ROOT).as_posix()
             rows_agents.append(f"| `{name}` | {desc}{model_note} | `{rel}` |")
 
     parts = [HEADER]
@@ -106,7 +108,8 @@ def main() -> int:
     if OUT.exists() and OUT.read_text(encoding="utf-8") == content:
         print("harness-index: unchanged")  # no write -> no mtime churn, cache-friendly
         return 0
-    OUT.write_text(content, encoding="utf-8")
+    # newline="\n": keep the committed file LF-only regardless of host OS.
+    OUT.write_text(content, encoding="utf-8", newline="\n")
     print(f"harness-index: wrote {OUT.relative_to(ROOT)}")
     return 0
 

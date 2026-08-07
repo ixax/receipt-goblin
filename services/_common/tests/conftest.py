@@ -24,6 +24,6 @@ CAPTURES_DIR = Path(__file__).resolve().parent / "captures"
 def load_capture(name: str, index: int = 0) -> dict:
     """Loads payload `index` from tests/captures/<name>.json - a real
     StandardLoggingPayload captured by webhook/src/server.py."""
-    data = json.loads((CAPTURES_DIR / f"{name}.json").read_text())
+    data = json.loads((CAPTURES_DIR / f"{name}.json").read_text(encoding="utf-8"))
     items = data if isinstance(data, list) else [data]
     return items[index]

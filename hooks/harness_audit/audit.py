@@ -174,7 +174,7 @@ def check_claude_agents_pairing(files: dict, is_symlink_fn) -> list:
         if os.path.basename(rel) != "CLAUDE.md":
             continue
         d = os.path.dirname(rel)
-        other = os.path.join(d, "AGENTS.md")
+        other = f"{d}/AGENTS.md" if d else "AGENTS.md"
         if other in files and not (is_symlink_fn(rel) or is_symlink_fn(other)):
             violations.append(f"{d or '.'}: CLAUDE.md and AGENTS.md are separate files — symlink one to the other")
     return violations
@@ -187,10 +187,13 @@ def collect():
         dirnames[:] = [d for d in dirnames if d not in {".git", "node_modules", "vendor", ".venv"}]
         for fn in filenames:
             path = os.path.join(dirpath, fn)
-            rel = os.path.relpath(path, ROOT)
+            # Posix-style rel keys on every OS - violation lines built from
+            # these are matched by audit_hook.py against its own normalized
+            # rel, so both sides must agree on the separator.
+            rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
             if fn in ("CLAUDE.md", "AGENTS.md"):
                 kind = "root_md" if os.path.dirname(rel) in ("", ".") else "nested_md"
-            elif rel.startswith(os.path.join(".claude", "rules")) and fn.endswith(".md"):
+            elif rel.startswith(".claude/rules") and fn.endswith(".md"):
                 kind = "rule"
             elif fn == "SKILL.md":
                 # Matched by filename, not a single CLI's directory.
@@ -199,9 +202,9 @@ def collect():
                 # followlinks=False keeps os.walk() from ever descending
                 # into .claude/skills.
                 kind = "skill"
-            elif fn.endswith(".md") and rel.startswith(os.path.join(".claude", "agents")):
+            elif fn.endswith(".md") and rel.startswith(".claude/agents"):
                 kind = "agent"
-            elif fn.endswith(".md") and rel.startswith("agent_docs" + os.sep) and fn != "harness-index.md":
+            elif fn.endswith(".md") and rel.startswith("agent_docs/") and fn != "harness-index.md":
                 # Hand-authored deep-dive docs (architecture.md, incidents.md) -
                 # no token budget (not always-loaded), but still checked for
                 # dead references and duplicate rules. harness-index.md is
