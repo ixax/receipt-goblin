@@ -16,6 +16,8 @@ x-clickhouse-loadtest-user: &clickhouse-loadtest-user ${CLICKHOUSE_LOADTEST_USER
 x-clickhouse-loadtest-password: &clickhouse-loadtest-password ${CLICKHOUSE_LOADTEST_PASSWORD:?set CLICKHOUSE_LOADTEST_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-mcp-stats-user: &clickhouse-mcp-stats-user ${CLICKHOUSE_MCP_STATS_USER:?set CLICKHOUSE_MCP_STATS_USER, e.g. in a .env file next to docker-compose.yml}
 x-clickhouse-mcp-stats-password: &clickhouse-mcp-stats-password ${CLICKHOUSE_MCP_STATS_PASSWORD:?set CLICKHOUSE_MCP_STATS_PASSWORD, e.g. in a .env file next to docker-compose.yml}
+x-clickhouse-mcp-user: &clickhouse-mcp-user ${CLICKHOUSE_MCP_USER:?set CLICKHOUSE_MCP_USER, e.g. in a .env file next to docker-compose.yml}
+x-clickhouse-mcp-password: &clickhouse-mcp-password ${CLICKHOUSE_MCP_PASSWORD:?set CLICKHOUSE_MCP_PASSWORD, e.g. in a .env file next to docker-compose.yml}
 # Main app database, created by the clickhouse container itself at startup
 # (CLICKHOUSE_DB below).
 x-clickhouse-database: &clickhouse-database ${CLICKHOUSE_DATABASE:?set CLICKHOUSE_DATABASE, e.g. in a .env file next to docker-compose.yml}
@@ -46,6 +48,7 @@ x-clickhouse-bootstrap-password: &clickhouse-bootstrap-password ${CLICKHOUSE_BOO
 
 x-grafana-port: &grafana-port ${GRAFANA_PORT:-3000}
 x-mcp-stats-port: &mcp-stats-port ${MCP_STATS_PORT:-8002}
+x-mcp-dev-port: &mcp-dev-port ${MCP_DEV_PORT:-8001}
 
 # Host root dir backup/restore scripts read/write ($BACKUP_DIR, default .backups - see README.md's "Backup & restore" section).
 # Used directly as ${BACKUP_DIR:-.backups} below, not via an anchor, since anchors can't be concatenated into a bind mount's host-side path.
@@ -233,6 +236,49 @@ services:
     networks:
       - receipt-goblin
 
+  mcp-dev:
+    # MCP server exposing arbitrary read-only SQL against ClickHouse (`query`/`profile_query`) - the sanctioned
+    # read path for an agent, see agent_docs/rules/clickhouse-access.md.
+    # Opt-in `mcp` profile, not started by a plain `docker compose up` - run `make mcp-up`.
+    # It is defined here rather than in docker-compose.dev.yml (which only overlays bind-mounts onto it) so that
+    # "which services run" stays a profile decision and "how code gets into them" stays the ENVIRONMENT
+    # decision.
+    # Kept in the dev file, a production `make up` saw a running mcp-dev as an orphan container.
+    #
+    # Unlike mcp-stats below, it has NO auth and accepts any SELECT its ClickHouse role can run, so the
+    # load-balancer publishes its port on 127.0.0.1 only - see that `ports:` entry.
+    profiles:
+      - mcp
+    build:
+      context: .
+      dockerfile: services/mcp-dev/Dockerfile
+      args:
+        - PYTHON_VERSION=${PYTHON_VERSION}
+    image: receipt-goblin-mcp-dev:${MCP_DEV_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
+    container_name: receipt-goblin-mcp-dev
+    environment:
+      CLICKHOUSE_HOST: *clickhouse-host
+      CLICKHOUSE_PORT: *clickhouse-port
+      CLICKHOUSE_MCP_USER: *clickhouse-mcp-user
+      CLICKHOUSE_MCP_PASSWORD: *clickhouse-mcp-password
+      CLICKHOUSE_DATABASE: *clickhouse-database
+      MCP_DEV_PORT: *mcp-dev-port
+    mem_limit: 256m
+    restart: always
+    labels:
+      - autoheal=true
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - receipt-goblin
+
   mcp-stats:
     # Prod-facing MCP server (fixed statistics tools, e.g. whatsup) - ships alongside litellm/grafana.
     # Unlike mcp-dev (dev-only, arbitrary SQL, no auth), every request other than /health/`/metrics` must carry a valid LiteLLM virtual key - see services/mcp-stats/src/server.py's AuthMiddleware.
@@ -251,6 +297,7 @@ services:
       CLICKHOUSE_MCP_STATS_PASSWORD: *clickhouse-mcp-stats-password
       CLICKHOUSE_DATABASE: *clickhouse-database
       MCP_STATS_PORT: *mcp-stats-port
+      MCP_DEV_PORT: *mcp-dev-port
       LITELLM_MASTER_KEY: *litellm-master-key
       LITELLM_BASE_URL: *litellm-base-url
     mem_limit: 256m
@@ -407,6 +454,16 @@ services:
         published: *grafana-port
       - target: 8002
         published: *mcp-stats-port
+      # mcp-dev (opt-in `mcp` profile) - 502s per-request until that profile is started, same as prometheus
+      # and langfuse-web below, because nginx.conf resolves its backend through a variable rather than an
+      # upstream block.
+      # Published unconditionally so toggling the profile never has to recreate the gateway.
+      #
+      # host_ip pins it to the loopback interface, and this is the only port here that does: mcp-dev takes
+      # arbitrary SQL with no auth, so it must not be reachable from anywhere but this host.
+      - target: 8001
+        published: *mcp-dev-port
+        host_ip: 127.0.0.1
       - target: 8123
         published: *clickhouse-http-port
       - target: 9000

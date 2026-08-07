@@ -197,6 +197,13 @@ def main() -> None:
                     compose_files, bootstrap_user, bootstrap_password,
                     f"{grant.format(database=database)} TO {user}",
                 )
+            # Revokes run after grants by construction - they carve columns back
+            # out of a broad grant, so the grant has to exist first.
+            for revoke in role.revokes:
+                _clickhouse_client(
+                    compose_files, bootstrap_user, bootstrap_password,
+                    f"{revoke.format(database=database)} FROM {user}",
+                )
     finally:
         if was_already_running:
             print("\nclickhouse was already running before this script started - leaving it up.")

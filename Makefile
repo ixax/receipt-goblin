@@ -29,12 +29,26 @@ endif
 
 OVERRIDE_COMPOSE_FILE := $(if $(wildcard docker-compose.override.yml),-f docker-compose.override.yml,)
 
-# Base files without override (for use in the profile stacks below)
-COMPOSE_FILES_BASE := $(COMPOSE_FILES)
-
+# The two opt-in stacks are layered in unconditionally, on every target, and
+# gated purely by their compose profile (`profiles: [observability]` /
+# `[langfuse]`) - exactly like mcp-dev's `[mcp]` inside docker-compose.yml.
+# They stay in their own files only to keep 17KB of optional services out of
+# docker-compose.yml, which is a readability choice, not a scoping one.
+#
+# Layering them everywhere is what stops `make up` from reporting eight
+# running observability containers as orphans and offering to delete them:
+# compose calls a container an orphan when its service is absent from the
+# files it was handed, and a profile-gated service is present-but-inactive,
+# not absent. Neither file declares a required (`:?`) variable beyond the
+# image tags every target already exports, so nothing new can fail to
+# interpolate.
+COMPOSE_FILES += -f docker-compose.observability.yml -f docker-compose.langfuse.yml
 COMPOSE_FILES += $(OVERRIDE_COMPOSE_FILE)
-OBSERVABILITY_COMPOSE_FILES := $(COMPOSE_FILES_BASE) -f docker-compose.observability.yml $(OVERRIDE_COMPOSE_FILE)
-LANGFUSE_COMPOSE_FILES := $(COMPOSE_FILES_BASE) -f docker-compose.langfuse.yml $(OVERRIDE_COMPOSE_FILE)
+
+# Kept as names rather than inlined so the profile targets below still read as
+# "the observability stack" / "the langfuse stack" at their call sites.
+OBSERVABILITY_COMPOSE_FILES := $(COMPOSE_FILES)
+LANGFUSE_COMPOSE_FILES := $(COMPOSE_FILES)
 
 PORT := $(if $(strip $(LITELLM_PORT)),$(LITELLM_PORT),4000)
 # Full proxy URI, in case LiteLLM isn't on localhost (a shared/remote host) -
@@ -106,7 +120,7 @@ export PYTHON_VERSION
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	archive-prometheus archive-clickhouse-logs \
-	observability-up observability-down observability-logs observability-status loadtest \
+	observability-up observability-down observability-logs observability-status mcp-up mcp-down mcp-logs mcp-status loadtest \
 	loadtest-fixtures loadtest-fixtures-status
 
 # The six langfuse-* services (see docker-compose.yml) all carry
@@ -119,6 +133,11 @@ LANGFUSE_SERVICES := langfuse-web langfuse-worker langfuse-db langfuse-clickhous
 # `profiles: [observability]` - same reasoning as LANGFUSE_SERVICES above,
 # list them explicitly so a scoped up/down/logs/status never touches core.
 OBSERVABILITY_SERVICES := prometheus blackbox redis-exporter loki alloy cadvisor node-exporter nginx-exporter
+
+# mcp-dev carries `profiles: [mcp]` (see docker-compose.yml) - same reasoning
+# as the two lists above. One service today, but named as a list so a second
+# opt-in MCP server joins without reshaping these targets.
+MCP_SERVICES := mcp-dev
 
 # Every other target depends on this so the active environment is always
 # printed loudly before anything else runs - ENVIRONMENT=production is a
@@ -282,6 +301,30 @@ observability-logs: check-env
 
 observability-status: check-env
 	docker compose $(OBSERVABILITY_COMPOSE_FILES) --profile observability ps $(OBSERVABILITY_SERVICES)
+
+# Opt-in mcp-dev (arbitrary read-only SQL over MCP - the sanctioned agent read
+# path, see agent_docs/rules/clickhouse-access.md). Never starts automatically:
+# it has no auth, so running it is a deliberate act, not a side effect of the
+# environment. Uses $(COMPOSE_FILES), so ENVIRONMENT still decides whether the
+# container gets bind-mounted source and --reload.
+#
+# The load-balancer publishes 127.0.0.1:8001 for it unconditionally, so
+# toggling this profile never recreates the gateway - the port just 502s while
+# the profile is down.
+mcp-up: check-env
+	docker compose $(COMPOSE_FILES) --profile mcp up -d --build $(MCP_SERVICES)
+
+# Same trap as observability-down/langfuse-down: `--profile mcp down` with no
+# service args would tear the core stack down too, since the profile activates
+# *in addition to* default services.
+mcp-down: check-env
+	docker compose $(COMPOSE_FILES) --profile mcp down $(MCP_SERVICES)
+
+mcp-logs: check-env
+	docker compose $(COMPOSE_FILES) --profile mcp logs -f $(MCP_SERVICES)
+
+mcp-status: check-env
+	docker compose $(COMPOSE_FILES) --profile mcp ps $(MCP_SERVICES)
 
 # Runs each service's test directory as its own pytest invocation, plus
 # services/_common/tests (the shared ingest_parsing/ingest_db/fastjson

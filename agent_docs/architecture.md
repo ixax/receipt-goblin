@@ -10,9 +10,14 @@ Single-service content (queue/worker split, gateway, per-file breakdowns, `fastj
   `services/litellm/user_configs/*.yaml` (gitignored, may carry real remote-model hosts/keys) is baked into the `litellm` image at build time even in prod, not bind-mounted.
   A changed source needs `docker compose build litellm` in prod.
 - `docker-compose.dev.yml` is an override file layering everything needing live-editing: bind-mounted `services/*/src`, `config.yml`, Grafana's dashboards/provisioning, `litellm`'s `user_configs/` only, `--reload` for `webhook`.
-  `mcp-dev` is the one exception - it has no definition in `docker-compose.yml` at all; `docker-compose.dev.yml` is its full service definition (build/image/environment/healthcheck/depends_on/networks), not just a bind-mount overlay.
+  `docker-compose.dev.yml` decides only how code reaches a container, never which containers exist.
+  Which optional services run is a compose-profile decision with its own `make` target: `mcp-up`, `observability-up`, `langfuse-up`.
+  `mcp-dev` used to break that split by living in the dev file in full, which made a production `make up` treat a running one as an orphan and drop the load-balancer's port for it; it sits in `docker-compose.yml` behind `profiles: [mcp]` now.
   `mcp-stats` is not part of that exception - it's a normal prod service, fully defined in `docker-compose.yml`, with no dev override.
 - `Makefile`'s `ENVIRONMENT` (`.env`, default `development`) picks which files `check-env` puts in `COMPOSE_FILES`: anything but exactly `production` layers both files, `production` uses `docker-compose.yml` alone.
+  `docker-compose.observability.yml` and `docker-compose.langfuse.yml` are then layered on unconditionally, on every target, and gated by their own compose profile rather than by the file list.
+  They are separate files only to keep 17KB of optional services out of `docker-compose.yml`.
+  Loading them everywhere is what stops a plain `make up` from reporting their running containers as orphans: compose calls a container an orphan when its service is absent from the files it was handed, and a profile-gated service is present-but-inactive, not absent.
   Every target depends on `check-env`, which prints `⚠️ ENVIRONMENT=...` first.
   `ENVIRONMENT` is captured from the shell/`.env` before `include .env` runs, then restored after.
   This stops a shell-exported `ENVIRONMENT=production make start` from being silently overwritten by `.env`'s own `development` default: `include`'s plain `=` assignment is file-origin, and GNU Make lets a file-origin assignment override an environment-origin variable - the reverse of what you'd expect.

@@ -7,26 +7,14 @@
 # below (user_configs/ only) - its own config.yaml/entrypoint still need a
 # rebuild like redis.
 #
-# mcp-dev is the one exception to "override": it has no definition at
-# all in docker-compose.yml anymore, so its block below is a full service
-# definition (build/image/environment/healthcheck/depends_on/networks),
-# not just a bind-mount/--reload overlay - it's dev-only, never runs in
-# ENVIRONMENT=production. load-balancer gets a small override alongside it
-# to publish mcp-dev's port, bound to 127.0.0.1 only (defense-in-depth
-# safety net, unlike every other port it publishes on all interfaces).
-# mcp-stats is the prod-facing sibling (see docker-compose.yml) - it receives
-# a minimal override below to mount the shared ./services/_common/src only
-# (no src bind-mount/--reload for mcp-stats itself yet).
-
-x-default-logging: &default-logging
-  driver: json-file
-  options:
-    max-size: "10m"
-    max-file: "5"
-
-x-clickhouse-mcp-user: &clickhouse-mcp-user ${CLICKHOUSE_MCP_USER:?set CLICKHOUSE_MCP_USER, e.g. in a .env file next to docker-compose.yml}
-x-clickhouse-mcp-password: &clickhouse-mcp-password ${CLICKHOUSE_MCP_PASSWORD:?set CLICKHOUSE_MCP_PASSWORD, e.g. in a .env file next to docker-compose.yml}
-x-mcp-dev-port: &mcp-dev-port ${MCP_DEV_PORT:-8001}
+# Every block here is a true override - this file decides how code reaches a container, never which
+# containers exist.
+# Whether an optional service runs is a compose-profile decision instead, activated by its own `make` target:
+# `mcp-up`, `observability-up`, `langfuse-up`.
+# mcp-dev used to break that rule by living here in full, which made a production `make up` treat it as an
+# orphan; it is defined in docker-compose.yml behind the `mcp` profile now, and only overridden below.
+# mcp-stats is its prod-facing sibling, and gets a minimal override that mounts the shared
+# ./services/_common/src only (no src bind-mount/--reload for mcp-stats itself yet).
 
 services:
   clickhouse-migrate:
@@ -59,53 +47,14 @@ services:
       - ./services/_common/src:/app/common:ro
 
   mcp-dev:
-    # Dev-only service - no definition in docker-compose.yml at all, so this is the full definition, not an overlay.
-    # Prod image is self-contained (config.yml baked in); the volumes/command below bind-mount ./src over /app/src and add --reload for live editing; dependency changes still need `make lock` plus a rebuild either way.
-    build:
-      context: .
-      dockerfile: services/mcp-dev/Dockerfile
-      args:
-        - PYTHON_VERSION=${PYTHON_VERSION}
-    image: receipt-goblin-mcp-dev:${MCP_DEV_TAG:?run via `make`, not `docker compose` directly - see VERSIONS.yml}
-    container_name: receipt-goblin-mcp-dev
-    environment:
-      CLICKHOUSE_HOST: ${CLICKHOUSE_HOST:-clickhouse}
-      CLICKHOUSE_PORT: 8123
-      CLICKHOUSE_MCP_USER: *clickhouse-mcp-user
-      CLICKHOUSE_MCP_PASSWORD: *clickhouse-mcp-password
-      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:?set CLICKHOUSE_DATABASE, e.g. in a .env file next to docker-compose.yml}
-      MCP_DEV_PORT: *mcp-dev-port
-    mem_limit: 256m
-    restart: always
-    logging: *default-logging
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=2)"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    depends_on:
-      clickhouse:
-        condition: service_healthy
-    networks:
-      - receipt-goblin
+    # Overlay only - the service itself is defined in docker-compose.yml behind the `mcp` profile, and its
+    # 127.0.0.1 port publish sits on the load-balancer there.
+    # Still opt-in in dev too: `make mcp-up` activates the profile, this file only decides how code reaches it.
     volumes:
       - ./services/mcp-dev/src:/app/src:ro
       - ./services/mcp-dev/config.yml:/app/config.yml:ro
       - ./services/_common/src:/app/common:ro
     command: ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
-
-  load-balancer:
-    # Dev-only: publish mcp-dev's port bound to 127.0.0.1 only (defense-
-    # in-depth safety net - mcp-dev itself is dev-only and shouldn't be
-    # reachable from anywhere but the host it's running on). Every other
-    # port docker-compose.yml's load-balancer publishes (including
-    # mcp-stats) binds to all interfaces; this is the one exception.
-    environment:
-      MCP_DEV_PORT: *mcp-dev-port
-    ports:
-      - target: 8001
-        published: *mcp-dev-port
-        host_ip: 127.0.0.1
 
   mcp-stats:
     volumes:

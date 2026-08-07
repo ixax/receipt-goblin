@@ -26,7 +26,9 @@ Reference for the most-queried tables (not exhaustive - check `services/clickhou
 - `agent_usage` - one row per model call: tokens (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens` + 1h/5m breakdown), `model`, `agent_name`/`skill_name`/`command_name`/version, `mcp_tool_name`, `stop_reason`.
   `cost`/`input_cost`/`output_cost` come straight from LiteLLM's `response_cost`/`cost_breakdown` - `sum()` directly, no join.
   Never derive cost via a price table/`ASOF JOIN` (`agent_docs/incidents.md`, "`model_pricing` cost overcounting").
-- `agent_messages` - one row per call: `prompt_text`/`response_text`, keyed `(session_id, turn_id, agent_name)` (`turn_id` always `0` - join on it anyway for schema consistency).
+- `agent_messages` - one row per call, keyed `(session_id, turn_id, agent_name)` (`turn_id` always `0` - join on it anyway for schema consistency).
+  Its `prompt_text`/`response_text` are unreadable through this tool: the `mcp` role has them revoked, so naming either one - including inside `length()`, `substring()`, or a `WHERE` - fails the whole query with `ACCESS_DENIED`, and so does `SELECT *` on this table.
+  Every other column is readable; list them explicitly.
 
 No registry table for agent/skill versions - `min(timestamp)` for that version in `agent_usage`/`agent_events` tells when it started being used.
 
