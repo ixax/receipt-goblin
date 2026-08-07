@@ -83,6 +83,10 @@ SINGLEQUOTE_VAR_DEFAULTS = {
     # in this dashboard's queries, not '__all__' like every other multi-select -
     # confirmed against the actual rawSql, don't "fix" this to '__all__'.
     "session_id": "",
+    # Client-attribution variables (migration 016_client_attribution, Clients tab).
+    "client_product": "__all__",
+    "client_surface": "__all__",
+    "ingest_path": "__all__",
 }
 BARE_VAR_DEFAULTS = {
     # bare $name form, used inside existing quotes/expressions
@@ -91,12 +95,50 @@ BARE_VAR_DEFAULTS = {
     "window": "3600",
     "trace_width_budget": "120",
     "trace_ts": "",
+    # Panel 99 (Fork tree) interpolates the bare $session_id form inside its own quotes, unlike the
+    # ${session_id:singlequote} spelling every other session-scoped panel uses.
+    # Same no-filter sentinel as its singlequote twin above: this panel is a drill-down and is meant to be
+    # empty until a session is picked.
+    "session_id": "",
 }
 DEFAULT_HOURS = 24
 
-_TIME_FILTER_RE = re.compile(r"\$__timeFilter\(([^)]+)\)")
+_TIME_FILTER_OPEN = "$__timeFilter("
 _SINGLEQUOTE_RE = re.compile(r"\$\{(\w+):singlequote\}")
-_BARE_VAR_RE = re.compile(r"\$(\w+)\b")
+# Both spellings Grafana accepts for the same variable: $name and ${name}.
+# The braced form is what every `toStartOfInterval(..., INTERVAL ${window} SECOND)` in this dashboard uses, and
+# missing it left those queries with a literal "${window}" that is not valid SQL.
+_BARE_VAR_RE = re.compile(r"\$\{(\w+)\}|\$(\w+)\b")
+
+
+def _substitute_time_filter(sql: str, hours: int) -> str:
+    """Replaces every `$__timeFilter(<expr>)` with `<expr> >= now() - INTERVAL <hours> HOUR`.
+
+    Scans for the matching close paren rather than using a regex, because `<expr>` is often itself a call -
+    `$__timeFilter(toDateTime(s.day))` on the Subscription tab is the case that matters.
+    A regex stopping at the first ")" swallowed the inner one and produced `toDateTime(s.day >= now() - ...)`,
+    which ClickHouse rejects as "Invalid type for filter in WHERE: DateTime" - a resolver artifact that looks
+    exactly like a broken panel.
+    """
+    out = []
+    rest = sql
+    while True:
+        start = rest.find(_TIME_FILTER_OPEN)
+        if start == -1:
+            out.append(rest)
+            return "".join(out)
+        cursor = start + len(_TIME_FILTER_OPEN)
+        depth = 1
+        while cursor < len(rest) and depth:
+            depth += {"(": 1, ")": -1}.get(rest[cursor], 0)
+            cursor += 1
+        if depth:  # unbalanced - leave the macro alone rather than mangle the query
+            out.append(rest)
+            return "".join(out)
+        expression = rest[start + len(_TIME_FILTER_OPEN):cursor - 1]
+        out.append(rest[:start])
+        out.append(f"{expression} >= now() - INTERVAL {hours} HOUR")
+        rest = rest[cursor:]
 
 
 def resolve_sql(raw_sql: str, hours: int, overrides: dict) -> tuple:
@@ -107,7 +149,7 @@ def resolve_sql(raw_sql: str, hours: int, overrides: dict) -> tuple:
     sql = raw_sql
     sql = sql.replace("$__fromTime", f"(now() - INTERVAL {hours} HOUR)")
     sql = sql.replace("$__toTime", "now()")
-    sql = _TIME_FILTER_RE.sub(lambda m: f"{m.group(1)} >= now() - INTERVAL {hours} HOUR", sql)
+    sql = _substitute_time_filter(sql, hours)
 
     def _sq(m):
         name = m.group(1)
@@ -118,7 +160,7 @@ def resolve_sql(raw_sql: str, hours: int, overrides: dict) -> tuple:
     sql = _SINGLEQUOTE_RE.sub(_sq, sql)
 
     def _bare(m):
-        name = m.group(1)
+        name = m.group(1) or m.group(2)
         if name in overrides:
             return overrides[name]
         if name in BARE_VAR_DEFAULTS:
@@ -126,7 +168,10 @@ def resolve_sql(raw_sql: str, hours: int, overrides: dict) -> tuple:
         return m.group(0)
     sql = _BARE_VAR_RE.sub(_bare, sql)
 
-    unresolved = sorted(set(_BARE_VAR_RE.findall(sql)) | set(_SINGLEQUOTE_RE.findall(sql)))
+    unresolved = sorted(
+        {name for pair in _BARE_VAR_RE.findall(sql) for name in pair if name}
+        | set(_SINGLEQUOTE_RE.findall(sql))
+    )
     return sql, unresolved
 
 
