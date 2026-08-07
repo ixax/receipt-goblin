@@ -75,3 +75,15 @@ Keep each entry a few lines max, no essays.
   If a validator rejection names a function as an unknown table, this is why.
 - `query`/`profile_query` accept an explicit `max_duration_s` parameter (default 10s, server-clamped to a hard cap in `config.yml`).
   Pass it directly for a known-slow query instead of embedding `SETTINGS max_execution_time` in the SQL text.
+
+## Alias named after the column it aggregates
+
+- `round(sum(cost), 2) AS cost` followed by another `sum(cost)` in the same SELECT fails with `Code: 184 ... Aggregate function sum(cost) is found inside another aggregate function (ILLEGAL_AGGREGATION)`.
+  The second reference resolves `cost` to the alias, not the column, so it expands to `sum(round(sum(cost), 2))`.
+  Fix: name the alias something the query never aggregates again (`total_cost`), rather than qualifying the column.
+
+## Joining a dimension table multiplies rows by its un-merged versions
+
+- `clients` (and any other `ReplacingMergeTree` dimension keyed by `id`) can hold several un-merged rows per id, so `LEFT JOIN clients ON event_client_id = id` silently multiplies that client's `count()`/`sum(cost)` by its version count.
+  Observed live: 7 rows over 5 ids tripled one client's spend, and the per-client totals summed to ~2x the table's own `count()`.
+  Fix: join `(SELECT id, argMax(value, updated_at) AS value FROM clients GROUP BY id)`, and cross-check that the grouped `calls` still sum to the source table's `count()` for the same window.
