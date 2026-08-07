@@ -67,6 +67,19 @@ Keep each entry a few lines max, no essays.
   This is a crossed/misattributed response under concurrent load, not a bug in the SQL that was actually submitted - confirmed by re-running the exact same resolved SQL alone (no concurrent calls) immediately after, which succeeds with plausible, stable cost numbers.
   Fix: if a `profile_query`/`query` error names a table/alias/column that doesn't appear in the SQL you sent, don't debug the SQL - re-run the identical call in isolation (no concurrent `query-perf-runner`/other ClickHouse calls in flight) before concluding anything, including before saving a `query_perf.py` "before"/"after" run built on that result.
 
+## Self-join fanout on a `ReplacingMergeTree` without dedup
+
+- `agent_invocations` is `ReplacingMergeTree(spawned_at) ORDER BY (agent_id)` with no `FINAL`/dedup applied by most panels - fine for a plain `count()` (un-merged duplicate `agent_id` rows only over-count additively), but a self-join (e.g. `agents_overview.json`'s B9/B7 delegation-pairs/depth-distribution panels: `child.parent_agent_id = parent.agent_id`) multiplies duplicates on both sides (2 child dup rows x 2 parent dup rows = 4 joined rows for what should be 1 pair), silently inflating pair/depth counts.
+  No duplicates observed live as of 2026-08-07 (`count()` == `count() FROM ... FINAL`), but panel-99 ("Fork tree")'s own `fork_dedup` CTE (`argMax(col, (spawned_at, col != '')) ... GROUP BY session_id, agent_id`) treats this as a real, designed-for hazard, not hypothetical.
+  Fix: dedup via the same `argMax(...) GROUP BY agent_id` pattern (cheap - no measurable cost difference in `profile_query` at current scale) before joining `agent_invocations` to itself; don't rely on raw `count()`/`JOIN` staying correct just because today's table is small and duplicate-free.
+
+## `UNION ALL` branch containing a JOIN blows up `memory_usage_bytes`, not `read_rows`
+
+- A `UNION ALL` combining a plain filtered `SELECT ... FROM t WHERE ...` branch with a second branch containing a self-`JOIN` (`agents_overview.json` B7 delegation-depth design: depth-1 branch is filter-only, depth-2/3+ branch joins `agent_invocations` to itself) reports `memory_usage_bytes` ~40-75x higher (~4.3-4.6MB vs ~50-140KB) than the same join run standalone (no `UNION ALL`) or the same `UNION ALL` with neither/both branches join-free - on a table of ~50 rows, so it's from query-plan/thread buffer allocation, not row volume.
+  Isolated by bisection: raw self-join alone (no union) = ~50-100KB; two non-join branches unioned = ~58KB; a non-join branch unioned with a join branch = ~4.3-4.6MB every time, reproducibly.
+  Not a correctness bug and, at least at this scale, not row-count-driven - `read_rows`/`query_duration_ms` stayed proportional to actual data (~3x single-table scan for the bounded design, low-ms wall clock).
+  Treat as a fixed per-plan overhead, not evidence the query got exponentially worse; re-verify at real scale via `profile_query` before assuming it's still negligible once the table has millions of rows.
+
 ## `mcp-dev` SQL validator (`services/mcp-dev/src/server.py`)
 
 - The `;`/keyword/`SYSTEM`/table-function checks scan SQL text with string literals masked out first, via quote-aware `_mask_string_literals` - unmasked, a literal containing `;` (e.g. HTML entities like `&amp;`) or a forbidden-looking word as plain text would false-reject.

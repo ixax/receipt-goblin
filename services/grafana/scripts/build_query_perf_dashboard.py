@@ -567,9 +567,17 @@ def main():
     out_spec = out["spec"]
     out_layout_tabs = out_spec["layout"]["spec"]["tabs"]
 
-    # drop any existing elements/layout entries for the tab(s) being (re)generated
-    regenerated_titles = {t["title"] for t in tab_entries}
-    out_layout_tabs[:] = [t for t in out_layout_tabs if t["spec"]["title"] not in regenerated_titles]
+    # drop any existing elements/layout entries for the tab(s) being (re)generated.
+    # A full rebuild (--tab omitted) regenerates every tab in the tree, so it replaces
+    # the whole tab list outright rather than filtering by title match - a title-match
+    # filter would leave behind any old mirror tab whose source tab was renamed or
+    # deleted since the tree was last built, since its stale title never matches a
+    # current tree title.
+    if args.tab:
+        regenerated_titles = {t["title"] for t in tab_entries}
+        out_layout_tabs[:] = [t for t in out_layout_tabs if t["spec"]["title"] not in regenerated_titles]
+    else:
+        out_layout_tabs[:] = []
 
     all_new_refs = []
     all_untagged = []
