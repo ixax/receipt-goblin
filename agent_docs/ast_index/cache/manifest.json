@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-07T08:08:10.943498+00:00",
+  "generated_at": "2026-08-07T09:38:22.375760+00:00",
   "files": {
     "hooks/ast_index/sync_hook.py": {
       "sha256": "c8959b7bd47119783c7c14eefd46cb4c76a873f6238107e6cca27706f4e89b48",
@@ -28,13 +28,13 @@
       "cache_path": "manifests/hooks/guard_destructive.py.json"
     },
     "hooks/harness_audit/audit.py": {
-      "sha256": "935b43e0bddd6919f579b9cef8f84ba793d4d9d11268244356dbe663e4f0af28",
-      "size": 11092,
+      "sha256": "de503e2b846c2a7828b0eaca368ee5de0e2d17a390e14bf77bc8238fae9f7bb3",
+      "size": 11295,
       "cache_path": "manifests/hooks/harness_audit/audit.py.json"
     },
     "hooks/harness_audit/audit_hook.py": {
-      "sha256": "f1ac87c97e4d05832422703c90871a5822c18d082560fb958c1f817974fce60d",
-      "size": 3820,
+      "sha256": "7917effcef5c9c498dff217c00c3f7e0b2a0aaeec31d077bcaeca2348016d84a",
+      "size": 3932,
       "cache_path": "manifests/hooks/harness_audit/audit_hook.py.json"
     },
     "hooks/harness_audit/budgets.py": {
@@ -58,8 +58,8 @@
       "cache_path": "manifests/hooks/harness_audit/md_format_bash_gate.py.json"
     },
     "hooks/harness_audit/md_format_skill_gate.py": {
-      "sha256": "4ad459809043430bd3c2c87645dda4d7c07aadb6f12a4fb584db0f3cdcd4a663",
-      "size": 7008,
+      "sha256": "b3d43027b56e7899a69952e3c0be0173c54c10620b52cdfbb72d41d9e9f30ce8",
+      "size": 7004,
       "cache_path": "manifests/hooks/harness_audit/md_format_skill_gate.py.json"
     },
     "hooks/harness_audit/self_delegation_gate.py": {
@@ -123,8 +123,8 @@
       "cache_path": "manifests/hooks/report_plan_proposal.py.json"
     },
     "scripts/ast_index.py": {
-      "sha256": "da6b58ca24556becaaf7c7d99ed948e1ba93d2207b2df209a80a45b3e285c773",
-      "size": 17662,
+      "sha256": "f8f04a6764cbd661208086910c4a63153f56127fa277997cefd0c996da8f8c78",
+      "size": 17973,
       "cache_path": "manifests/scripts/ast_index.py.json"
     },
     "scripts/resolve_image_version.py": {
@@ -133,8 +133,8 @@
       "cache_path": "manifests/scripts/resolve_image_version.py.json"
     },
     "scripts/sync_harness.py": {
-      "sha256": "a4ef688fb0cc432c75a0c90c57a1db56f8cb12739f1065d7098f969e9bc0e6ea",
-      "size": 4220,
+      "sha256": "372b23bf1d45e7a82617615366776e77f8f226323d09c454b2240e1b982bbddf",
+      "size": 4483,
       "cache_path": "manifests/scripts/sync_harness.py.json"
     },
     "scripts/wait_for_stack_healthy.py": {
@@ -213,8 +213,8 @@
       "cache_path": "manifests/services/_common/src/side_ingest.py.json"
     },
     "services/_common/tests/conftest.py": {
-      "sha256": "35aad47ae1c453b6d007828b4471bf6a13888a489b8523f986d83bdef5f82308",
-      "size": 1199,
+      "sha256": "81c25bfe9d82143afb8ed1cd3ecb0b31d90fc8764263982801cb496a3dd9a1ed",
+      "size": 1215,
       "cache_path": "manifests/services/_common/tests/conftest.py.json"
     },
     "services/_common/tests/test_fastjson.py": {
@@ -238,18 +238,18 @@
       "cache_path": "manifests/services/_common/tests/test_side_ingest.py.json"
     },
     "services/grafana/scripts/build_query_perf_dashboard.py": {
-      "sha256": "98f3a231e334800149833c1e5e2bbace386768bf7932d59722eb025fdcce7d10",
-      "size": 24495,
+      "sha256": "f83b78e6d68e82796657d05fa0cee2303b12b568eb2eb673368e8cb86cc80428",
+      "size": 24648,
       "cache_path": "manifests/services/grafana/scripts/build_query_perf_dashboard.py.json"
     },
     "services/grafana/scripts/extract_panel_tree.py": {
-      "sha256": "b82b9e1e2784b21a7f302b1635fdf05b9081c1b737bda4dc64e504e1c1475a44",
-      "size": 4736,
+      "sha256": "72839b7acb304261fc6e365f32731b44d64d6759bff590f547576221ffeb1391",
+      "size": 4889,
       "cache_path": "manifests/services/grafana/scripts/extract_panel_tree.py.json"
     },
     "services/grafana/scripts/parse_dashboard.py": {
-      "sha256": "5ecff3d2c8f70e5811a9ec1a79a1d4c7ffb749d48bb5ab715eabb7316ebc9b69",
-      "size": 5867,
+      "sha256": "44b8ba3ec4a870c957e51fe23482c30011027bb73f2476d4a09c0abe6f6db350",
+      "size": 6065,
       "cache_path": "manifests/services/grafana/scripts/parse_dashboard.py.json"
     },
     "services/grafana/scripts/query_perf.py": {
@@ -258,8 +258,8 @@
       "cache_path": "manifests/services/grafana/scripts/query_perf.py.json"
     },
     "services/grafana/scripts/tag_panel_queries.py": {
-      "sha256": "14b875bd12ef4f0faa4ab28a9d93bc49c66d38f8c426ec0c0c4c8177f5342ab4",
-      "size": 3030,
+      "sha256": "6033cb8d4c76ca84b15aba2b3045bec156c0d08f2a3cc4e212c6d5c84f98cb0d",
+      "size": 3183,
       "cache_path": "manifests/services/grafana/scripts/tag_panel_queries.py.json"
     },
     "services/init/ch_roles.py": {
@@ -271,6 +271,26 @@
       "sha256": "6d2dd7f9c19a6c19e9fb4cf21b4c77b87965bbf3474806c663ac485ed8b19e45",
       "size": 10422,
       "cache_path": "manifests/services/init/init_clickhouse_users.py.json"
+    },
+    "services/init/init_common.py": {
+      "sha256": "a5e7a2985dcd1e905bddc8659dd64cb1a66ad95501e181867aa5f5f300b5198c",
+      "size": 4379,
+      "cache_path": "manifests/services/init/init_common.py.json"
+    },
+    "services/init/init_environment.py": {
+      "sha256": "f748d6271e527f416f8877084a4030d33cac2d5d74a59ff9af9589f7d858f803",
+      "size": 2871,
+      "cache_path": "manifests/services/init/init_environment.py.json"
+    },
+    "services/init/init_litellm_key.py": {
+      "sha256": "0cb52d1fb03b0a75f3a2cdbf456a859266b922e3e60529d4afc736715ef8921e",
+      "size": 5518,
+      "cache_path": "manifests/services/init/init_litellm_key.py.json"
+    },
+    "services/init/litellm_provision.py": {
+      "sha256": "0e14d1e4c3178d561bf325e3ac534f4144b06316beb9dfdb43a19810c84df4ab",
+      "size": 1863,
+      "cache_path": "manifests/services/init/litellm_provision.py.json"
     },
     "services/litellm/custom_callbacks.py": {
       "sha256": "93553212d23fd519c7652d734a36932ae1b079cd31313cd9e8e90ee43c80e154",
@@ -416,31 +436,6 @@
       "sha256": "4d89ceb23bf03873351269e5a54b7207b7a38ca0f576ff0273f1b1e70b2a47c5",
       "size": 7026,
       "cache_path": "manifests/services/worker/tests/test_worker.py.json"
-    },
-    "services/init/init_common.py": {
-      "sha256": "a5e7a2985dcd1e905bddc8659dd64cb1a66ad95501e181867aa5f5f300b5198c",
-      "size": 4379,
-      "cache_path": "manifests/services/init/init_common.py.json"
-    },
-    "services/init/litellm_provision.py": {
-      "sha256": "0e14d1e4c3178d561bf325e3ac534f4144b06316beb9dfdb43a19810c84df4ab",
-      "size": 1863,
-      "cache_path": "manifests/services/init/litellm_provision.py.json"
-    },
-    "services/init/init_litellm_key.py": {
-      "sha256": "0cb52d1fb03b0a75f3a2cdbf456a859266b922e3e60529d4afc736715ef8921e",
-      "size": 5518,
-      "cache_path": "manifests/services/init/init_litellm_key.py.json"
-    },
-    "services/init/init_environment.py": {
-      "sha256": "f748d6271e527f416f8877084a4030d33cac2d5d74a59ff9af9589f7d858f803",
-      "size": 2871,
-      "cache_path": "manifests/services/init/init_environment.py.json"
-    },
-    "../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/26f4eff0-7ee3-432c-b6f1-5ccbd5900728/scratchpad/test_init_environment.py": {
-      "sha256": "84ac20a38b91aea32b85fb35011f60df1425f49f29a637c15f1a113e8970dfae",
-      "size": 1753,
-      "cache_path": "manifests/../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/26f4eff0-7ee3-432c-b6f1-5ccbd5900728/scratchpad/test_init_environment.py.json"
     }
   }
 }

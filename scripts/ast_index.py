@@ -75,7 +75,9 @@ def load_manifest() -> dict:
 def save_manifest(manifest: dict) -> None:
     manifest["generated_at"] = now_iso()
     MANIFEST.parent.mkdir(parents=True, exist_ok=True)
-    MANIFEST.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    # newline="\n": these files are committed, and Windows would otherwise translate every line ending to CRLF, so a plain `make ast-index` there rewrites all ~84 manifests in full - a 17k-line diff with no content change.
+    # Same reasoning as the Grafana dashboard sync scripts.
+    MANIFEST.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
 # --- AST extraction ----------------------------------------------------------------
@@ -199,7 +201,7 @@ def build_one(relpath: str, manifest: dict) -> bool:
         entry = {"path": relpath, "sha256": sha, "error": f"SyntaxError: {e}"}
     cache_path = FILES_DIR / f"{relpath}.json"
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(json.dumps(entry, indent=2) + "\n", encoding="utf-8")
+    cache_path.write_text(json.dumps(entry, indent=2) + "\n", encoding="utf-8", newline="\n")
     manifest["files"][relpath] = {
         "sha256": sha,
         "size": len(data),

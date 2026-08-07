@@ -1,6 +1,6 @@
 {
   "path": "scripts/sync_harness.py",
-  "line_count": 115,
+  "line_count": 118,
   "module_docstring": "Generate agent_docs/harness-index.md from .claude/agents.\n\nSingle source of truth stays in each agent file's frontmatter.\nThis script only derives an index so a non-Claude CLI (Codex) can discover\nagents without native triggering.\nNever edit the output by hand.\n\nAgents stay .claude-only - Codex has no Task-tool/subagent equivalent to\nscan for.\nSkills are not indexed here: both harnesses discover them natively from\n.agents/skills/ (Codex reads that path directly; Claude Code reads it via\nthe .claude/skills symlink).\n\nUsage:\n  uv run python3 scripts/sync_harness.py           # (re)write the index\n  uv run python3 scripts/sync_harness.py --check   # exit 1 if the index is stale (CI/guardian)",
   "imports": [
     {
@@ -85,7 +85,7 @@
       "docstring": null,
       "is_async": false,
       "line_start": 71,
-      "line_end": 92
+      "line_end": 94
     },
     {
       "qualname": "main",
@@ -95,9 +95,9 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 95,
-      "line_end": 111
+      "line_start": 97,
+      "line_end": 114
     }
   ],
-  "sha256": "a4ef688fb0cc432c75a0c90c57a1db56f8cb12739f1065d7098f969e9bc0e6ea"
+  "sha256": "372b23bf1d45e7a82617615366776e77f8f226323d09c454b2240e1b982bbddf"
 }
