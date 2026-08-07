@@ -1,14 +1,15 @@
 # `_common`
 
-Shared code for `webhook`/`webhook-worker`/`reparse`, at `services/_common/src/`.
+Shared parsing, source-adapter, and ClickHouse code for `webhook`/`webhook-worker`/`reparse`, at `services/_common/src/`.
 Not its own compose service - imported by the other ingest services below.
 
 ## Why a queue in front of ClickHouse
 
 - ClickHouse handles a few large batched inserts far better than many small per-request ones (merge/part amplification, connection overhead per insert).
-  Under many concurrent Claude Code/Codex sessions routed through LiteLLM, one `client.insert()` per `StandardLoggingPayload` synchronously inside `webhook`'s HTTP handler would mean many small inserts/sec hitting ClickHouse directly, with backpressure onto `webhook` (and LiteLLM retries) if it falls behind.
+  Under many concurrent proxied and direct agent sessions, one `client.insert()` per usage payload synchronously inside `webhook`'s HTTP handler would mean many small inserts/sec hitting ClickHouse directly, with backpressure onto `webhook` if it falls behind.
 - `webhook` only enqueues onto `redis`.
-  `webhook-worker` is the only thing that talks to ClickHouse for `/api/v1/metrics` traffic, and the only thing calling `common.ingest_parsing.build_event()` (per payload, on decode - pure, no I/O), batched via `common.ingest_db.ingest_events_batch()`.
+  `webhook-worker` is the only thing that talks to ClickHouse for `/api/v1/metrics` and `/api/v1/usage-events` traffic.
+  It calls `common.ingest_adapters.build_ingest_event()` per payload, which dispatches to the LiteLLM or Claude-transcript adapter before batching through `common.ingest_db.ingest_events_batch()`.
   Keeping `build_event()`'s CPU-bound parsing (regex classification, message scanning, JSON work) off `webhook`'s request path matters under load: load testing (`make loadtest`) showed p99 latency climbing under sustained concurrency when parsing ran inline in a single-threaded event loop, serializing behind whichever request's parsing got there first.
 - `request.json()`/`json.dumps()` themselves are real CPU work - parsing and re-serializing a ~360KB-1.5MB `StandardLoggingPayload` twice per request pegged `webhook-1`/`webhook-2` (each `cpus: 1.0`) at 65-96% CPU under load even with `build_event()` off the request path.
   Fix: `services/webhook/src/queue.py`'s `enqueue_raw(body: bytes)` - `server.py`'s handler reads `await request.body()` (raw bytes) and, for the common single-payload case, `XADD`s those bytes onto `redis` completely unparsed, zero `json.loads`/`json.dumps` on the request path.
@@ -19,10 +20,23 @@ Not its own compose service - imported by the other ingest services below.
 ## Per-file breakdown
 
 - `ingest_parsing.py` - parses `StandardLoggingPayload` (incl. `Agent`/`Skill` tool_use blocks in `messages`); pure, no ClickHouse import.
-  `build_event()` is the DB-free entry point called from `worker.py`.
-- `ingest_db.py` - the ClickHouse-I/O half: `ingest_events_batch()` (the batched-insert path writing `agent_events`/`agent_usage`/`agent_messages`/`agent_invocations`) and `reparse_event()` (the reparse-only entry point), plus `get_client()` (shared by both, and by `services/webhook/src/ingest.py` below).
-  `ingest_git_branch`/`ingest_plan_proposal`/`ingest_litellm_alert` moved to `services/webhook/src/ingest.py` - single-caller functions, only ever called from `server.py` (see `plans/common-module-cleanup-refactor.md`).
-  They still feed `session_git_branch` (see `hooks/report_git_branch.py`) and `plan_proposals` (see `hooks/report_plan_proposal.py`) - both stay direct-to-ClickHouse, not queued (single low-volume insert per CLI session start / `ExitPlanMode` call).
+  `build_event()` is the DB-free LiteLLM adapter entry point called through `ingest_adapters.py`.
+- `client_attribution.py` - resolves normalized `client_product`, `client_surface`, and `ingest_path` values at the adapter boundary.
+  It trusts only allowlisted explicit values, distinguishes Codex CLI/Desktop through the originator marker, and keeps ambiguous inputs as `unknown`.
+- `usage_envelope.py` - validates and normalizes the versioned `UsageEnvelopeV1` contract for direct clients.
+  Its strict allowlist excludes prompts, responses, messages, and tool arguments.
+  Identity is accepted from the server-side virtual-key lookup, not trusted from the collector.
+- `claude_transcript_adapter.py` - converts a normalized direct Claude envelope into the existing ingest row bundle.
+  It emits event/usage/source/dimension rows but no `agent_messages` row.
+  The transcript `requestId`/envelope `event_id` becomes `litellm_call_id` for retry dedupe.
+- `ingest_adapters.py` - worker-side source registry.
+  Redis entries without an explicit adapter use `litellm_standard`.
+  Direct transcript entries use `claude_transcript`.
+- `model_pricing.py` - fetches and caches LiteLLM's live public model cost map for direct-call API-equivalent estimates.
+  A failed refresh leaves pricing unavailable for that event and retries after 30 seconds instead of inventing a fallback rate.
+- `ingest_db.py` - the ClickHouse-I/O half: `ingest_events_batch()` (the batched-insert path writing `agent_events`/`agent_usage`/`agent_messages`/`agent_invocations`) and `reparse_event()` (the reparse-only entry point), plus `get_client()`.
+  The batch-side client dictionary resolution patches both `agent_events.event_client_id` and `agent_usage.client_id` with the same exact-client ID.
+- `side_ingest.py` - builds and inserts the worker's low-volume `session_git_branch`, `plan_proposals`, and `litellm_alerts` side-stream rows.
 - `config/` - per-concern tunables (`clickhouse.py`, `clickhouse_credentials.py`, `redis.py`, `litellm.py`, `queue.py`), env-derived, no in-code defaults for the required ones.
   `config/queue.py` loads the queue-mechanics constants (`STREAM_KEY`, `CONSUMER_GROUP`, `MAXLEN`, `BATCH_SIZE`, `FLUSH_INTERVAL_MS`, `STALE_IDLE_MS`) from `queue.yml` (sizing rationale lives there).
   `queue.yml` itself sits at `services/_common/queue.yml`, beside `src/` rather than inside it - config data doesn't belong under source, matching the `config.yml`-beside-`src/` pattern other services (`reparse`, `mcp-dev`, `grafana`) already use.
@@ -30,11 +44,13 @@ Not its own compose service - imported by the other ingest services below.
   `FIXTURES_DIR` and `REPARSE_CHUNK_SIZE` stay service-local (read directly in `loadtest.py`/`reparse.py`), not part of this shared package.
 - No more `queue_client.py` here - it split by service, since the producer (`server.py`) and consumer (`worker.py`) halves never shared code, only the `config/queue.py`/`config/redis.py` constants above.
   `services/webhook/src/queue.py` has `enqueue_raw(body: bytes)`, the request path's entry point - `XADD`s the raw POST body onto `config.queue.STREAM_KEY` unparsed for the common single-payload case, falling back to `enqueue(payloads: list)` (one `XADD` per already-parsed payload) only for a bundled `log_format: json_array` body.
+  `enqueue_usage_events()` pipelines a validated direct-usage batch onto the same stream with `adapter=claude_transcript` and propagates Redis failures so the caller's durable outbox can retry.
   No `build_event()` call here, deliberately - `config.queue.MAXLEN ~ 1500`, sized so a stuck worker can't grow `redis` past its `mem_limit`.
   `services/worker/src/queue.py` has `get_redis()`, the consumer's blocking client.
 - `fastjson.py` - see "`fastjson` adoption status" below.
 
-The pure/DB-touching `ingest_parsing`/`ingest_db` pytest suite (real payloads from `tests/captures/`) lives at `services/_common/tests/`.
+The common pytest suite covers LiteLLM parsing/DB writes, `UsageEnvelopeV1`, the Claude transcript adapter/collector, and direct-call pricing.
+Real LiteLLM payloads live under `services/_common/tests/captures/`.
 Run with `make test-services` (a separate pytest invocation per service directory - see the `Makefile`), always via `runner-test`, never inline.
 
 ## `fastjson` adoption status

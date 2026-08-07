@@ -126,6 +126,10 @@ def test_ingest_events_batch_success_resolves_and_dedups_client_rows(monkeypatch
     event_client_id_idx = db._EVENT_COLUMNS.index("event_client_id")
     assert all(row[event_client_id_idx] == client_rows[0][0] for row in event_rows)
 
+    usage_rows = next(rows for table, rows, _cols in fake_client.inserts if table == "agent_usage")
+    usage_client_id_idx = db._USAGE_COLUMNS.index("client_id")
+    assert all(row[usage_client_id_idx] == client_rows[0][0] for row in usage_rows)
+
 
 def test_ingest_events_batch_unsuccess_empty_list_skips_client_entirely(monkeypatch):
     monkeypatch.setattr(db, "get_client", lambda: (_ for _ in ()).throw(AssertionError("get_client should not be called")))

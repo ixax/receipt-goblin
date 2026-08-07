@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from common import fastjson as json
+from common.client_attribution import from_litellm_payload
 
 _AGENT_ID_RE = re.compile(r"agentId:\s*([0-9a-f]+)")
 _COMMAND_NAME_RE = re.compile(r"<command-name>/?(.*?)</command-name>")
@@ -85,6 +86,17 @@ _TOOL_ARG_KEY_PREFERENCE = ("file_path", "command", "sql", "url", "query", "desc
 # provider classification for agent_usage.provider, computed once at
 # ingest instead of duplicated across ~30 Grafana panels.
 _PROVIDER_OPENAI_RE = re.compile(r"^(gpt-|chatgpt-|o[0-9]|text-embedding-|dall-e-|whisper|tts-)")
+
+# billing_mode classification for agent_usage.billing_mode, same ingest-time-not-per-panel reasoning as the provider regex above.
+#
+# These are the models services/litellm/config.yaml declares with no api_key, reaching the provider through the caller's own OAuth token instead.
+# claude-* goes against a `claude login` Pro/Max/Team subscription, gpt-5.6-* through litellm's `chatgpt` provider against a ChatGPT subscription.
+# Both bill a flat monthly fee, so their per-token cost is notional - see that file's "cost proxy, not an actual charge" comment.
+#
+# Hardcoded rather than read from config: this module has no access to litellm's config at ingest time, and the set changes only when a model entry is added there.
+# Adding a model with a real api_key means leaving it OUT of this tuple.
+# 'api' is the default, so forgetting to update this reports a subscription-billed model as real spend - it overstates cost rather than hiding it.
+_SUBSCRIPTION_MODEL_PREFIXES = ("claude-", "gpt-5.6-")
 
 
 def _to_dt(epoch_seconds: Optional[float]) -> datetime:
@@ -279,21 +291,70 @@ def _failed_tool_call(messages: Any) -> tuple[str, str, str]:
     return "", "", ""
 
 
+def _codex_turn_metadata(headers: dict) -> dict:
+    """Decoded x-codex-turn-metadata, or {} when absent or unparseable.
+
+    Codex JSON-encodes one header with everything it knows about the turn: session/thread/turn ids, sandbox mode,
+    and a `workspaces` map of the directories the turn had open.
+    """
+    raw = headers.get("x-codex-turn-metadata")
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def _codex_session_id(headers: dict) -> str:
     """Codex CLI's equivalent of x-claude-code-session-id: a JSON-encoded
     header carrying session_id (stable across every turn of one Codex
     conversation, confirmed against real captures), falling back to
     thread_id for calls where session_id isn't set."""
-    raw = headers.get("x-codex-turn-metadata")
-    if not raw:
-        return ""
-    try:
-        data = json.loads(raw)
-    except (TypeError, ValueError):
-        return ""
-    if not isinstance(data, dict):
-        return ""
+    data = _codex_turn_metadata(headers)
     return data.get("session_id") or data.get("thread_id") or ""
+
+
+def _repo_name_from_remote_url(remote_url: str) -> str:
+    """Repo name out of a git remote URL, e.g. "receipt-goblin" from "git@github.com:ixax/receipt-goblin.git".
+
+    Deliberately the same derivation hooks/report_git_branch.py uses for Claude sessions.
+    Both feed the same session_git_branch.git_repo column, so a repo reached from either client has to produce
+    one name, not two.
+    """
+    name = (remote_url or "").strip().rstrip("/").rsplit("/", 1)[-1]
+    return name[:-4] if name.endswith(".git") else name
+
+
+def codex_git_payload(payload: dict) -> Optional[dict]:
+    """session_git_branch payload for a Codex call, in the same shape hooks/report_git_branch.py POSTs, or None.
+
+    Codex has no equivalent of that hook, so its sessions would otherwise never reach the Git Repos/Branches tabs.
+    Its turn metadata does carry each open workspace's origin remote, which is enough for the repo.
+    It carries no branch name - only `latest_git_commit_hash` - so git_branch stays blank rather than guessed.
+    A turn with more than one distinct repo open is skipped: session_git_branch holds one row per session, and
+    picking an arbitrary one of them would silently misattribute the whole session's spend.
+    """
+    headers = ((payload.get("metadata") or {}).get("requester_custom_headers")) or {}
+    workspaces = _codex_turn_metadata(headers).get("workspaces")
+    if not isinstance(workspaces, dict):
+        return None
+
+    repos = {
+        name
+        for workspace in workspaces.values()
+        if isinstance(workspace, dict)
+        for name in [_repo_name_from_remote_url(((workspace.get("associated_remote_urls") or {}).get("origin") or ""))]
+        if name
+    }
+    if len(repos) != 1:
+        return None
+
+    session_id = _codex_session_id(headers)
+    if not session_id:
+        return None
+    return {"session_id": session_id, "git_branch": "", "git_repo": repos.pop()}
 
 
 def session_and_trace_id(payload: dict) -> tuple[str, str]:
@@ -642,6 +703,16 @@ def _provider_for_model(model: str) -> str:
     return "other"
 
 
+def _billing_mode_for_model(model: str) -> str:
+    """'subscription' when this model's traffic rides a flat-billed plan and its per-token cost is therefore notional, else 'api'.
+
+    See _SUBSCRIPTION_MODEL_PREFIXES for what belongs in the first group and why 'api' is the safer default.
+    """
+    if model.startswith(_SUBSCRIPTION_MODEL_PREFIXES):
+        return "subscription"
+    return "api"
+
+
 def _collapse_whitespace(text: str) -> str:
     text = _WHITESPACE_COLLAPSE_RE.sub(" ", text)
     return _BLANK_LINES_COLLAPSE_RE.sub("\n", text)
@@ -959,7 +1030,8 @@ _EVENT_COLUMNS = [
     "agent_version", "skill_name", "skill_version", "command_name",
     "agent_invocation_id", "status", "latency_ms",
     "failed_tool_name", "failed_tool_args", "failed_tool_error",
-    "litellm_call_id", "event_client_id", "calculated_type", "calculated_payload", "ingested_at",
+    "litellm_call_id", "event_client_id", "client_product", "client_surface", "ingest_path",
+    "calculated_type", "calculated_payload", "ingested_at",
 ]
 _GROUP_COLUMNS = ["group_id", "group_name", "updated_at"]
 _USER_COLUMNS = ["user_id", "group_id", "user_name", "updated_at"]
@@ -971,7 +1043,8 @@ _USAGE_COLUMNS = [
     "stop_reason",
     "cache_creation_1h_tokens", "cache_creation_5m_tokens",
     "cost", "input_cost", "output_cost", "cache_hit", "ttft_ms",
-    "litellm_call_id", "provider", "ingested_at",
+    "litellm_call_id", "client_id", "client_product", "client_surface", "ingest_path",
+    "provider", "billing_mode", "ingested_at",
 ]
 _MESSAGE_COLUMNS = [
     "timestamp", "user_id", "group_id", "user_key_hash", "session_id", "trace_id", "turn_id",
@@ -993,6 +1066,7 @@ _USAGE_AGENT_NAME_IDX = _USAGE_COLUMNS.index("agent_name")
 _USAGE_AGENT_VERSION_IDX = _USAGE_COLUMNS.index("agent_version")
 _USAGE_SKILL_NAME_IDX = _USAGE_COLUMNS.index("skill_name")
 _USAGE_SKILL_VERSION_IDX = _USAGE_COLUMNS.index("skill_version")
+_USAGE_CLIENT_ID_IDX = _USAGE_COLUMNS.index("client_id")
 _MESSAGE_TIMESTAMP_IDX = _MESSAGE_COLUMNS.index("timestamp")
 _MESSAGE_AGENT_NAME_IDX = _MESSAGE_COLUMNS.index("agent_name")
 _MESSAGE_AGENT_VERSION_IDX = _MESSAGE_COLUMNS.index("agent_version")
@@ -1144,6 +1218,7 @@ def _event_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
     collaboration_mode_change = _codex_collaboration_mode_change(payload.get("messages"))
     if collaboration_mode_change:
         calculated_payload["collaboration_mode_change"] = collaboration_mode_change
+    attribution = from_litellm_payload(payload)
 
     return [
         _to_dt(payload.get("endTime") or payload.get("startTime")),
@@ -1170,6 +1245,9 @@ def _event_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
         0,  # event_client_id: patched in by ingest_db.ingest_events_batch()
             # once the calling client's user_agent has been resolved to an id
             # (build_event() has no DB client to do it here).
+        attribution.product,
+        attribution.surface,
+        attribution.ingest_path,
         calculated_type,
         json.dumps(calculated_payload, default=str).decode(),
         now or datetime.now(timezone.utc),
@@ -1222,6 +1300,7 @@ def _usage_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
     mcp_tool_name = called_tool if called_tool.startswith("mcp__") else ""
     cost_breakdown = payload.get("cost_breakdown") or {}
     model = payload.get("model_group") or payload.get("model", "")
+    attribution = from_litellm_payload(payload)
 
     return [
         _to_dt(payload.get("endTime") or payload.get("startTime")),
@@ -1252,7 +1331,12 @@ def _usage_row(payload: dict, ctx: EventContext, now: Optional[datetime] = None)
         cache_hit,
         ttft_ms,
         payload.get("litellm_call_id", ""),
+        0,  # client_id: patched beside event_client_id by ingest_db.
+        attribution.product,
+        attribution.surface,
+        attribution.ingest_path,
         _provider_for_model(model),
+        _billing_mode_for_model(model),
         now or datetime.now(timezone.utc),
     ]
 
@@ -1372,4 +1456,7 @@ def build_event(payload: dict) -> dict:
         "message_row": _serialize_row_multi(message_row, _MESSAGE_TIMESTAMP_IDX, _MESSAGE_INGESTED_AT_IDX),
         "group_row": _serialize_row(_group_row(payload, now), _GROUP_UPDATED_AT_IDX),
         "user_row": _serialize_row(_user_row(payload, now), _USER_UPDATED_AT_IDX),
+        # Not a row: the same payload shape the session-git-branch hook POSTs, written by
+        # side_ingest.insert_git_branch_from_events() rather than by ingest_db's own table loop.
+        "git_branch": codex_git_payload(payload),
     }

@@ -1,7 +1,11 @@
 # Agent Tracking Stack
 
-Tracks cost/efficiency of AI coding agents (Claude Code, Codex CLI), full call-chain tracing.
-Queue-based ingest: LiteLLM -> `webhook` (enqueue-only) -> `redis` -> `webhook-worker` (batches into ClickHouse); Grafana reads ClickHouse; CLI reads back via `mcp-dev`/`mcp-stats`.
+Tracks cost/efficiency of Codex CLI/Desktop and Claude CLI/Desktop/Remote Control.
+Proxied Codex/normal Claude calls enter through LiteLLM with full tracing.
+Direct Claude Desktop/Remote Control sessions enter through the privacy-minimal transcript collector.
+Both paths converge at `webhook` -> `redis` -> `webhook-worker` -> ClickHouse.
+Grafana reads ClickHouse.
+CLI reads back via `mcp-dev`/`mcp-stats`.
 Dev/prod split: `agent_docs/architecture.md`; per-service detail: `agent_docs/services/<name>.md`.
 
 ## Commands
@@ -115,6 +119,7 @@ SKILLS:
 - `harness-guardian`
 - `me`
 - `min`
+- `usage-coach`
 
 ## Code
 
