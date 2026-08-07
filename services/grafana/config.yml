@@ -8,3 +8,10 @@ auth_anonymous_org_role: Viewer
 # Grafana strips these from panel HTML by default.
 # Every panel that echoes untrusted DB text into HTML must escape it itself now that this net is off - see plans/polymorphic-crunching-sutherland.md.
 panels_disable_sanitize_html: "true"
+# Panel-to-PNG rendering (/render, /render/d-solo) - handled by the
+# grafana-renderer sidecar, which is why no image-renderer plugin appears in
+# install_plugins above. rendering_callback_url is how the sidecar reaches
+# this Grafana back; both are internal Docker DNS names, never host ports.
+# Blank either one out to turn rendering off.
+rendering_server_url: http://grafana-renderer:8081/render
+rendering_callback_url: http://grafana:3000/
