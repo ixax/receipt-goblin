@@ -63,7 +63,7 @@ Root-level:
 - `.claude/` - agents/rules
 - `.agents/skills/` - canonical skill content; `.claude/skills` is a symlink to it
 - `.claude/data/` - gitignored scratch, one subdir per purpose
-- `plans/` - approved `/plan` outputs, one file per plan, filename numeric-prefixed (`NN-name.md`); resolved plans move to `plans/resolved/`
+- `plans/` - approved `/plan` outputs, one file per plan, filename numeric-prefixed (`NN_name.md`); resolved plans move to `plans/resolved/`
 
 ## Agent & skill routing
 
