@@ -20,7 +20,11 @@ def _reset_decode_failures():
 
 
 def test_decode_into_success_appends_message_id_and_built_event(monkeypatch):
-    monkeypatch.setattr(worker, "build_event", lambda payload: {"built": payload["litellm_call_id"]})
+    monkeypatch.setattr(
+        worker,
+        "build_ingest_event",
+        lambda adapter, payload: {"adapter": adapter, "built": payload["litellm_call_id"]},
+    )
     entries = [("1-0", {"event": json.dumps({"litellm_call_id": "abc"})})]
     message_ids: list[str] = []
     events: list[dict] = []
@@ -28,11 +32,26 @@ def test_decode_into_success_appends_message_id_and_built_event(monkeypatch):
     worker._decode_into(entries, message_ids, events)
 
     assert message_ids == ["1-0"]
-    assert events == [{"built": "abc"}]
+    assert events == [{"adapter": "litellm_standard", "built": "abc"}]
+
+
+def test_decode_into_success_dispatches_usage_envelope_adapter(monkeypatch):
+    monkeypatch.setattr(
+        worker,
+        "build_ingest_event",
+        lambda adapter, payload: {"adapter": adapter, "built": payload["event_id"]},
+    )
+    entries = [("1-0", {"adapter": "claude_transcript", "event": json.dumps({"event_id": "req-1"})})]
+    message_ids: list[str] = []
+    events: list[dict] = []
+
+    worker._decode_into(entries, message_ids, events)
+
+    assert events == [{"adapter": "claude_transcript", "built": "req-1"}]
 
 
 def test_decode_into_unsuccess_bad_json_acks_but_drops_event(monkeypatch):
-    monkeypatch.setattr(worker, "build_event", lambda payload: pytest.fail("should not be called"))
+    monkeypatch.setattr(worker, "build_ingest_event", lambda adapter, payload: pytest.fail("should not be called"))
     entries = [("1-0", {"event": "{not json"})]
     message_ids: list[str] = []
     events: list[dict] = []
@@ -49,7 +68,7 @@ def test_decode_into_unsuccess_build_event_raises_acks_but_drops_event(monkeypat
     def _boom(payload):
         raise ValueError("malformed payload")
 
-    monkeypatch.setattr(worker, "build_event", _boom)
+    monkeypatch.setattr(worker, "build_ingest_event", lambda adapter, payload: _boom(payload))
     entries = [("1-0", {"event": json.dumps({"litellm_call_id": "abc"})})]
     message_ids: list[str] = []
     events: list[dict] = []
@@ -61,7 +80,7 @@ def test_decode_into_unsuccess_build_event_raises_acks_but_drops_event(monkeypat
 
 
 def test_decode_into_unsuccess_missing_event_field_still_tracks_message_id(monkeypatch):
-    monkeypatch.setattr(worker, "build_event", lambda payload: pytest.fail("should not be called"))
+    monkeypatch.setattr(worker, "build_ingest_event", lambda adapter, payload: pytest.fail("should not be called"))
     entries = [("1-0", {})]
     message_ids: list[str] = []
     events: list[dict] = []
@@ -73,7 +92,7 @@ def test_decode_into_unsuccess_missing_event_field_still_tracks_message_id(monke
 
 
 def test_decode_into_success_one_bad_payload_does_not_drop_others(monkeypatch):
-    monkeypatch.setattr(worker, "build_event", lambda payload: {"built": payload["litellm_call_id"]})
+    monkeypatch.setattr(worker, "build_ingest_event", lambda adapter, payload: {"built": payload["litellm_call_id"]})
     entries = [
         ("1-0", {"event": json.dumps({"litellm_call_id": "good-1"})}),
         ("2-0", {"event": "{not json"}),

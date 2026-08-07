@@ -15,7 +15,8 @@ import argparse
 from datetime import datetime, timezone
 
 from common import fastjson as json
-from common.ingest_db import get_client, reparse_event
+from common.ingest_adapters import CLAUDE_TRANSCRIPT_ADAPTER, build_ingest_event
+from common.ingest_db import get_client, ingest_built_events, reparse_event
 from common.logging_config import create_logger
 
 from .config import REPARSE_CHUNK_SIZE
@@ -32,7 +33,16 @@ def _reparse_one(client, litellm_call_id: str, source_session_id: str, raw_paylo
 
     now = datetime.now(timezone.utc)
     try:
-        reparse_event(client, payload, litellm_call_id, source_session_id, now)
+        if payload.get("schema_version") == 1 and payload.get("source") in {
+            "claude_desktop",
+            "claude_remote_control",
+        }:
+            ingest_built_events(
+                client,
+                [build_ingest_event(CLAUDE_TRANSCRIPT_ADAPTER, payload)],
+            )
+        else:
+            reparse_event(client, payload, litellm_call_id, source_session_id, now)
     except Exception:
         logger.exception("failed to reparse event (litellm_call_id=%s)", litellm_call_id)
 
