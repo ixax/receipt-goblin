@@ -76,8 +76,13 @@ VKEY := $(if $(strip $(LITELLM_VIRTUAL_KEY)),$(LITELLM_VIRTUAL_KEY),<virtual key
 # line below is still found a few lines down - each $(shell ...)/recipe
 # line is its own fresh non-interactive shell, so it won't pick up a
 # rc-file PATH update on its own.
+# Calls scripts/install-uv.sh (same script the standalone install-uv target
+# below uses) rather than `$(MAKE) install-uv` - this $(shell ...) runs at
+# parse time, before Make even knows which target was requested, so
+# invoking $(MAKE) here would re-parse the whole file and hit this same
+# line again before ever reaching install-uv's own recipe.
 export PATH := $(HOME)/.local/bin:$(PATH)
-$(shell command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh)
+$(shell command -v uv >/dev/null 2>&1 || sh scripts/install-uv.sh)
 
 # Regenerated via a `$(shell ... > file)` side effect (not captured into a
 # Make variable) specifically so the real newlines between each
@@ -127,7 +132,7 @@ git-hooks-install:
 	sh scripts/install-git-hooks.sh
 
 install-uv:
-	curl -LsSf https://astral.sh/uv/install.sh | sh
+	sh scripts/install-uv.sh
 
 # The environment prompt has to be the literal first thing `make init` does
 # (before check-env/git-hooks-install, which are plain prerequisites and
