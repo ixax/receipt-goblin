@@ -115,68 +115,92 @@ _CLIENT_COLUMNS = ["id", "value", "updated_at"]
 _FAILURE_COLUMNS = ["occurred_at", "stage", "error", "litellm_call_id", "session_id", "raw_row"]
 
 
-def _insert_agent_invocations(client, rows: list[list]) -> None:
+def _row_width_mismatch(columns: list[str], row: list) -> str:
+    """Diagnosis for a positional row that doesn't line up with its table's column list, or "" when the widths agree.
+
+    A row and the column list it is inserted under are built in two different modules - a row-builder
+    (`ingest_parsing._usage_row`, `claude_transcript_adapter`, ...) against a `_*_COLUMNS` constant here.
+    Adding a column to one and not the other shifts every value after the gap onto the wrong column.
+    ClickHouse reports only "Insert data column count does not match column names" for that, naming neither the
+    table nor the column, which makes it indistinguishable in ingest_dlq from an ordinary out-of-range value.
+    """
+    if len(row) == len(columns):
+        return ""
+    if len(row) < len(columns):
+        return (
+            f"row has {len(row)} value(s), {len(columns)} column(s) expected - "
+            f"first unfilled column: {columns[len(row)]}"
+        )
+    return f"row has {len(row)} value(s), only {len(columns)} column(s) expected"
+
+
+def _dlq_key_field(row: list, idx: Optional[int]) -> str:
+    """ingest_dlq's litellm_call_id/session_id for one quarantined row.
+
+    Index-guarded because a short row is exactly what `_row_width_mismatch` quarantines, and losing the row to an
+    IndexError here would defeat the DLQ.
+    """
+    if idx is None or idx >= len(row):
+        return ""
+    value = row[idx]
+    return value if isinstance(value, str) else str(value)
+
+
+def _assert_row_width(table: str, columns: list[str], row: list) -> None:
+    """Width guard for the single-row inserts below, which have no DLQ to fall back on.
+
+    Raises so the caller's own try/except logs it, rather than letting the row reach ClickHouse mis-aligned.
+    """
+    mismatch = _row_width_mismatch(columns, row)
+    if mismatch:
+        raise ValueError(f"{table}: {mismatch}")
+
+
+def _insert(client, table: str, rows: list[list], columns: list[str]) -> None:
+    """The single non-DLQ insert path - every `_insert_*` helper below delegates here.
+
+    Width-checks each row against `columns` first; see `_assert_row_width`.
+    """
     if not rows:
         return
+    for row in rows:
+        _assert_row_width(table, columns, row)
     client.insert(
-        "agent_invocations", rows, column_names=_INVOCATION_COLUMNS,
-        column_type_names=_column_type_names(client, "agent_invocations", _INVOCATION_COLUMNS),
+        table, rows, column_names=columns,
+        column_type_names=_column_type_names(client, table, columns),
     )
+
+
+def _insert_agent_invocations(client, rows: list[list]) -> None:
+    _insert(client, "agent_invocations", rows, _INVOCATION_COLUMNS)
 
 
 def _insert_event(client, row: list) -> None:
-    client.insert(
-        "agent_events", [row], column_names=_EVENT_COLUMNS,
-        column_type_names=_column_type_names(client, "agent_events", _EVENT_COLUMNS),
-    )
+    _insert(client, "agent_events", [row], _EVENT_COLUMNS)
 
 
 def _insert_usage(client, row: list) -> None:
-    client.insert(
-        "agent_usage", [row], column_names=_USAGE_COLUMNS,
-        column_type_names=_column_type_names(client, "agent_usage", _USAGE_COLUMNS),
-    )
+    _insert(client, "agent_usage", [row], _USAGE_COLUMNS)
 
 
 def _insert_message(client, row: list) -> None:
-    client.insert(
-        "agent_messages", [row], column_names=_MESSAGE_COLUMNS,
-        column_type_names=_column_type_names(client, "agent_messages", _MESSAGE_COLUMNS),
-    )
+    _insert(client, "agent_messages", [row], _MESSAGE_COLUMNS)
 
 
 def _insert_source(client, row: list) -> None:
-    client.insert(
-        "ingest_raw", [row], column_names=_SOURCE_COLUMNS,
-        column_type_names=_column_type_names(client, "ingest_raw", _SOURCE_COLUMNS),
-    )
+    _insert(client, "ingest_raw", [row], _SOURCE_COLUMNS)
 
 
 def _insert_ai_gateway_groups(client, rows: list[list]) -> None:
-    if not rows:
-        return
-    client.insert(
-        "ai_gateway_groups", rows, column_names=_GROUP_COLUMNS,
-        column_type_names=_column_type_names(client, "ai_gateway_groups", _GROUP_COLUMNS),
-    )
+    _insert(client, "ai_gateway_groups", rows, _GROUP_COLUMNS)
 
 
 def _insert_ai_gateway_users(client, rows: list[list]) -> None:
-    if not rows:
-        return
-    client.insert(
-        "ai_gateway_users", rows, column_names=_USER_COLUMNS,
-        column_type_names=_column_type_names(client, "ai_gateway_users", _USER_COLUMNS),
-    )
+    _insert(client, "ai_gateway_users", rows, _USER_COLUMNS)
 
 
 def _insert_clients(client, rows: list[list]) -> None:
-    if not rows:
-        return
-    client.insert(
-        "clients", rows, column_names=_CLIENT_COLUMNS,
-        column_type_names=_column_type_names(client, "clients", _CLIENT_COLUMNS),
-    )
+    _insert(client, "clients", rows, _CLIENT_COLUMNS)
 
 
 def _agent_name_and_version_for_invocation(client, agent_invocation_id: str) -> tuple[str, str]:
@@ -515,26 +539,45 @@ def insert_rows_with_dlq_fallback(
     Only the actual poison row(s) are lost that way - those go to ingest_dlq (see schema.sql) for triage instead of silently vanishing with the rest of a good batch.
     call_id_idx/session_id_idx pick which row fields populate the DLQ row's litellm_call_id/session_id columns.
     Pass None for tables that don't carry one (recorded as "").
-    Never raises - a poison row (or even a failed DLQ write) is logged, not propagated, so callers can insert unconditionally."""
+    Never raises - a poison row (or even a failed DLQ write) is logged, not propagated, so callers can insert unconditionally.
+
+    A row whose width doesn't match `columns` is quarantined before the batch insert rather than after it.
+    Left in, one such row rejects the whole batch, sends every good row down the slow row-by-row path, and lands
+    in ingest_dlq under ClickHouse's own message, which names neither the table nor the missing column.
+    """
     if not rows:
         return
-    try:
-        client.insert(table, rows, column_names=columns, column_type_names=column_types)
-        return
-    except Exception:
-        logger.exception("failed to insert into %s (n=%d) - retrying row-by-row", table, len(rows))
 
     failure_rows = []
+
+    def _quarantine(row: list, error: str) -> None:
+        failure_rows.append([
+            datetime.now(timezone.utc), table, error,
+            _dlq_key_field(row, call_id_idx), _dlq_key_field(row, session_id_idx),
+            json.dumps(row, default=str).decode(),
+        ])
+
+    well_formed = []
     for row in rows:
+        mismatch = _row_width_mismatch(columns, row)
+        if mismatch:
+            logger.error("row/column contract mismatch (stage=%s): %s", table, mismatch)
+            _quarantine(row, f"row/column contract mismatch: {mismatch}")
+        else:
+            well_formed.append(row)
+
+    if well_formed:
+        try:
+            client.insert(table, well_formed, column_names=columns, column_type_names=column_types)
+            well_formed = []
+        except Exception:
+            logger.exception("failed to insert into %s (n=%d) - retrying row-by-row", table, len(well_formed))
+
+    for row in well_formed:
         try:
             client.insert(table, [row], column_names=columns, column_type_names=column_types)
         except Exception as exc:
-            failure_rows.append([
-                datetime.now(timezone.utc), table, str(exc),
-                row[call_id_idx] if call_id_idx is not None else "",
-                row[session_id_idx] if session_id_idx is not None else "",
-                json.dumps(row, default=str).decode(),
-            ])
+            _quarantine(row, str(exc))
     if failure_rows:
         logger.error("dropped %d row(s) into ingest_dlq (stage=%s)", len(failure_rows), table)
         try:
