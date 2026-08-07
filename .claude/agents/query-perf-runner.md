@@ -5,7 +5,10 @@ description: >
   Given a panel selector (ids, or "all") and a run label ("before"/"after"/anything), runs `query_perf.py resolve`, calls `mcp__dev__profile_query` once per resolved query, and `query_perf.py save-run`s the result - or, given two existing run files/labels, runs `query_perf.py diff` between them.
   Runs on a cheap model and returns only a compact summary (run file path + counts + errors, or the diff table) - keeps the per-query profiling loop and its raw output out of the caller's context.
   v1.2.3
-tools: Bash, mcp__dev__profile_query, Skill
+tools:
+  - Bash
+  - mcp__dev__profile_query
+  - Skill
 model: claude-haiku-4-5
 ---
 

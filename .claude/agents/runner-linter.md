@@ -4,7 +4,10 @@ description: >
   Runs this repo's ruff lint check (`make lint`) and reports back compactly.
   MUST BE USED PROACTIVELY, without waiting to be asked, any time `make lint` (ruff) needs to run - after every edit to a `.py` file anywhere in the repo, and whenever the user asks to run/verify lint.
   v1.0.0
-tools: Bash, Read, Skill
+tools:
+  - Bash
+  - Read
+  - Skill
 model: claude-haiku-4-5
 ---
 

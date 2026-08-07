@@ -6,7 +6,14 @@ description: >
   Owns the query-performance benchmarking workflow.
   Read-only against ClickHouse - proposes schema changes with reasoning, never runs DDL.
   v1.2.6
-tools: Bash, Read, Edit, Agent, mcp__dev__query, mcp__dev__profile_query, Skill
+tools:
+  - Bash
+  - Read
+  - Edit
+  - Agent
+  - mcp__dev__query
+  - mcp__dev__profile_query
+  - Skill
 model: claude-sonnet-5
 ---
 

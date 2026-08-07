@@ -121,6 +121,8 @@ def check_file(path: str):
         text = f.read()
     if is_dashboard_json(path):
         return check_json_text(text)
+    if is_agent_yaml(path):
+        return check_agent_yaml_text(text)
     return check_text(text, path.endswith(".py"))
 
 
@@ -222,12 +224,52 @@ def check_json_text(text: str):
     ]
 
 
+# --- Agent-YAML prose (.agents/agents/*.yaml description:/body: block scalars) ---
+
+AGENT_YAML_PATH_PATTERN = re.compile(r"(^|/)\.agents/agents/[^/]+\.yaml$")
+
+
+def is_agent_yaml(path: str) -> bool:
+    return bool(AGENT_YAML_PATH_PATTERN.search(path.replace("\\", "/")))
+
+
+def agent_yaml_prose_lines_in_text(text: str):
+    """Yield (lineno, text) for prose-looking lines in a .agents/agents/*.yaml
+    source.
+    description:/body: block-scalar content is literal text, unlike JSON
+    string values - no escaping to undo, so a plain line-by-line filter is enough.
+    Same skip rules as audit.py's multi_sentence_lines (blank/list/quote/code-fence lines).
+    Works the same on a whole file or a partial Edit fragment."""
+    in_code = False
+    for i, raw in enumerate(text.splitlines(), 1):
+        s = raw.strip()
+        if s.startswith("```"):
+            in_code = not in_code
+            continue
+        if in_code or not s:
+            continue
+        if s.startswith(("-", "*", "|", ">", "#")) or re.match(r"^\d+\.\s", s):
+            continue
+        yield i, s
+
+
+def check_agent_yaml_text(text: str):
+    return [
+        (i, s[:80]) for i, s in agent_yaml_prose_lines_in_text(text)
+        if _has_multi_sentence_violation(s)
+    ]
+
+
 def main() -> int:
     violations = []
     for path in sys.argv[1:]:
         if is_dashboard_json(path):
             for i, s in check_file(path):
                 violations.append(f"{path}:{i}: md-format one-sentence-per-line (json) -> {s}")
+            continue
+        if is_agent_yaml(path):
+            for i, s in check_file(path):
+                violations.append(f"{path}:{i}: md-format one-sentence-per-line (agent-yaml) -> {s}")
             continue
         if not (path.endswith(".py") or path.endswith(".yml") or path.endswith(".yaml")):
             continue

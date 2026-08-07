@@ -1,6 +1,6 @@
 {
   "path": "hooks/harness_audit/audit.py",
-  "line_count": 289,
+  "line_count": 302,
   "module_docstring": "Audit harness md-files for token budget violations. Stdlib only.\n\nUsage: uv run python3 audit.py [repo_root]\nExit 0 = clean, 1 = violations found.\n\nDual-harness aware: this repo tracks both Claude Code (.claude/) and Codex\n(.agents/, .codex/) equally.\nSkills/rules are matched by filename/path pattern, not a single CLI's\ndirectory.\nSkill content lives under .agents/skills/<name>/SKILL.md, the one real\ncopy; .claude/skills is a directory-level symlink to it, so os.walk()\n(followlinks=False) never descends into .claude/skills and each SKILL.md\nis only ever reached via the .agents/skills/ path.\nThe realpath dedup below stays in place for other symlink cases (e.g.\n.codex/ config), even though it's no longer load-bearing for skills\nspecifically.\nSubagents stay .claude-only - Codex has no Task-tool/subagent\nequivalent, so there's no .codex/agents to scan.",
   "imports": [
     {
@@ -111,6 +111,22 @@
       "line_end": 76
     },
     {
+      "qualname": "agent_yaml_description_words",
+      "signature": "(text: str) -> int",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": "int",
+      "decorators": [],
+      "docstring": "Same word-count budget as description_words(), but for an\n.agents/agents/*.yaml source: no frontmatter fence, description: is a\ntop-level block scalar.",
+      "is_async": false,
+      "line_start": 79,
+      "line_end": 84
+    },
+    {
       "qualname": "check_token_budget",
       "signature": "(rel: str, kind: str, text: str) -> list",
       "args": [
@@ -131,8 +147,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 84,
-      "line_end": 90
+      "line_start": 92,
+      "line_end": 98
     },
     {
       "qualname": "check_skill_line_budget",
@@ -155,8 +171,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 93,
-      "line_end": 99
+      "line_start": 101,
+      "line_end": 107
     },
     {
       "qualname": "check_description_word_budget",
@@ -179,8 +195,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 102,
-      "line_end": 108
+      "line_start": 110,
+      "line_end": 116
     },
     {
       "qualname": "check_volatile_content",
@@ -207,8 +223,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 111,
-      "line_end": 118
+      "line_start": 119,
+      "line_end": 126
     },
     {
       "qualname": "check_one_sentence_per_line",
@@ -231,8 +247,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 121,
-      "line_end": 124
+      "line_start": 129,
+      "line_end": 132
     },
     {
       "qualname": "check_dead_references",
@@ -255,8 +271,8 @@
       "decorators": [],
       "docstring": "exists_fn(ref) -> bool is injected so this stays a pure function of\nits inputs instead of reaching into the filesystem itself.",
       "is_async": false,
-      "line_start": 127,
-      "line_end": 136
+      "line_start": 135,
+      "line_end": 144
     },
     {
       "qualname": "rule_candidate_lines",
@@ -273,10 +289,10 @@
       ],
       "returns": "list",
       "decorators": [],
-      "docstring": "List-item lines from this file eligible for the duplicate-rule check\nbelow, or [] for kinds that don't carry token-budgeted rules.",
+      "docstring": "List-item lines from this file eligible for the duplicate-rule check\nbelow, or [] for kinds that don't carry token-budgeted rules.\nkind \"agent\" (.claude/agents/*.md) is compiled from kind \"agent_yaml\"\n(.agents/agents/*.yaml) by scripts/compile_agents.py, so it legitimately\nduplicates its source line-for-line - excluded here the same way the\nsymlinked .claude/skills copy is excluded via realpath dedup in\ncollect(), so only the .agents/agents/*.yaml source participates in\ncross-agent duplicate detection.",
       "is_async": false,
-      "line_start": 139,
-      "line_end": 147
+      "line_start": 147,
+      "line_end": 161
     },
     {
       "qualname": "check_duplicate_rules",
@@ -291,8 +307,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 153,
-      "line_end": 158
+      "line_start": 167,
+      "line_end": 172
     },
     {
       "qualname": "check_agents_chain_budget",
@@ -311,8 +327,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 161,
-      "line_end": 168
+      "line_start": 175,
+      "line_end": 182
     },
     {
       "qualname": "check_claude_agents_pairing",
@@ -331,8 +347,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 171,
-      "line_end": 180
+      "line_start": 185,
+      "line_end": 194
     },
     {
       "qualname": "collect",
@@ -342,8 +358,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 183,
-      "line_end": 230
+      "line_start": 197,
+      "line_end": 243
     },
     {
       "qualname": "main",
@@ -353,9 +369,9 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 233,
-      "line_end": 285
+      "line_start": 246,
+      "line_end": 298
     }
   ],
-  "sha256": "935b43e0bddd6919f579b9cef8f84ba793d4d9d11268244356dbe663e4f0af28"
+  "sha256": "93dd42a602a1f9986c709c1fa17cc0387196249b943fedfdcc91bed9298fedda"
 }

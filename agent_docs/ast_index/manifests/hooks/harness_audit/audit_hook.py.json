@@ -1,7 +1,7 @@
 {
   "path": "hooks/harness_audit/audit_hook.py",
-  "line_count": 98,
-  "module_docstring": "PostToolUse hook: run harness audit when a harness file is edited. Stdlib only.\n\nWire in .claude/settings.json:\n  \"PostToolUse\": [{\"matcher\": \"Edit|Write\",\n    \"hooks\": [{\"type\": \"command\",\n               \"command\": \"uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/audit_hook.py\"\"}]}]\nExit 2 feeds violations back to the editing agent (works for agents without Bash).\n\nIndex regeneration (agent_docs/harness-index.md) is a separate concern, its\nown hook: sync_hook.py.",
+  "line_count": 100,
+  "module_docstring": "PostToolUse hook: run harness audit when a harness file is edited. Stdlib only.\n\nWire in .claude/settings.json:\n  \"PostToolUse\": [{\"matcher\": \"Edit|Write\",\n    \"hooks\": [{\"type\": \"command\",\n               \"command\": \"uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/audit_hook.py\"\"}]}]\nExit 2 feeds violations back to the editing agent (works for agents without Bash).\n\nCompiling .agents/agents/*.yaml into .claude/agents/*.md and\n.codex/agents/*.toml is a separate concern, its own hook: sync_hook.py.",
   "imports": [
     {
       "kind": "import",
@@ -47,7 +47,7 @@
     },
     {
       "name": "GLOBAL_VIOLATION_PREFIXES",
-      "line": 50
+      "line": 52
     }
   ],
   "classes": [],
@@ -63,10 +63,10 @@
       ],
       "returns": "bool",
       "decorators": [],
-      "docstring": "True if rel is under either CLI's harness tree, under agent_docs/ (deep-dive\ndocs harness-expert owns), is an AGENTS.md/CLAUDE.md anywhere, or is any other\nmarkdown file in the repo.\nAny other .md file gets audit.py's \"other_md\" kind - md-format's one-sentence-\nper-line and dead-reference checks, no token budget.\nDual-harness aware - this repo tracks .claude/, .agents/, and .codex/ equally.",
+      "docstring": "True if rel is under either CLI's harness tree, under agent_docs/ (deep-dive\ndocs harness-expert owns), is an AGENTS.md/CLAUDE.md anywhere, or is any other\nmarkdown file in the repo.\nAny other .md file gets audit.py's \"other_md\" kind - md-format's one-sentence-\nper-line and dead-reference checks, no token budget.\nDual-harness aware - this repo tracks .claude/, .agents/, and .codex/ equally.\nExpects a posix-style rel path (main() normalizes) - audit.py's violation\nlines use the same form, so relevant_violations() can prefix-match them.",
       "is_async": false,
       "line_start": 23,
-      "line_end": 39
+      "line_end": 41
     },
     {
       "qualname": "relevant_violations",
@@ -85,8 +85,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 53,
-      "line_end": 67
+      "line_start": 55,
+      "line_end": 69
     },
     {
       "qualname": "main",
@@ -96,9 +96,9 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 70,
-      "line_end": 94
+      "line_start": 72,
+      "line_end": 96
     }
   ],
-  "sha256": "f1ac87c97e4d05832422703c90871a5822c18d082560fb958c1f817974fce60d"
+  "sha256": "1f8ddd86779980cf5f19755843b4eccd18d41875d6fa5ca0209dbf2d605d679a"
 }

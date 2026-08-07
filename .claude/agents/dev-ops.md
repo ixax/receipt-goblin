@@ -6,7 +6,14 @@ description: >
   Also explicit: rebuild/recreate/restart a service, backup/restore, langfuse/observability profile toggles, confirming a restart picked up a change.
   SKIP: git, whole-stack `docker compose down`, broad blast-radius calls, and `make loadtest`/`loadtest-fixtures*` (loadtest-runner's job) - except its delegated webhook-1/webhook-2/webhook-worker recreate.
   v1.17.2
-tools: Bash, Read, Grep, Glob, Edit, Write, Skill
+tools:
+  - Bash
+  - Read
+  - Grep
+  - Glob
+  - Edit
+  - Write
+  - Skill
 model: claude-haiku-4-5
 ---
 

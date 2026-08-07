@@ -4,7 +4,13 @@ description: >
   End-to-end owner of the `make loadtest` workflow - pre-flight checks, launch, monitoring, verification, reporting.
   MUST BE USED PROACTIVELY whenever the user asks to run a load test (нагрузочное тестирование) or how the stack behaves under concurrency/load.
   v1.9.4
-tools: Bash, Read, Monitor, SendMessage, Agent, Skill
+tools:
+  - Bash
+  - Read
+  - Monitor
+  - SendMessage
+  - Agent
+  - Skill
 model: claude-sonnet-5
 ---
 

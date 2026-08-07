@@ -45,10 +45,10 @@ This was co-designed with the user across the conversation; every point below re
   ```yaml
   name: script-ops
   version: 1.7.2
-  description: >
+  description: |
     Cheap-model executor for mechanical data/file work ...
     (no version token here - the compiler appends it)
-  model: cheap                # alias — omit entirely if no override today
+  model: cheap                # alias, or "inherit" — compiler omits model: from both outputs either way
   tools:
     - Bash
     - Read
@@ -61,6 +61,9 @@ This was co-designed with the user across the conversation; every point below re
     You are ...
     (full current Markdown system-prompt body, verbatim)
   ```
+
+  `description:` uses `|` (literal block scalar), not `>` (folded).
+  A real YAML parser folds `>` into one space-joined line at parse time, which would silently destroy the source's per-sentence line layout before any compiler logic runs — `|` preserves it exactly, matching this plan's own Verification step 1 acceptance criterion below.
   Content for each is a direct transcription of the corresponding current `.claude/agents/<name>.md` — this is a format migration, not a rewrite; no agent's behavior/wording changes as part of this task.
 
 - **`compile_agents.py`** (lives under `scripts/`; referred to by bare filename throughout this plan since the repo's dead-reference checker flags directory-qualified paths to files that don't exist yet) — the compiler. Responsibilities:
@@ -87,7 +90,7 @@ This was co-designed with the user across the conversation; every point below re
   - **Entity shapes section**: replace the current line (`Subagent (.claude/agents/*.md): name (bare, permanent), description (>-folded), tools (comma-separated string), model`) with the YAML source shape: `name` (bare, permanent), `version` (bare `X.Y.Z`, own field), `description` (`>`-folded, no version token — the compiler appends it), `tools` (multi-line list), `model` (alias, optional), `body` (block scalar, full system-prompt Markdown).
   - **Version marker section**: rewrite the mechanics — bump target is now the `version:` field directly (increment there, not inside `description:` text); same bump rules unchanged (patch/minor/major, new entity → `1.0.0`, ad-hoc agents get no marker). Add one line noting the compiler appends `vX.Y.Z` from `version:` onto the compiled `description:`'s last line in both outputs — this is why `version:` and `description:` stay separate fields in the source but merge in the compiled files.
 - **`.githooks/pre-commit`**: add `uv run python3 compile_agents.py --check || exit 1` alongside the existing `check-lock.sh`/`check-uv.sh` lines, before `make test` (same "fail fast on the cheap check first" ordering already used there).
-- **`Makefile`**: delete the `harness-index` target (lines 355-359) and its `.PHONY` entry (line 105); add a new `compile-agents` target (`uv run python3 compile_agents.py`) with a `.PHONY` entry in its place.
+- **`Makefile`**: delete the `harness-index` target (lines 358-359) and its `.PHONY` entry (line 105); add a new `compile-agents` target (`uv run python3 compile_agents.py`) with a `.PHONY` entry in its place.
 - **`hooks/harness_audit/sync_hook.py`**: repurposed — instead of regenerating `agent_docs/harness-index.md` on `.claude/agents/*.md` edits, it fires `compile_agents.py` for the touched agent(s) on Edit/Write to `.agents/agents/*.yaml`.
 - **`hooks/harness_audit/budgets.py`**: add a budget-class entry for `.agents/agents/*.yaml`, mirroring the existing entry for `.claude/agents/*.md`.
 - **`AGENTS.md`**:
@@ -95,8 +98,8 @@ This was co-designed with the user across the conversation; every point below re
   - Line 70 (Agent & skill routing section): rewrite — both CLIs now discover agents natively (`.claude/agents/*.md` for Claude Code, `.codex/agents/*.toml` for Codex CLI), so the "Codex CLI reads `agent_docs/harness-index.md` instead" clause is dropped.
 - **`agent_docs/architecture.md`**: rewrite the "Codex CLI adapter notes" section (lines 31-35) — drop the `agent_docs/harness-index.md` citation; correct the "Codex has no `Task` tool" framing to reflect that Codex now discovers agents natively via `.codex/agents/*.toml`, while keeping whatever remains true about Codex's in-session dispatch mechanics differing from Claude's `Task` tool.
 - **`.agents/skills/harness-guardian/SKILL.md`**:
-  - "## 4. Verify" step (line 52): replace the `sync_harness.py --check`/`make harness-index` line with a `compile_agents.py --check` equivalent, no mention of `harness-index.md`.
-  - "Dual-harness layout" section: add a bullet documenting the new `.agents/agents/` → compiled-outputs mechanism, alongside the existing skills-symlink description.
+  - "## 4. Verify" step (heading at line 45, `sync_harness.py --check`/`make harness-index` line at line 48): replace that line with a `compile_agents.py --check` equivalent, no mention of `harness-index.md`.
+  - "Dual-harness layout" section (lines 66-79): add a bullet documenting the new `.agents/agents/` → compiled-outputs mechanism, alongside the existing skills-symlink description.
 
 ## Verification
 

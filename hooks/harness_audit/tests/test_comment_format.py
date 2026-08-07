@@ -8,6 +8,7 @@ import importlib
 import io
 import json
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
@@ -153,6 +154,40 @@ class TestJsonExtraction(unittest.TestCase):
         self.assertEqual(comment_format.check_json_text(fragment), [])
 
 
+class TestAgentYamlExtraction(unittest.TestCase):
+    PATH = ".agents/agents/script-ops.yaml"
+
+    def test_is_agent_yaml_true_for_agents_dir(self):
+        self.assertTrue(comment_format.is_agent_yaml(".agents/agents/script-ops.yaml"))
+
+    def test_is_agent_yaml_false_for_unrelated_yaml(self):
+        self.assertFalse(comment_format.is_agent_yaml("some/other/thing.yaml"))
+
+    def test_is_agent_yaml_false_for_skills_dir(self):
+        self.assertFalse(comment_format.is_agent_yaml(".agents/skills/md-format/SKILL.md"))
+
+    def test_multi_sentence_description_flagged(self):
+        text = "description: |\n  This is one sentence. This is a second sentence.\n"
+        self.assertTrue(comment_format.check_agent_yaml_text(text))
+
+    def test_single_sentence_description_not_flagged(self):
+        text = "description: |\n  Just one sentence here.\n"
+        self.assertEqual(comment_format.check_agent_yaml_text(text), [])
+
+    def test_list_and_heading_lines_skipped(self):
+        text = "tools:\n  - Bash\n  - Read\n# comment line here. Second sentence here.\n"
+        self.assertEqual(comment_format.check_agent_yaml_text(text), [])
+
+    def test_check_file_routes_agent_yaml_through_prose_checker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = Path(tmp) / ".agents" / "agents"
+            agents_dir.mkdir(parents=True)
+            path = agents_dir / "script-ops.yaml"
+            content = "description: |\n  One sentence. Two sentence.\n"
+            path.write_text(content)
+            self.assertEqual(comment_format.check_file(str(path)), comment_format.check_agent_yaml_text(content))
+
+
 class TestHook(unittest.TestCase):
     def run_hook(self, payload):
         # comment_format_hook.main() prints its violation list to stderr on
@@ -249,6 +284,26 @@ class TestHook(unittest.TestCase):
             "tool_input": {
                 "file_path": "some/other/thing.json",
                 "new_string": '"description": "This is one sentence. This is a second sentence.",',
+            },
+        })
+        self.assertEqual(code, 0)
+
+    def test_agent_yaml_violation_blocks(self):
+        code = self.run_hook({
+            "tool_name": "Edit",
+            "tool_input": {
+                "file_path": ".agents/agents/script-ops.yaml",
+                "new_string": "description: |\n  One sentence. Two sentence.\n",
+            },
+        })
+        self.assertEqual(code, 2)
+
+    def test_agent_yaml_clean_passes(self):
+        code = self.run_hook({
+            "tool_name": "Edit",
+            "tool_input": {
+                "file_path": ".agents/agents/script-ops.yaml",
+                "new_string": "description: |\n  Just one sentence here.\n",
             },
         })
         self.assertEqual(code, 0)

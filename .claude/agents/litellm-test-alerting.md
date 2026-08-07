@@ -5,7 +5,11 @@ description: >
   Called explicitly by name, never proactively.
   Attempts budget_alerts and llm_exceptions by default; llm_too_slow/llm_requests_hanging only on explicit opt-in to the 5+ minute wait; never outage_alerts/db_exceptions without the user's explicit permission obtained by the caller first; reports failed_tracking_spend as not independently testable.
   v1.1.3
-tools: Bash, Read, mcp__clickhouse__query, Skill
+tools:
+  - Bash
+  - Read
+  - mcp__clickhouse__query
+  - Skill
 model: claude-haiku-4-5
 ---
 

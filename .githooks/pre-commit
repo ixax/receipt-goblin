@@ -1,5 +1,5 @@
 #!/bin/sh
-# All three checks run before `make test` because they're instant and their
+# These checks run before `make test` because they're instant and their
 # failures are unrelated to whether the tests pass.
 # check-lock needs nothing at all, so it goes first.
 "$(dirname "$0")/lib/check-lock.sh" || exit 1
@@ -9,5 +9,8 @@
 # Catches image-affecting service edits that forgot to bump VERSIONS.yml -
 # see agent_docs/rules/coding.md.
 "$(dirname "$0")/lib/check-versions.sh" || exit 1
+# Catches a .agents/agents/*.yaml edit whose compiled .claude/agents/*.md or
+# .codex/agents/*.toml wasn't regenerated and staged.
+"$(dirname "$0")/lib/check-agents-compiled.sh" || exit 1
 
 make test

@@ -1,6 +1,6 @@
 {
   "path": "hooks/harness_audit/tests/test_sync_hook.py",
-  "line_count": 102,
+  "line_count": 111,
   "module_docstring": "Unit tests for hooks/harness_audit/sync_hook.py. Stdlib unittest only.\n\nRun: python3 -m unittest discover -s hooks/harness_audit/tests",
   "imports": [
     {
@@ -82,7 +82,7 @@
     {
       "qualname": "TestIsIndexSource",
       "line_start": 22,
-      "line_end": 39,
+      "line_end": 42,
       "decorators": [],
       "bases": [
         "unittest.TestCase"
@@ -90,7 +90,7 @@
       "docstring": null,
       "methods": [
         {
-          "qualname": "TestIsIndexSource.test_skill_md_matches",
+          "qualname": "TestIsIndexSource.test_agent_yaml_matches",
           "signature": "(self)",
           "args": [
             {
@@ -106,7 +106,7 @@
           "line_end": 24
         },
         {
-          "qualname": "TestIsIndexSource.test_codex_skill_md_matches",
+          "qualname": "TestIsIndexSource.test_skill_md_does_not_match",
           "signature": "(self)",
           "args": [
             {
@@ -122,7 +122,7 @@
           "line_end": 27
         },
         {
-          "qualname": "TestIsIndexSource.test_agent_md_matches",
+          "qualname": "TestIsIndexSource.test_compiled_agent_md_does_not_match",
           "signature": "(self)",
           "args": [
             {
@@ -138,7 +138,7 @@
           "line_end": 30
         },
         {
-          "qualname": "TestIsIndexSource.test_unrelated_claude_md_does_not_match",
+          "qualname": "TestIsIndexSource.test_agent_yaml_wrong_extension_does_not_match",
           "signature": "(self)",
           "args": [
             {
@@ -154,7 +154,7 @@
           "line_end": 33
         },
         {
-          "qualname": "TestIsIndexSource.test_agents_md_does_not_match",
+          "qualname": "TestIsIndexSource.test_unrelated_agents_dir_file_does_not_match",
           "signature": "(self)",
           "args": [
             {
@@ -170,7 +170,7 @@
           "line_end": 36
         },
         {
-          "qualname": "TestIsIndexSource.test_unrelated_source_file_does_not_match",
+          "qualname": "TestIsIndexSource.test_agents_md_does_not_match",
           "signature": "(self)",
           "args": [
             {
@@ -184,18 +184,34 @@
           "is_async": false,
           "line_start": 38,
           "line_end": 39
+        },
+        {
+          "qualname": "TestIsIndexSource.test_unrelated_source_file_does_not_match",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 41,
+          "line_end": 42
         }
       ]
     },
     {
       "qualname": "TestMainEndToEnd",
-      "line_start": 42,
-      "line_end": 98,
+      "line_start": 45,
+      "line_end": 107,
       "decorators": [],
       "bases": [
         "unittest.TestCase"
       ],
-      "docstring": "Patches SYNC_HARNESS_SCRIPT to a fake script - never invokes the real\nscripts/sync_harness.py, so these tests never touch this repo's own\nagent_docs/harness-index.md.",
+      "docstring": "Patches COMPILE_AGENTS_SCRIPT to a fake script - never invokes the real\nscripts/compile_agents.py, so these tests never touch this repo's own\n.claude/agents/*.md or .codex/agents/*.toml.",
       "methods": [
         {
           "qualname": "TestMainEndToEnd.setUp",
@@ -210,8 +226,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 47,
-          "line_end": 52
+          "line_start": 50,
+          "line_end": 55
         },
         {
           "qualname": "TestMainEndToEnd.tearDown",
@@ -226,8 +242,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 54,
-          "line_end": 57
+          "line_start": 57,
+          "line_end": 60
         },
         {
           "qualname": "TestMainEndToEnd.write_fake_script",
@@ -250,8 +266,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 59,
-          "line_end": 69
+          "line_start": 62,
+          "line_end": 72
         },
         {
           "qualname": "TestMainEndToEnd.run_hook",
@@ -270,8 +286,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 71,
-          "line_end": 81
+          "line_start": 74,
+          "line_end": 84
         },
         {
           "qualname": "TestMainEndToEnd.test_non_index_source_exits_zero_without_invoking_script",
@@ -286,11 +302,11 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 83,
-          "line_end": 86
+          "line_start": 86,
+          "line_end": 89
         },
         {
-          "qualname": "TestMainEndToEnd.test_skill_edit_invokes_script_success",
+          "qualname": "TestMainEndToEnd.test_compiled_agent_md_edit_does_not_invoke_script",
           "signature": "(self)",
           "args": [
             {
@@ -302,11 +318,11 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 88,
-          "line_end": 92
+          "line_start": 91,
+          "line_end": 95
         },
         {
-          "qualname": "TestMainEndToEnd.test_agent_edit_invokes_script_failure",
+          "qualname": "TestMainEndToEnd.test_agent_yaml_edit_invokes_script_success",
           "signature": "(self)",
           "args": [
             {
@@ -318,12 +334,28 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 94,
-          "line_end": 98
+          "line_start": 97,
+          "line_end": 101
+        },
+        {
+          "qualname": "TestMainEndToEnd.test_agent_yaml_edit_invokes_script_failure",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 103,
+          "line_end": 107
         }
       ]
     }
   ],
   "functions": [],
-  "sha256": "3283adf2c65ed588149f2712c1bead3e0c6f0bf6d7091948f2511f723b1f9b8b"
+  "sha256": "2c6fcf44ae008ab435ce4916efc020f7f3049428ed92521891f1df51abb084de"
 }

@@ -9,7 +9,8 @@ Wire in .claude/settings.json:
                "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/ast_index/sync_hook.py\""}]}]
 Exit 2 on regeneration failure (works for agents without Bash).
 
-Separate from hooks/harness_audit/sync_hook.py deliberately - that hook keeps agent_docs/harness-index.md in sync, this one keeps agent_docs/ast_index/ in sync.
+Separate from hooks/harness_audit/sync_hook.py deliberately.
+That hook keeps .claude/agents/*.md and .codex/agents/*.toml compiled from .agents/agents/*.yaml, this one keeps agent_docs/ast_index/ in sync.
 One hook, one job, per this repo's convention (report_git_branch.py, guard_destructive.py).
 """
 import json

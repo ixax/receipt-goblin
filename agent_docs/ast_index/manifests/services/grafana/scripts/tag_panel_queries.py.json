@@ -1,6 +1,6 @@
 {
   "path": "services/grafana/scripts/tag_panel_queries.py",
-  "line_count": 85,
+  "line_count": 87,
   "module_docstring": "One-time (idempotent) tagging of agents_overview.json panel queries.\n\nAppends `SETTINGS log_comment = 'agents_overview:panel_<id>'` to every\nrawSql query of the given panel ids, so system.query_log rows can be\nattributed back to the panel that issued them (used by the\nquery_performance.json companion dashboard - see\nbuild_query_perf_dashboard.py).\n\nDoes surgical raw-text substring replacement rather than json.load +\njson.dump of the whole file: this dashboard's existing JSON is not\nconsistently ensure_ascii - some string fields already contain literal\nnon-ASCII characters (arrows in chart labels) while others use \\uXXXX\nescapes - so re-serializing the entire document would rewrite unrelated\nlines and produce a huge, noisy diff. Only the targeted rawSql values are\ntouched; everything else in the file is left byte-for-byte identical.\n\nSafe to re-run: replaces an existing log_comment setting for a panel\ninstead of appending a second one.",
   "imports": [
     {
@@ -81,8 +81,8 @@
       "docstring": null,
       "is_async": false,
       "line_start": 42,
-      "line_end": 81
+      "line_end": 83
     }
   ],
-  "sha256": "14b875bd12ef4f0faa4ab28a9d93bc49c66d38f8c426ec0c0c4c8177f5342ab4"
+  "sha256": "6033cb8d4c76ca84b15aba2b3045bec156c0d08f2a3cc4e212c6d5c84f98cb0d"
 }

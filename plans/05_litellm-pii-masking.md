@@ -72,7 +72,8 @@ So this reuses the **side-stream** pattern already used for `litellm_alert`/`git
 |---|---|
 | `docker-compose.yml` | add `presidio-analyzer`/`presidio-anonymizer` services (always-on, no `profiles:`, `mem_limit` set); add `PII_MASKING_MODELS`/`PRESIDIO_ANALYZER_API_BASE`/`PRESIDIO_ANONYMIZER_API_BASE` to `litellm` service env |
 | `.env.example` | new PII Masking section |
-| `Makefile` | `pii-down`/`pii-up`/`pii-logs`/`pii-status` targets — plain stop/start/logs/ps on the two containers, no profile flag |
+| `Makefile` | `pii-down`/`pii-up`/`pii-logs`/`pii-status` targets — plain stop/start/logs/ps on the two containers, no profile flag; `init`/`_init_provision` step banners renumbered 1/6–6/6 to fit the new PII MASKING step (§7) |
+| `services/init/init_pii_masking.py` | new — interactive `make init` step, writes `PII_MASKING_MODELS` (§7) |
 | `services/prometheus/prometheus.yml` | blackbox probe entries for both containers, plus the standard down-alert |
 | `services/litellm/custom_callbacks.py` | new `PiiMaskingHandler` |
 | `services/litellm/pii_recognizers.json` | new — regex ad-hoc recognizers for keys/tokens |
@@ -101,6 +102,18 @@ This is the case that matters day-to-day, since `PII_MASKING_MODELS` is the actu
 
 Reversing the two steps (stopping Presidio first, `PII_MASKING_MODELS` still set) still leaves the whitelisted model **fail-closed** per §3.6, same as before — Presidio no longer being "optional" doesn't change that ordering hazard.
 
+### 7. `make init` step: enable/disable interactively
+
+`make init`'s existing steps are all "ask once, write to `.env`" (ENVIRONMENT) or "provision now" (CLICKHOUSE, LITELLM) — PII masking's env-var-only toggle (§2) fits the "ask once, write to `.env`" shape exactly, so it becomes a new interactive step instead of something the user has to know to set by hand.
+
+- New `services/init/init_pii_masking.py`, same pattern as `init_environment.py` (stdlib-only, loads `init_common.py` via `importlib.util.spec_from_file_location`, always asks — re-confirming is cheap and the existing `.env` value is offered as the default, so a repeat run is safe):
+  1. Ask `Enable PII masking for specific models now? [y/N]` — default reflects whether `PII_MASKING_MODELS` is already non-empty in `.env`, so re-running `make init` doesn't silently clear a prior choice.
+  2. If yes: prompt for a comma-separated `model_name` list (free text — these are `services/litellm/config.yaml`'s `model_list` entries; not validated against that file here, since it isn't guaranteed to be in its final form at init time), write it to `PII_MASKING_MODELS`.
+  3. If no: write `PII_MASKING_MODELS=` (empty) — matches §2's shipped-inert default.
+  `PRESIDIO_ANALYZER_API_BASE`/`PRESIDIO_ANONYMIZER_API_BASE` aren't touched here — they're internal service DNS names nobody needs to type, already shipped correct in `.env.example` (§2), so `init_common.write_env`'s copy-from-example-if-missing behavior covers them for free like every other unprompted var.
+- `Makefile`: insert as **Step 2/6 PII MASKING**, right after ENVIRONMENT and before GIT HOOKS — both are cheap prompt-and-write-`.env` steps with no Docker involved, unlike CLICKHOUSE/LITELLM further down. Existing `Step 2/5 GIT HOOKS` through `Step 5/5 CLIENT CONFIG` banners renumber to `3/6`–`6/6`.
+- No behavior change to `_init_provision`/CLICKHOUSE/LITELLM — they don't read `PII_*` vars, so this is purely about grouping the "cheap prompt" steps together before the docker-touching ones, not a functional dependency.
+
 ## Verification
 
 1. `make up`, confirm `presidio-analyzer`/`presidio-anonymizer` come up healthy alongside everything else (`make pii-status`, `docker compose ps`).
@@ -111,3 +124,4 @@ Reversing the two steps (stopping Presidio first, `PII_MASKING_MODELS` still set
 6. Load the new Grafana dashboard, confirm the panels render against real data from step 3.
 7. Clear `PII_MASKING_MODELS`, recreate `litellm`, re-run step 3's request — confirm it now passes through unmasked, with Presidio containers left running (fast-disable path works without touching them).
 8. `make pii-down`, confirm both containers stop — since Presidio now alerts like any other core service (§1), expect the down-alert to fire here; this step confirms the stop mechanism itself, not silent-off behavior.
+9. `make init`, confirm the new **Step 2/6 PII MASKING** prompt writes `PII_MASKING_MODELS` correctly for both a "yes, here's a model" answer and a "no" answer, and that re-running offers the just-written value back as the default (idempotent, matches every other `make init` step's re-run safety).

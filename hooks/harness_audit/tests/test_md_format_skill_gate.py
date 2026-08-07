@@ -160,6 +160,24 @@ class TestQualifies(unittest.TestCase):
         text = '"description": "This is one sentence. This is a second sentence.",'
         self.assertFalse(gate.qualifies("some/other/thing.json", text))
 
+    def test_agent_yaml_with_prose_qualifies(self):
+        path = ".agents/agents/script-ops.yaml"
+        text = "description: |\n  This is one sentence. This is a second sentence.\n"
+        self.assertTrue(gate.qualifies(path, text))
+
+    def test_agent_yaml_without_prose_does_not_qualify(self):
+        # A bare top-level key line like "tools:" still counts as prose
+        # under agent_yaml_prose_lines_in_text's heuristic (only list/
+        # heading/quote/code-fence lines are skipped) - so this uses pure
+        # list content to exercise the true "no prose at all" case.
+        path = ".agents/agents/script-ops.yaml"
+        text = "  - Bash\n  - Read\n"
+        self.assertFalse(gate.qualifies(path, text))
+
+    def test_non_agent_yaml_does_not_qualify(self):
+        text = "description: |\n  This is one sentence. This is a second sentence.\n"
+        self.assertFalse(gate.qualifies("some/other/thing.yaml", text))
+
 
 class TestUnderExcludedDir(unittest.TestCase):
     def test_plans_dir_matches(self):

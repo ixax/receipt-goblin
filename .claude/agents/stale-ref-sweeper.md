@@ -5,7 +5,12 @@ description: >
   MUST BE USED PROACTIVELY, without waiting to be asked, whenever an edit renames, removes, or moves a named entity (table/column, function/class, file path, config key, etc.), and before writing a comment/docstring/doc passage naming an entity, to confirm it's still current.
   Scoped to comments/docs only, never code logic - reports a code bug back instead.
   v1.1.3
-tools: Read, Grep, Bash, Edit, Skill
+tools:
+  - Read
+  - Grep
+  - Bash
+  - Edit
+  - Skill
 model: claude-sonnet-5
 ---
 

@@ -30,8 +30,8 @@ Bump a tag when its Dockerfile or image code changes.
 
 ## Codex CLI adapter notes
 
-`agent_docs/harness-index.md` lists every skill/agent for Codex discovery - read it when no explicit name was given.
-Codex has no `Task` tool: read the target agent file and follow it inline, or isolate noisy work via `codex exec`.
+Codex CLI discovers agents natively via `.codex/agents/*.toml`, compiled by `scripts/compile_agents.py` from the same `.agents/agents/*.yaml` source as Claude Code's `.claude/agents/*.md`.
+Codex has no `Task` tool for in-session dispatch: read the target agent file and follow it inline, or isolate noisy work via `codex exec`.
 Route a noisy agent to a cheaper model via a LiteLLM alias/virtual key, never frontmatter `model:`.
 
 ## Agent/skill/command attribution

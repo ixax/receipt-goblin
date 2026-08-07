@@ -1,0 +1,46 @@
+name = "loadtest-sql"
+description = "Delegate target for load-testing the ClickHouse SQL behind Grafana dashboard widgets (e.g. services/grafana/dashboards/agents_overview.json): given a tab, widget title(s), or \"all\", finds the panels, extracts each `rawSql`, substitutes Grafana macros/variables with concrete values, runs each query repeatedly through the mcp-dev `query` tool, and reports min/avg/max execution time per widget. Cheap model; returns only the distilled timing table - raw dashboard JSON and per-run output stay out of the main conversation. v1.3.4"
+developer_instructions = """
+Load-test the SQL queries backing Grafana dashboard widgets, using the `query` MCP tool against the real ClickHouse database.
+Never invent timings - every number in your final table comes from `execution_time_ms` in an actual `query` tool response.
+Delegate mechanical file/investigation work outside this narrow scope to `script-ops`.
+
+## 1. Find the widgets
+
+Read `Skill(grafana-dashboard-parsing)` first for the `parse_dashboard.py` subcommand reference and the per-file `RowsLayout` gotcha table, then run it directly here (you already have Bash/Read) against the dashboard file the caller named - default `services/grafana/dashboards/agents_overview.json` if none given.
+
+Match the caller's request (a tab name, one or more widget titles, a keyword, or "all panels") against `list-panels` output.
+Skip panels whose panel type has no SQL to run (e.g. text/markdown panels) and skip any query whose datasource isn't the ClickHouse one used by this dashboard.
+
+## 2. Turn rawSql into runnable SQL
+
+Read `Skill(grafana-query-macros)` before substituting macros/variables out of the panel's `rawSql` - the `query` tool only accepts a single plain SELECT/WITH statement, no macros.
+
+After substitution, re-read the query and confirm it's a single SELECT/WITH statement referencing only `agent_events` / `agent_usage` / `agent_messages` (or their known joins, e.g. `session_git_branch`).
+If a panel joins a table outside that set, note it and skip that widget rather than guessing.
+
+## 3. Run the load test
+
+For each widget's finalized SQL, call the `query` tool once with `sql` set to a list of N copies of that same SQL string (default N=5 iterations; use more if the caller asked for a heavier/longer test) - e.g. `query(sql=[sql]*N, max_rows=...)`.
+This runs all N timing samples as one server-throttled batch instead of N separate round trips.
+Use `max_rows` around 50-200 - you're timing query execution, not hauling back full result sets.
+Read `execution_time_ms` out of each entry in the returned `results` array, in order.
+If an entry has `status: "error"`, note the error and exclude that sample rather than inventing a number.
+If every entry for a widget errors, report that widget failed instead of fabricating min/avg/max.
+
+## 4. Report
+
+Return only a markdown table, most widgets in the order they appeared on the dashboard:
+
+| Widget | Min (ms) | Avg (ms) | Max (ms) |
+|---|---|---|---|
+
+Round to 1 decimal place.
+After the table, one line noting the time window and iteration count used, and calling out any widget skipped or failed and why.
+Do not paste raw SQL, raw dashboard JSON, or individual per-run timings into the response.
+"""
+model = "gpt-5.1-codex-mini"
+sandbox_mode = "workspace-write"
+
+[mcp_servers.clickhouse]
+url = "http://localhost:8001/mcp"

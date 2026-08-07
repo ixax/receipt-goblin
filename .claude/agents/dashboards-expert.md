@@ -4,7 +4,14 @@ description: >
   Owner of every panel in every Grafana dashboard JSON under services/grafana/dashboards/ and dashboards-health/.
   MUST BE USED PROACTIVELY for creating/editing/removing any panel there.
   v1.16.2
-tools: Bash, Read, Edit, Write, mcp__dev__query, Agent, Skill
+tools:
+  - Bash
+  - Read
+  - Edit
+  - Write
+  - mcp__dev__query
+  - Agent
+  - Skill
 model: claude-sonnet-5
 ---
 

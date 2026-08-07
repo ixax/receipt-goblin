@@ -4,7 +4,11 @@ description: >
   Delegate target for smoke-testing the LiteLLM proxy stack - confirms a model is actually reachable (chat/embeddings/rerank), not just listed in config.
   Trigger after changes under services/litellm/, or whenever the user asks to verify models work.
   v1.2.2
-tools: Bash, Read, Agent, Skill
+tools:
+  - Bash
+  - Read
+  - Agent
+  - Skill
 model: claude-haiku-4-5
 ---
 

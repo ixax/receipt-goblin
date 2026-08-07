@@ -23,7 +23,13 @@ from pathlib import Path
 
 HOOK_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(HOOK_DIR))
-from comment_format import check_json_text, check_text, is_dashboard_json  # noqa: E402
+from comment_format import (  # noqa: E402
+    check_agent_yaml_text,
+    check_json_text,
+    check_text,
+    is_agent_yaml,
+    is_dashboard_json,
+)
 from md_format_skill_gate import under_excluded_dir  # noqa: E402
 
 
@@ -33,6 +39,7 @@ def main() -> int:
     tool_input = payload.get("tool_input", {})
     path = tool_input.get("file_path", "")
     is_json = is_dashboard_json(path)
+    is_yaml_agent = is_agent_yaml(path)
     if not path or under_excluded_dir(path) or not (path.endswith((".py", ".yml", ".yaml")) or is_json):
         return 0
 
@@ -43,9 +50,16 @@ def main() -> int:
     else:
         return 0
 
-    violations = check_json_text(text) if is_json else check_text(text, path.endswith(".py"))
+    if is_json:
+        violations = check_json_text(text)
+        kind = "json"
+    elif is_yaml_agent:
+        violations = check_agent_yaml_text(text)
+        kind = "agent-yaml"
+    else:
+        violations = check_text(text, path.endswith(".py"))
+        kind = "comment"
     if violations:
-        kind = "json" if is_json else "comment"
         lines = "\n".join(f"  ~{i}: {s}" for i, s in violations)
         print(
             f"md-format one-sentence-per-line ({kind}) violated in {path}:\n{lines}\n"

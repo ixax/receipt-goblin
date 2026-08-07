@@ -725,13 +725,12 @@ A Subagent (`.claude/agents/*.md`) is dispatched explicitly via the `Task`/`Agen
 
 **Budget enforcement, automatic vs. explicit.**
 The `harness_audit` hook above runs on *every* Edit/Write to a harness file (`.claude/`, `.codex/`, `AGENTS.md`/`CLAUDE.md` anywhere) and reports violations straight back to the editing agent - no one has to ask for it.
-The full classify/relocate restructuring workflow (`.claude/skills/harness-guardian/SKILL.md`, consulted by `.claude/agents/harness-expert.md` during a structural audit) and the `scripts/sync_harness.py --check` index-staleness check are explicit-invocation only.
-They don't run on every edit, only when someone asks for a full audit.
+The full classify/relocate restructuring workflow (`.claude/skills/harness-guardian/SKILL.md`, consulted by `.claude/agents/harness-expert.md` during a structural audit) is explicit-invocation only.
+It doesn't run on every edit, only when someone asks for a full audit.
 
-**Skill/agent inventory for Codex.**
-`agent_docs/harness-index.md` is a generated table (`scripts/sync_harness.py`, `make harness-index`) of every skill/agent's name, description, and path, derived from frontmatter.
-Since Codex CLI may not trigger `SKILL.md` natively the way Claude Code does, this gives it (and a human) a single place to look.
-Never hand-edit it; edit the source frontmatter and regenerate.
+**Subagents for Codex.**
+`.agents/agents/<name>.yaml` is the single source of truth for every subagent; `scripts/compile_agents.py` (`make compile-agents`) generates both `.claude/agents/<name>.md` and `.codex/agents/<name>.toml` from it, so each CLI discovers its agents natively - no shared index file.
+Never hand-edit the compiled `.md`/`.toml` outputs; edit the `.agents/agents/*.yaml` source and recompile.
 
 ### Grafana dashboard panels
 

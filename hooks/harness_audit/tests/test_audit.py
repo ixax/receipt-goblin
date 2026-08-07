@@ -51,6 +51,13 @@ class TestTokensAndWords(unittest.TestCase):
     def test_description_words_no_frontmatter(self):
         self.assertEqual(audit.description_words("just a body, no frontmatter"), 0)
 
+    def test_agent_yaml_description_words_block_scalar(self):
+        text = "name: foo\ndescription: |\n  one two three four five\n  six seven\ntools:\n  - Bash\n"
+        self.assertEqual(audit.agent_yaml_description_words(text), 7)
+
+    def test_agent_yaml_description_words_no_description(self):
+        self.assertEqual(audit.agent_yaml_description_words("name: foo\ntools:\n  - Bash\n"), 0)
+
 
 class TestRuleFunctions(unittest.TestCase):
     """Each check_* rule in audit.py is a pure function of its arguments -
@@ -92,6 +99,17 @@ class TestRuleFunctions(unittest.TestCase):
         text = f"---\nname: x\ndescription: {long_desc}\n---\nbody\n"
         self.assertEqual(audit.check_description_word_budget("x.md", "root_md", text), [])
 
+    def test_check_description_word_budget_agent_yaml_over(self):
+        long_desc = " ".join(["word"] * (audit.BUDGETS["description_words"] + 10))
+        text = f"name: x\ndescription: |\n  {long_desc}\ntools:\n  - Bash\n"
+        v = audit.check_description_word_budget("x.yaml", "agent_yaml", text)
+        self.assertEqual(len(v), 1)
+        self.assertIn("words >", v[0])
+
+    def test_check_description_word_budget_agent_yaml_under(self):
+        text = "name: x\ndescription: |\n  short description here\ntools:\n  - Bash\n"
+        self.assertEqual(audit.check_description_word_budget("x.yaml", "agent_yaml", text), [])
+
     def test_check_volatile_content_flagged(self):
         v = audit.check_volatile_content("AGENTS.md", "root_md", "Current sprint: 2026-07-29.\n", is_symlink=False)
         self.assertEqual(len(v), 1)
@@ -110,6 +128,12 @@ class TestRuleFunctions(unittest.TestCase):
     def test_check_one_sentence_per_line_ignores_unlisted_kind(self):
         text = "This is one sentence. This is a second sentence on the same line.\n"
         self.assertEqual(audit.check_one_sentence_per_line("x.md", "harness_index", text), [])
+
+    def test_check_one_sentence_per_line_agent_yaml_flagged(self):
+        text = "description: |\n  This is one sentence. This is a second sentence.\n"
+        v = audit.check_one_sentence_per_line("x.yaml", "agent_yaml", text)
+        self.assertEqual(len(v), 1)
+        self.assertIn("one-sentence-per-line", v[0])
 
     def test_check_dead_references_flags_missing(self):
         text = "See `agent_docs/does-not-exist.md` for details.\n"
@@ -134,9 +158,16 @@ class TestRuleFunctions(unittest.TestCase):
     def test_rule_candidate_lines_collects_bullets(self):
         text = "- This exact bullet line is long enough to count as a rule\nshort\n"
         self.assertEqual(
-            audit.rule_candidate_lines("agent", text),
+            audit.rule_candidate_lines("agent_yaml", text),
             ["- this exact bullet line is long enough to count as a rule"],
         )
+
+    def test_rule_candidate_lines_skips_compiled_agent_md(self):
+        # kind "agent" (.claude/agents/*.md) is compiled from "agent_yaml"
+        # (.agents/agents/*.yaml) - it legitimately duplicates its source,
+        # so it's excluded from the duplicate-rule scan same as "other_md".
+        text = "- This exact bullet line is long enough to count as a rule\n"
+        self.assertEqual(audit.rule_candidate_lines("agent", text), [])
 
     def test_check_duplicate_rules_flags_shared_line(self):
         line_index = {"- shared line": ["a.md", "b.md"], "- unique line": ["a.md"]}
@@ -226,10 +257,17 @@ class TestCollectAndMain(unittest.TestCase):
     def test_duplicate_rule_flagged_across_files(self):
         dup_line = "- This exact bullet line appears in two different harness files verbatim"
         write(self.root / "AGENTS.md", f"# Project\n\n{dup_line}\n")
-        write(self.root / ".claude" / "agents" / "a.md", f"---\nname: a\ndescription: d\n---\n{dup_line}\n")
+        write(self.root / ".agents" / "skills" / "a" / "SKILL.md", f"---\nname: a\ndescription: d\n---\n{dup_line}\n")
         code, out = self.run_main()
         self.assertEqual(code, 1)
         self.assertIn("duplicate rule", out)
+
+    def test_duplicate_rule_not_flagged_between_agent_yaml_and_its_compiled_md(self):
+        dup_line = "- This exact bullet line is the source of truth, compiled verbatim"
+        write(self.root / ".agents" / "agents" / "a.yaml", f"name: a\ndescription: |\n  d\n{dup_line}\n")
+        write(self.root / ".claude" / "agents" / "a.md", f"---\nname: a\ndescription: d\n---\n{dup_line}\n")
+        code, out = self.run_main()
+        self.assertEqual(code, 0)
 
     def test_dead_reference_flagged(self):
         write(self.root / "AGENTS.md", "See `agent_docs/does-not-exist.md` for details.\n")
@@ -277,10 +315,19 @@ class TestCollectAndMain(unittest.TestCase):
         files = audit.collect()
         self.assertEqual(files["agent_docs/architecture.md"][0], "deep_dive")
 
-    def test_harness_index_excluded_from_classification(self):
-        write(self.root / "agent_docs" / "harness-index.md", "<!-- GENERATED -->\n")
+    def test_agent_yaml_classified(self):
+        write(self.root / ".agents" / "agents" / "script-ops.yaml", "name: script-ops\ndescription: |\n  short\n")
         files = audit.collect()
-        self.assertNotIn("agent_docs/harness-index.md", files)
+        self.assertEqual(files[".agents/agents/script-ops.yaml"][0], "agent_yaml")
+
+    def test_agent_yaml_multi_sentence_flagged(self):
+        write(
+            self.root / ".agents" / "agents" / "script-ops.yaml",
+            "name: script-ops\ndescription: |\n  This is one sentence. This is a second sentence.\n",
+        )
+        code, out = self.run_main()
+        self.assertEqual(code, 1)
+        self.assertIn("md-format one-sentence-per-line", out)
 
     def test_root_readme_classified_as_other_md(self):
         write(self.root / "README.md", "# Repo\n\nSome content.\n")

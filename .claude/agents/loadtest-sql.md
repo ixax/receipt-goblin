@@ -4,7 +4,12 @@ description: >
   Delegate target for load-testing the ClickHouse SQL behind Grafana dashboard widgets (e.g. services/grafana/dashboards/agents_overview.json): given a tab, widget title(s), or "all", finds the panels, extracts each `rawSql`, substitutes Grafana macros/variables with concrete values, runs each query repeatedly through the mcp-dev `query` tool, and reports min/avg/max execution time per widget.
   Cheap model; returns only the distilled timing table - raw dashboard JSON and per-run output stay out of the main conversation.
   v1.3.4
-tools: Bash, Read, mcp__dev__query, Agent, Skill
+tools:
+  - Bash
+  - Read
+  - mcp__dev__query
+  - Agent
+  - Skill
 model: claude-haiku-4-5
 ---
 

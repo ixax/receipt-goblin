@@ -102,7 +102,7 @@ include .image-tags.mk
 PYTHON_VERSION := $(shell cat .python-version)
 export PYTHON_VERSION
 
-.PHONY: check-env git-hooks-install install-uv init _init_provision start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit lock harness-index ast-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all reparse-dlq print-reparse-final-hint \
+.PHONY: check-env git-hooks-install install-uv init _init_provision start up restart up-no-deps build status migrate stop down logs setup-client test test-services test-hooks test-harness-audit lock compile-agents ast-index lint langfuse-up langfuse-down langfuse-logs reparse reparse-all reparse-dlq print-reparse-final-hint \
 	backup-clickhouse backup-litellm backup-grafana backup-all \
 	restore-clickhouse restore-litellm restore-grafana \
 	archive-prometheus archive-clickhouse-logs \
@@ -352,11 +352,10 @@ lock:
 	  echo "locked: $${req%.txt}.lock"; \
 	done
 
-# Generates/refreshes agent_docs/harness-index.md (a table of every
-# skill/agent's name+description+path, derived from frontmatter, for
-# Codex CLI discovery).
-harness-index:
-	uv run python3 scripts/sync_harness.py
+# Recompiles .claude/agents/*.md and .codex/agents/*.toml from their
+# .agents/agents/*.yaml sources.
+compile-agents:
+	uv run python3 scripts/compile_agents.py
 
 # Rebuilds agent_docs/ast_index/ from scratch via Python AST structural analysis.
 ast-index:

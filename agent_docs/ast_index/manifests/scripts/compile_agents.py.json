@@ -1,0 +1,179 @@
+{
+  "path": "scripts/compile_agents.py",
+  "line_count": 196,
+  "module_docstring": "Compile .agents/agents/*.yaml into .claude/agents/*.md and .codex/agents/*.toml.\n\nSingle source of truth per agent lives in .agents/agents/<name>.yaml.\nNever hand-edit the compiled .claude/agents/*.md or .codex/agents/*.toml files.\nFix the YAML source, then re-run this script (or let the PostToolUse hook do it\nfor a .agents/agents/*.yaml edit made in Claude Code).\n\nUsage:\n  uv run python3 scripts/compile_agents.py           # (re)write every compiled file\n  uv run python3 scripts/compile_agents.py --check   # exit 1 if any output is stale/orphaned",
+  "imports": [
+    {
+      "kind": "import",
+      "module": "sys",
+      "names": [],
+      "line": 14
+    },
+    {
+      "kind": "from",
+      "module": "pathlib",
+      "names": [
+        "Path"
+      ],
+      "line": 15
+    },
+    {
+      "kind": "import",
+      "module": "yaml",
+      "names": [],
+      "line": 17
+    }
+  ],
+  "module_constants": [
+    {
+      "name": "ROOT",
+      "line": 19
+    },
+    {
+      "name": "SRC_DIR",
+      "line": 20
+    },
+    {
+      "name": "CLAUDE_DIR",
+      "line": 21
+    },
+    {
+      "name": "CODEX_DIR",
+      "line": 22
+    },
+    {
+      "name": "TOOL_MAPPING",
+      "line": 29
+    },
+    {
+      "name": "MODEL_MAPPING",
+      "line": 54
+    }
+  ],
+  "classes": [],
+  "functions": [
+    {
+      "qualname": "resolved_model",
+      "signature": "(agent: dict, cli: str) -> str | None",
+      "args": [
+        {
+          "name": "agent",
+          "annotation": "dict"
+        },
+        {
+          "name": "cli",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str | None",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 61,
+      "line_end": 63
+    },
+    {
+      "qualname": "load_agents",
+      "signature": "() -> list[dict]",
+      "args": [],
+      "returns": "list[dict]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 66,
+      "line_end": 72
+    },
+    {
+      "qualname": "desc_lines_with_version",
+      "signature": "(agent: dict) -> list[str]",
+      "args": [
+        {
+          "name": "agent",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "list[str]",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 75,
+      "line_end": 78
+    },
+    {
+      "qualname": "render_claude_md",
+      "signature": "(agent: dict) -> str",
+      "args": [
+        {
+          "name": "agent",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 81,
+      "line_end": 93
+    },
+    {
+      "qualname": "toml_str",
+      "signature": "(s: str) -> str",
+      "args": [
+        {
+          "name": "s",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 96,
+      "line_end": 97
+    },
+    {
+      "qualname": "toml_multiline_str",
+      "signature": "(s: str) -> str",
+      "args": [
+        {
+          "name": "s",
+          "annotation": "str"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 100,
+      "line_end": 102
+    },
+    {
+      "qualname": "render_codex_toml",
+      "signature": "(agent: dict) -> str",
+      "args": [
+        {
+          "name": "agent",
+          "annotation": "dict"
+        }
+      ],
+      "returns": "str",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 105,
+      "line_end": 129
+    },
+    {
+      "qualname": "main",
+      "signature": "() -> int",
+      "args": [],
+      "returns": "int",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 132,
+      "line_end": 192
+    }
+  ],
+  "sha256": "ddaf3214d739b73c5c03ad3247126a4acfd49d84a00b42810f486ab4530f4dac"
+}

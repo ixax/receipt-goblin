@@ -6,7 +6,12 @@ description: >
   MUST BE USED PROACTIVELY when a query reports broad staleness or the cache is entirely absent - runs `build --all` itself.
   SKIP for non-Python files, "why does this do X" semantic questions, and anything needing an edit.
   v1.0.2
-tools: Bash, Read, Grep, Glob, Skill
+tools:
+  - Bash
+  - Read
+  - Grep
+  - Glob
+  - Skill
 model: claude-haiku-4-5
 ---
 

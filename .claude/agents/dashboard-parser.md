@@ -5,7 +5,11 @@ description: >
   MUST BE USED PROACTIVELY for reading/parsing any dashboard JSON: listing tabs/panels, finding a panel by id/title, dumping a query, or verifying structure before/after an edit.
   Panel/variable lookups by id/title work on every dashboard; tab/panel listing silently misses tabs on some - see Skill(grafana-dashboard-parsing) for which.
   v1.3.2
-tools: Bash, Read, Agent, Skill
+tools:
+  - Bash
+  - Read
+  - Agent
+  - Skill
 model: claude-haiku-4-5
 ---
 

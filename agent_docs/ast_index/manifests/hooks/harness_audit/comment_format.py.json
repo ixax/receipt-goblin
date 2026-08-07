@@ -1,6 +1,6 @@
 {
   "path": "hooks/harness_audit/comment_format.py",
-  "line_count": 243,
+  "line_count": 285,
   "module_docstring": "Flag comment/docstring lines in .py/.yml/.yaml files that violate\nmd-format's one-sentence-per-line rule (two sentences hard-wrapped onto\nthe same line).\nAlso covers JSON-embedded prose in Grafana dashboard files: panel\n`description` values and `--` SQL comments inside `rawSql` values.\nStdlib only.\nSame sentence-end heuristic as audit.py's markdown check, applied to\ncode comments and dashboard JSON instead of markdown prose.\n\nUsage: uv run python3 comment_format.py <file> [<file> ...]\nExit 0 = clean, 1 = violations found.",
   "imports": [
     {
@@ -49,15 +49,19 @@
     },
     {
       "name": "DASHBOARD_JSON_PATH_PATTERN",
-      "line": 136
+      "line": 138
     },
     {
       "name": "DESCRIPTION_VALUE_PATTERN",
-      "line": 137
+      "line": 139
     },
     {
       "name": "RAWSQL_VALUE_PATTERN",
-      "line": 138
+      "line": 140
+    },
+    {
+      "name": "AGENT_YAML_PATH_PATTERN",
+      "line": 229
     }
   ],
   "classes": [],
@@ -148,7 +152,7 @@
       "docstring": null,
       "is_async": false,
       "line_start": 119,
-      "line_end": 124
+      "line_end": 126
     },
     {
       "qualname": "check_text",
@@ -167,8 +171,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 127,
-      "line_end": 131
+      "line_start": 129,
+      "line_end": 133
     },
     {
       "qualname": "is_dashboard_json",
@@ -183,8 +187,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 141,
-      "line_end": 142
+      "line_start": 143,
+      "line_end": 144
     },
     {
       "qualname": "_decode_json_string",
@@ -199,8 +203,8 @@
       "decorators": [],
       "docstring": "Undo JSON string escaping (\\n, \\\", etc.) on a regex-captured\nfragment.\nWrapping it back in quotes and handing it to json.loads reuses the\nstdlib's own escape handling instead of reimplementing it.\nFalls back to a plain \\n/\\\" replace if that fails, e.g. on a\nfragment truncated mid-escape by a partial Edit diff.",
       "is_async": false,
-      "line_start": 145,
-      "line_end": 155
+      "line_start": 147,
+      "line_end": 157
     },
     {
       "qualname": "_rawsql_comment_lines",
@@ -215,8 +219,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 158,
-      "line_end": 162
+      "line_start": 160,
+      "line_end": 164
     },
     {
       "qualname": "_json_embedded_lines_via_regex",
@@ -231,8 +235,8 @@
       "decorators": [],
       "docstring": "Fallback extraction for text that isn't valid standalone JSON, e.g.\nan Edit hook's new_string diff fragment: find \"description\" and\n\"rawSql\" string values by pattern instead of requiring a full parse.",
       "is_async": false,
-      "line_start": 165,
-      "line_end": 177
+      "line_start": 167,
+      "line_end": 179
     },
     {
       "qualname": "_walk_json_for_checkable_strings",
@@ -247,8 +251,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 180,
-      "line_end": 191
+      "line_start": 182,
+      "line_end": 193
     },
     {
       "qualname": "json_embedded_lines_in_text",
@@ -263,8 +267,8 @@
       "decorators": [],
       "docstring": "Yield (lineno, text) for checkable JSON-embedded prose in a Grafana\ndashboard file: panel \"description\" values, and \"--\" SQL-comment\nlines inside \"rawSql\" values (\\n-escaped in the JSON source, so\nun-escaped and split into lines before the \"--\" check).\n\nTries a real json.loads() parse first - the normal case when checking\na whole dashboard file - and falls back to regex extraction directly\non the raw text for fragments that aren't valid standalone JSON, e.g.\nan Edit hook's new_string diff snippet.\n\nlineno is 1-based; for the parse-succeeded path it's just the\nextraction order (no real source offset survives a parse), same\n\"snippet-relative, good enough for the excerpt\" convention as\ncomment_lines_in_text above.",
       "is_async": false,
-      "line_start": 194,
-      "line_end": 215
+      "line_start": 196,
+      "line_end": 217
     },
     {
       "qualname": "check_json_text",
@@ -279,8 +283,56 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 218,
-      "line_end": 222
+      "line_start": 220,
+      "line_end": 224
+    },
+    {
+      "qualname": "is_agent_yaml",
+      "signature": "(path: str) -> bool",
+      "args": [
+        {
+          "name": "path",
+          "annotation": "str"
+        }
+      ],
+      "returns": "bool",
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 232,
+      "line_end": 233
+    },
+    {
+      "qualname": "agent_yaml_prose_lines_in_text",
+      "signature": "(text: str)",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": "Yield (lineno, text) for prose-looking lines in a .agents/agents/*.yaml\nsource.\ndescription:/body: block-scalar content is literal text, unlike JSON\nstring values - no escaping to undo, so a plain line-by-line filter is enough.\nSame skip rules as audit.py's multi_sentence_lines (blank/list/quote/code-fence lines).\nWorks the same on a whole file or a partial Edit fragment.",
+      "is_async": false,
+      "line_start": 236,
+      "line_end": 253
+    },
+    {
+      "qualname": "check_agent_yaml_text",
+      "signature": "(text: str)",
+      "args": [
+        {
+          "name": "text",
+          "annotation": "str"
+        }
+      ],
+      "returns": null,
+      "decorators": [],
+      "docstring": null,
+      "is_async": false,
+      "line_start": 256,
+      "line_end": 260
     },
     {
       "qualname": "main",
@@ -290,9 +342,9 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 225,
-      "line_end": 239
+      "line_start": 263,
+      "line_end": 281
     }
   ],
-  "sha256": "0944ef82a9fd6ca6b1a6f3470c704ab6fa29dc19ba30d03e7f0f725b66ad62c5"
+  "sha256": "63c4b460e4caf740a54f7bc389c1fe06cc175d332173060dadbe3c904fdd2758"
 }

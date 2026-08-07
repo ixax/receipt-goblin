@@ -1,31 +1,31 @@
 {
   "path": "hooks/ast_index/sync_hook.py",
-  "line_count": 59,
-  "module_docstring": "PostToolUse hook: keep agent_docs/ast_index/ live during a session.\nRegenerates the edited file's cache entry after an Edit/Write to a tracked .py file.\nStdlib only.\n\nWire in .claude/settings.json:\n  \"PostToolUse\": [{\"matcher\": \"Edit|Write\",\n    \"hooks\": [{\"type\": \"command\",\n               \"command\": \"uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/ast_index/sync_hook.py\"\"}]}]\nExit 2 on regeneration failure (works for agents without Bash).\n\nSeparate from hooks/harness_audit/sync_hook.py deliberately - that hook keeps agent_docs/harness-index.md in sync, this one keeps agent_docs/ast_index/ in sync.\nOne hook, one job, per this repo's convention (report_git_branch.py, guard_destructive.py).",
+  "line_count": 60,
+  "module_docstring": "PostToolUse hook: keep agent_docs/ast_index/ live during a session.\nRegenerates the edited file's cache entry after an Edit/Write to a tracked .py file.\nStdlib only.\n\nWire in .claude/settings.json:\n  \"PostToolUse\": [{\"matcher\": \"Edit|Write\",\n    \"hooks\": [{\"type\": \"command\",\n               \"command\": \"uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/ast_index/sync_hook.py\"\"}]}]\nExit 2 on regeneration failure (works for agents without Bash).\n\nSeparate from hooks/harness_audit/sync_hook.py deliberately.\nThat hook keeps .claude/agents/*.md and .codex/agents/*.toml compiled from .agents/agents/*.yaml, this one keeps agent_docs/ast_index/ in sync.\nOne hook, one job, per this repo's convention (report_git_branch.py, guard_destructive.py).",
   "imports": [
     {
       "kind": "import",
       "module": "json",
       "names": [],
-      "line": 15
+      "line": 16
     },
     {
       "kind": "import",
       "module": "os",
       "names": [],
-      "line": 16
+      "line": 17
     },
     {
       "kind": "import",
       "module": "subprocess",
       "names": [],
-      "line": 17
+      "line": 18
     },
     {
       "kind": "import",
       "module": "sys",
       "names": [],
-      "line": 18
+      "line": 19
     },
     {
       "kind": "from",
@@ -33,25 +33,25 @@
       "names": [
         "Path"
       ],
-      "line": 19
+      "line": 20
     }
   ],
   "module_constants": [
     {
       "name": "HOOK_DIR",
-      "line": 21
-    },
-    {
-      "name": "REPO_ROOT",
       "line": 22
     },
     {
-      "name": "AST_INDEX_SCRIPT",
+      "name": "REPO_ROOT",
       "line": 23
     },
     {
+      "name": "AST_INDEX_SCRIPT",
+      "line": 24
+    },
+    {
       "name": "EXCLUDE_DIR_NAMES",
-      "line": 25
+      "line": 26
     }
   ],
   "classes": [],
@@ -69,8 +69,8 @@
       "decorators": [],
       "docstring": "True if rel is a .py file scripts/ast_index.py would index.",
       "is_async": false,
-      "line_start": 28,
-      "line_end": 33
+      "line_start": 29,
+      "line_end": 34
     },
     {
       "qualname": "main",
@@ -80,9 +80,9 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 36,
-      "line_end": 55
+      "line_start": 37,
+      "line_end": 56
     }
   ],
-  "sha256": "c8959b7bd47119783c7c14eefd46cb4c76a873f6238107e6cca27706f4e89b48"
+  "sha256": "1850dcb96ca0563cc9cacf906062ad4cb1b5043f769910696a41c984e0ba8641"
 }

@@ -1,6 +1,6 @@
 {
   "path": "hooks/harness_audit/comment_format_hook.py",
-  "line_count": 60,
+  "line_count": 74,
   "module_docstring": "PostToolUse hook: check md-format's one-sentence-per-line rule against\ncomments/docstrings in an edited .py/.yml/.yaml file, or against\ndescription/rawSql-comment prose in an edited Grafana dashboard .json\nfile.\nStdlib only.\n\nWire in .claude/settings.json:\n  \"PostToolUse\": [{\"matcher\": \"Edit|Write\",\n    \"hooks\": [{\"type\": \"command\",\n               \"command\": \"uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/comment_format_hook.py\"\"}]}]\nExit 2 feeds violations back to the editing agent (works for agents without Bash).\n\nScoped to what the agent just wrote, not the whole file: for Edit, only\ntool_input.new_string is checked, so pre-existing violations elsewhere in\na large file never block an unrelated edit.\nFor Write the agent owns the whole file's content, so the full\ntool_input.content is checked.",
   "imports": [
     {
@@ -27,8 +27,10 @@
       "kind": "from",
       "module": "comment_format",
       "names": [
+        "check_agent_yaml_text",
         "check_json_text",
         "check_text",
+        "is_agent_yaml",
         "is_dashboard_json"
       ],
       "line": 26
@@ -39,7 +41,7 @@
       "names": [
         "under_excluded_dir"
       ],
-      "line": 27
+      "line": 33
     }
   ],
   "module_constants": [
@@ -58,9 +60,9 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 30,
-      "line_end": 56
+      "line_start": 36,
+      "line_end": 70
     }
   ],
-  "sha256": "95de0571060e85ca54ee3b99b72b815c01b00e7588004f3778656250575092df"
+  "sha256": "720f8b2a57bd15da32c576eccd87277c7a302044191678168da170fd49dd9b2d"
 }

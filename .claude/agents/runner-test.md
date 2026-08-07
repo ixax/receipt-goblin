@@ -5,7 +5,10 @@ description: >
   MUST BE USED PROACTIVELY, without waiting to be asked, any time those suites need to run - after every change to services/worker/, services/reparse/, services/loadtest/, or services/_common/, and whenever the user asks to run/verify the tests.
   Keeps raw on-failure pytest dumps out of the main conversation.
   v1.2.6
-tools: Bash, Read, Skill
+tools:
+  - Bash
+  - Read
+  - Skill
 model: claude-haiku-4-5
 ---
 

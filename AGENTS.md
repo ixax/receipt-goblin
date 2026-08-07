@@ -19,7 +19,7 @@ Dev/prod split: `agent_docs/architecture.md`; per-service detail: `agent_docs/se
 - `make loadtest` - ramping load test; always via `loadtest-runner`, never inline.
 - `make loadtest-fixtures [VOLUME=small|medium|large]` - build fixtures from ClickHouse.
 - `make lock` - regenerate every `services/*/requirements.lock` after a `requirements.txt` edit.
-- `make harness-index` - regenerate `agent_docs/harness-index.md` after any frontmatter change.
+- `make compile-agents` - regenerate `.claude/agents/*.md` + `.codex/agents/*.toml` from `.agents/agents/*.yaml`.
 - `make ast-index` - rebuild `agent_docs/ast_index/` from scratch.
 
 ## Python
@@ -67,7 +67,8 @@ Root-level:
 
 ## Agent & skill routing
 
-Trigger conditions live in each entity's own frontmatter `description` - Claude Code lists them natively; Codex CLI reads `agent_docs/harness-index.md` instead (adapter notes: `agent_docs/architecture.md`).
+Trigger conditions live in each entity's own frontmatter `description`.
+Both CLIs discover agents natively from the same compiled `.agents/agents/*.yaml` source: `.claude/agents/*.md` (Claude Code), `.codex/agents/*.toml` (Codex CLI) (adapter notes: `agent_docs/architecture.md`).
 Check for an owning agent before inline Bash/Read/Grep - hook-enforced for Grep/Glob and investigation-shaped Bash (denylist: `hooks/harness_audit/self_delegation_gate.py`); `Read` stays advisory.
 
 PROACTIVE (dispatch without being asked):

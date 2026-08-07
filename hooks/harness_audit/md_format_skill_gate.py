@@ -49,7 +49,9 @@ from pathlib import Path
 HOOK_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(HOOK_DIR))
 from comment_format import (  # noqa: E402
+    agent_yaml_prose_lines_in_text,
     comment_lines_in_text,
+    is_agent_yaml,
     is_dashboard_json,
     json_embedded_lines_in_text,
 )
@@ -158,6 +160,8 @@ def qualifies(path: str, text: str) -> bool:
         # prose (a "description" value or a "--" rawSql comment) - not on
         # every dashboard JSON edit, e.g. moving a panel's width/position.
         return any(True for _ in json_embedded_lines_in_text(text))
+    if is_agent_yaml(path):
+        return any(True for _ in agent_yaml_prose_lines_in_text(text))
     if path.endswith((".py", ".yml", ".yaml")):
         return has_multiline_comment_block(text, path.endswith(".py"))
     return False

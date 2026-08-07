@@ -1,6 +1,6 @@
 {
   "path": "hooks/harness_audit/tests/test_comment_format.py",
-  "line_count": 258,
+  "line_count": 313,
   "module_docstring": "Unit tests for hooks/harness_audit/comment_format.py and\ncomment_format_hook.py. Stdlib unittest only.\n\nRun: python3 -m unittest discover -s hooks/harness_audit/tests",
   "imports": [
     {
@@ -29,9 +29,15 @@
     },
     {
       "kind": "import",
-      "module": "unittest",
+      "module": "tempfile",
       "names": [],
       "line": 11
+    },
+    {
+      "kind": "import",
+      "module": "unittest",
+      "names": [],
+      "line": 12
     },
     {
       "kind": "from",
@@ -39,7 +45,7 @@
       "names": [
         "redirect_stderr"
       ],
-      "line": 12
+      "line": 13
     },
     {
       "kind": "from",
@@ -47,28 +53,28 @@
       "names": [
         "Path"
       ],
-      "line": 13
+      "line": 14
     }
   ],
   "module_constants": [
     {
       "name": "HOOK_DIR",
-      "line": 15
+      "line": 16
     },
     {
       "name": "comment_format",
-      "line": 17
+      "line": 18
     },
     {
       "name": "comment_format_hook",
-      "line": 18
+      "line": 19
     }
   ],
   "classes": [
     {
       "qualname": "TestCheckText",
-      "line_start": 21,
-      "line_end": 84,
+      "line_start": 22,
+      "line_end": 85,
       "decorators": [],
       "bases": [
         "unittest.TestCase"
@@ -88,8 +94,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 22,
-          "line_end": 24
+          "line_start": 23,
+          "line_end": 25
         },
         {
           "qualname": "TestCheckText.test_single_sentence_comments_clean",
@@ -104,8 +110,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 26,
-          "line_end": 28
+          "line_start": 27,
+          "line_end": 29
         },
         {
           "qualname": "TestCheckText.test_shebang_not_flagged",
@@ -120,8 +126,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 30,
-          "line_end": 32
+          "line_start": 31,
+          "line_end": 33
         },
         {
           "qualname": "TestCheckText.test_multiline_docstring_flagged",
@@ -136,8 +142,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 34,
-          "line_end": 36
+          "line_start": 35,
+          "line_end": 37
         },
         {
           "qualname": "TestCheckText.test_single_line_docstring_flagged",
@@ -152,8 +158,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 38,
-          "line_end": 40
+          "line_start": 39,
+          "line_end": 41
         },
         {
           "qualname": "TestCheckText.test_yaml_comment_flagged",
@@ -168,8 +174,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 42,
-          "line_end": 44
+          "line_start": 43,
+          "line_end": 45
         },
         {
           "qualname": "TestCheckText.test_code_not_flagged",
@@ -184,8 +190,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 46,
-          "line_end": 48
+          "line_start": 47,
+          "line_end": 49
         },
         {
           "qualname": "TestCheckText.test_sentence_end_before_abbreviation_flagged",
@@ -200,8 +206,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 50,
-          "line_end": 54
+          "line_start": 51,
+          "line_end": 55
         },
         {
           "qualname": "TestCheckText.test_eg_abbreviation_not_flagged",
@@ -216,8 +222,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 56,
-          "line_end": 60
+          "line_start": 57,
+          "line_end": 61
         },
         {
           "qualname": "TestCheckText.test_ie_abbreviation_not_flagged",
@@ -232,8 +238,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 62,
-          "line_end": 64
+          "line_start": 63,
+          "line_end": 65
         },
         {
           "qualname": "TestCheckText.test_vs_abbreviation_not_flagged",
@@ -248,8 +254,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 66,
-          "line_end": 68
+          "line_start": 67,
+          "line_end": 69
         },
         {
           "qualname": "TestCheckText.test_etc_abbreviation_not_flagged",
@@ -264,8 +270,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 70,
-          "line_end": 72
+          "line_start": 71,
+          "line_end": 73
         },
         {
           "qualname": "TestCheckText.test_version_token_not_flagged",
@@ -280,8 +286,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 74,
-          "line_end": 76
+          "line_start": 75,
+          "line_end": 77
         },
         {
           "qualname": "TestCheckText.test_cyrillic_sentence_end_flagged",
@@ -296,8 +302,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 78,
-          "line_end": 80
+          "line_start": 79,
+          "line_end": 81
         },
         {
           "qualname": "TestCheckText.test_closing_quote_sentence_end_flagged",
@@ -312,15 +318,15 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 82,
-          "line_end": 84
+          "line_start": 83,
+          "line_end": 85
         }
       ]
     },
     {
       "qualname": "TestJsonExtraction",
-      "line_start": 87,
-      "line_end": 153,
+      "line_start": 88,
+      "line_end": 154,
       "decorators": [],
       "bases": [
         "unittest.TestCase"
@@ -340,8 +346,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 90,
-          "line_end": 91
+          "line_start": 91,
+          "line_end": 92
         },
         {
           "qualname": "TestJsonExtraction.test_is_dashboard_json_true_for_dashboards_health_dir",
@@ -356,8 +362,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 93,
-          "line_end": 94
+          "line_start": 94,
+          "line_end": 95
         },
         {
           "qualname": "TestJsonExtraction.test_is_dashboard_json_false_for_unrelated_json",
@@ -372,8 +378,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 96,
-          "line_end": 97
+          "line_start": 97,
+          "line_end": 98
         },
         {
           "qualname": "TestJsonExtraction.test_multi_sentence_description_flagged_full_file",
@@ -388,8 +394,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 99,
-          "line_end": 109
+          "line_start": 100,
+          "line_end": 110
         },
         {
           "qualname": "TestJsonExtraction.test_single_sentence_description_not_flagged_full_file",
@@ -404,8 +410,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 111,
-          "line_end": 114
+          "line_start": 112,
+          "line_end": 115
         },
         {
           "qualname": "TestJsonExtraction.test_multi_sentence_rawsql_comment_flagged_full_file",
@@ -420,8 +426,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 116,
-          "line_end": 128
+          "line_start": 117,
+          "line_end": 129
         },
         {
           "qualname": "TestJsonExtraction.test_single_sentence_rawsql_comment_not_flagged_full_file",
@@ -436,8 +442,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 130,
-          "line_end": 135
+          "line_start": 131,
+          "line_end": 136
         },
         {
           "qualname": "TestJsonExtraction.test_multi_sentence_description_flagged_edit_fragment",
@@ -452,8 +458,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 137,
-          "line_end": 141
+          "line_start": 138,
+          "line_end": 142
         },
         {
           "qualname": "TestJsonExtraction.test_single_sentence_description_not_flagged_edit_fragment",
@@ -468,8 +474,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 143,
-          "line_end": 145
+          "line_start": 144,
+          "line_end": 146
         },
         {
           "qualname": "TestJsonExtraction.test_multi_sentence_rawsql_comment_flagged_edit_fragment",
@@ -484,8 +490,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 147,
-          "line_end": 149
+          "line_start": 148,
+          "line_end": 150
         },
         {
           "qualname": "TestJsonExtraction.test_single_sentence_rawsql_comment_not_flagged_edit_fragment",
@@ -500,15 +506,139 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 151,
-          "line_end": 153
+          "line_start": 152,
+          "line_end": 154
+        }
+      ]
+    },
+    {
+      "qualname": "TestAgentYamlExtraction",
+      "line_start": 157,
+      "line_end": 188,
+      "decorators": [],
+      "bases": [
+        "unittest.TestCase"
+      ],
+      "docstring": null,
+      "methods": [
+        {
+          "qualname": "TestAgentYamlExtraction.test_is_agent_yaml_true_for_agents_dir",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 160,
+          "line_end": 161
+        },
+        {
+          "qualname": "TestAgentYamlExtraction.test_is_agent_yaml_false_for_unrelated_yaml",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 163,
+          "line_end": 164
+        },
+        {
+          "qualname": "TestAgentYamlExtraction.test_is_agent_yaml_false_for_skills_dir",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 166,
+          "line_end": 167
+        },
+        {
+          "qualname": "TestAgentYamlExtraction.test_multi_sentence_description_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 169,
+          "line_end": 171
+        },
+        {
+          "qualname": "TestAgentYamlExtraction.test_single_sentence_description_not_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 173,
+          "line_end": 175
+        },
+        {
+          "qualname": "TestAgentYamlExtraction.test_list_and_heading_lines_skipped",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 177,
+          "line_end": 179
+        },
+        {
+          "qualname": "TestAgentYamlExtraction.test_check_file_routes_agent_yaml_through_prose_checker",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 181,
+          "line_end": 188
         }
       ]
     },
     {
       "qualname": "TestHook",
-      "line_start": 156,
-      "line_end": 254,
+      "line_start": 191,
+      "line_end": 309,
       "decorators": [],
       "bases": [
         "unittest.TestCase"
@@ -532,8 +662,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 157,
-          "line_end": 167
+          "line_start": 192,
+          "line_end": 202
         },
         {
           "qualname": "TestHook.test_edit_violation_blocks",
@@ -548,8 +678,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 169,
-          "line_end": 177
+          "line_start": 204,
+          "line_end": 212
         },
         {
           "qualname": "TestHook.test_edit_clean_passes",
@@ -564,8 +694,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 179,
-          "line_end": 187
+          "line_start": 214,
+          "line_end": 222
         },
         {
           "qualname": "TestHook.test_non_target_extension_skipped",
@@ -580,8 +710,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 189,
-          "line_end": 197
+          "line_start": 224,
+          "line_end": 232
         },
         {
           "qualname": "TestHook.test_write_checks_full_content",
@@ -596,8 +726,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 199,
-          "line_end": 207
+          "line_start": 234,
+          "line_end": 242
         },
         {
           "qualname": "TestHook.test_other_tool_ignored",
@@ -612,8 +742,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 209,
-          "line_end": 214
+          "line_start": 244,
+          "line_end": 249
         },
         {
           "qualname": "TestHook.test_plans_dir_violation_skipped",
@@ -628,8 +758,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 216,
-          "line_end": 224
+          "line_start": 251,
+          "line_end": 259
         },
         {
           "qualname": "TestHook.test_dashboard_json_violation_blocks",
@@ -644,8 +774,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 226,
-          "line_end": 234
+          "line_start": 261,
+          "line_end": 269
         },
         {
           "qualname": "TestHook.test_dashboard_json_clean_passes",
@@ -660,8 +790,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 236,
-          "line_end": 244
+          "line_start": 271,
+          "line_end": 279
         },
         {
           "qualname": "TestHook.test_non_dashboard_json_skipped",
@@ -676,12 +806,44 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 246,
-          "line_end": 254
+          "line_start": 281,
+          "line_end": 289
+        },
+        {
+          "qualname": "TestHook.test_agent_yaml_violation_blocks",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 291,
+          "line_end": 299
+        },
+        {
+          "qualname": "TestHook.test_agent_yaml_clean_passes",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 301,
+          "line_end": 309
         }
       ]
     }
   ],
   "functions": [],
-  "sha256": "e531eeb54b11dbe78690eeb43f0c1a030d7c456676e3cc5e4a068f1bc248ce97"
+  "sha256": "d233c016f8bf980120232f892a38128aeb7868bf18a7c60f861746a2274e0f0b"
 }

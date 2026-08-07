@@ -8,7 +8,14 @@ description: >
   SKIP for state-changing `git`/`docker`, or trivial read/write.
   Flags (not designs) any ClickHouse SQL gotcha in exact text it's asked to write.
   v1.7.4
-tools: Bash, Read, Write, Edit, Glob, Grep, Skill
+tools:
+  - Bash
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - Skill
 model: claude-haiku-4-5
 ---
 

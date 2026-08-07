@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""PostToolUse hook: regenerate agent_docs/harness-index.md after a
-SKILL.md/agent body edit. Stdlib only.
+"""PostToolUse hook: recompile .claude/agents/*.md and .codex/agents/*.toml
+after an .agents/agents/*.yaml edit.
+Stdlib only.
 
 Wire in .claude/settings.json:
   "PostToolUse": [{"matcher": "Edit|Write",
     "hooks": [{"type": "command",
                "command": "uv run python3 \"$CLAUDE_PROJECT_DIR/hooks/harness_audit/sync_hook.py\""}]}]
-Exit 2 on regeneration failure (works for agents without Bash).
+Exit 2 on compile failure (works for agents without Bash, e.g. harness-expert).
+
+compile_agents.py has no per-agent filter - every invocation regenerates all
+agents from their .agents/agents/*.yaml sources.
+So this hook always runs a full compile rather than targeting just the touched file.
 
 Separate from audit_hook.py deliberately - that hook checks budgets, this one
-keeps the generated index in sync. One hook, one job, per this repo's
-convention (report_git_branch.py, guard_destructive.py).
+keeps the compiled outputs in sync with their YAML source.
+One hook, one job, per this repo's convention (report_git_branch.py, guard_destructive.py).
 """
 import json
 import os
@@ -20,18 +25,14 @@ from pathlib import Path
 
 HOOK_DIR = Path(__file__).resolve().parent
 REPO_ROOT = HOOK_DIR.parent.parent
-SYNC_HARNESS_SCRIPT = REPO_ROOT / "scripts" / "sync_harness.py"
+COMPILE_AGENTS_SCRIPT = REPO_ROOT / "scripts" / "compile_agents.py"
 
 
 def is_index_source(rel: str) -> bool:
-    """True if rel is one of the files scripts/sync_harness.py derives
-    agent_docs/harness-index.md from: any SKILL.md (either CLI's skills tree),
-    or a Subagent body under .claude/agents/.
+    """True if rel is an agent source YAML that scripts/compile_agents.py
+    compiles into .claude/agents/*.md and .codex/agents/*.toml.
     """
-    return (
-        os.path.basename(rel) == "SKILL.md"
-        or (rel.startswith(os.path.join(".claude", "agents") + os.sep) and rel.endswith(".md"))
-    )
+    return rel.startswith(os.path.join(".agents", "agents") + os.sep) and rel.endswith(".yaml")
 
 
 def main() -> int:
@@ -43,12 +44,12 @@ def main() -> int:
         return 0
 
     result = subprocess.run(
-        [sys.executable, str(SYNC_HARNESS_SCRIPT)],
+        [sys.executable, str(COMPILE_AGENTS_SCRIPT)],
         capture_output=True, text=True,
     )
     if result.returncode != 0:
         print(
-            f"harness-index regeneration failed after editing {rel}:\n{result.stderr}",
+            f"agent compile failed after editing {rel}:\n{result.stderr}",
             file=sys.stderr,
         )
         return 2

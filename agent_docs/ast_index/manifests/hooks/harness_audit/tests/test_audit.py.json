@@ -1,6 +1,6 @@
 {
   "path": "hooks/harness_audit/tests/test_audit.py",
-  "line_count": 339,
+  "line_count": 386,
   "module_docstring": "Unit tests for hooks/harness_audit/audit.py. Stdlib unittest only - no pytest\ndependency, matching audit.py's own \"stdlib only\" design so this hook never\nneeds a venv.\n\nRun: python3 -m unittest discover -s hooks/harness_audit/tests",
   "imports": [
     {
@@ -70,7 +70,7 @@
     {
       "qualname": "TestTokensAndWords",
       "line_start": 27,
-      "line_end": 52,
+      "line_end": 59,
       "decorators": [],
       "bases": [
         "unittest.TestCase"
@@ -140,13 +140,45 @@
           "is_async": false,
           "line_start": 51,
           "line_end": 52
+        },
+        {
+          "qualname": "TestTokensAndWords.test_agent_yaml_description_words_block_scalar",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 54,
+          "line_end": 56
+        },
+        {
+          "qualname": "TestTokensAndWords.test_agent_yaml_description_words_no_description",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 58,
+          "line_end": 59
         }
       ]
     },
     {
       "qualname": "TestRuleFunctions",
-      "line_start": 55,
-      "line_end": 167,
+      "line_start": 62,
+      "line_end": 198,
       "decorators": [],
       "bases": [
         "unittest.TestCase"
@@ -166,8 +198,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 60,
-          "line_end": 64
+          "line_start": 67,
+          "line_end": 71
         },
         {
           "qualname": "TestRuleFunctions.test_check_token_budget_under",
@@ -182,8 +214,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 66,
-          "line_end": 67
+          "line_start": 73,
+          "line_end": 74
         },
         {
           "qualname": "TestRuleFunctions.test_check_token_budget_ignores_other_kinds",
@@ -198,8 +230,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 69,
-          "line_end": 71
+          "line_start": 76,
+          "line_end": 78
         },
         {
           "qualname": "TestRuleFunctions.test_check_skill_line_budget_over",
@@ -214,8 +246,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 73,
-          "line_end": 77
+          "line_start": 80,
+          "line_end": 84
         },
         {
           "qualname": "TestRuleFunctions.test_check_skill_line_budget_ignores_non_skill",
@@ -230,8 +262,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 79,
-          "line_end": 81
+          "line_start": 86,
+          "line_end": 88
         },
         {
           "qualname": "TestRuleFunctions.test_check_description_word_budget_over",
@@ -246,8 +278,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 83,
-          "line_end": 88
+          "line_start": 90,
+          "line_end": 95
         },
         {
           "qualname": "TestRuleFunctions.test_check_description_word_budget_ignores_other_kinds",
@@ -262,8 +294,40 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 90,
-          "line_end": 93
+          "line_start": 97,
+          "line_end": 100
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_description_word_budget_agent_yaml_over",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 102,
+          "line_end": 107
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_description_word_budget_agent_yaml_under",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 109,
+          "line_end": 111
         },
         {
           "qualname": "TestRuleFunctions.test_check_volatile_content_flagged",
@@ -278,8 +342,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 95,
-          "line_end": 98
+          "line_start": 113,
+          "line_end": 116
         },
         {
           "qualname": "TestRuleFunctions.test_check_volatile_content_skips_symlink",
@@ -294,8 +358,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 100,
-          "line_end": 102
+          "line_start": 118,
+          "line_end": 120
         },
         {
           "qualname": "TestRuleFunctions.test_check_one_sentence_per_line_flagged",
@@ -310,8 +374,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 104,
-          "line_end": 108
+          "line_start": 122,
+          "line_end": 126
         },
         {
           "qualname": "TestRuleFunctions.test_check_one_sentence_per_line_ignores_unlisted_kind",
@@ -326,8 +390,24 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 110,
-          "line_end": 112
+          "line_start": 128,
+          "line_end": 130
+        },
+        {
+          "qualname": "TestRuleFunctions.test_check_one_sentence_per_line_agent_yaml_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 132,
+          "line_end": 136
         },
         {
           "qualname": "TestRuleFunctions.test_check_dead_references_flags_missing",
@@ -342,8 +422,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 114,
-          "line_end": 118
+          "line_start": 138,
+          "line_end": 142
         },
         {
           "qualname": "TestRuleFunctions.test_check_dead_references_skips_existing",
@@ -358,8 +438,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 120,
-          "line_end": 123
+          "line_start": 144,
+          "line_end": 147
         },
         {
           "qualname": "TestRuleFunctions.test_check_dead_references_skips_thoughts_prefix",
@@ -374,8 +454,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 125,
-          "line_end": 128
+          "line_start": 149,
+          "line_end": 152
         },
         {
           "qualname": "TestRuleFunctions.test_rule_candidate_lines_skips_other_md",
@@ -390,8 +470,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 130,
-          "line_end": 132
+          "line_start": 154,
+          "line_end": 156
         },
         {
           "qualname": "TestRuleFunctions.test_rule_candidate_lines_collects_bullets",
@@ -406,8 +486,24 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 134,
-          "line_end": 139
+          "line_start": 158,
+          "line_end": 163
+        },
+        {
+          "qualname": "TestRuleFunctions.test_rule_candidate_lines_skips_compiled_agent_md",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 165,
+          "line_end": 170
         },
         {
           "qualname": "TestRuleFunctions.test_check_duplicate_rules_flags_shared_line",
@@ -422,8 +518,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 141,
-          "line_end": 145
+          "line_start": 172,
+          "line_end": 176
         },
         {
           "qualname": "TestRuleFunctions.test_check_agents_chain_budget_over",
@@ -438,8 +534,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 147,
-          "line_end": 151
+          "line_start": 178,
+          "line_end": 182
         },
         {
           "qualname": "TestRuleFunctions.test_check_agents_chain_budget_symlink_excluded",
@@ -454,8 +550,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 153,
-          "line_end": 156
+          "line_start": 184,
+          "line_end": 187
         },
         {
           "qualname": "TestRuleFunctions.test_check_claude_agents_pairing_flags_both_present",
@@ -470,8 +566,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 158,
-          "line_end": 162
+          "line_start": 189,
+          "line_end": 193
         },
         {
           "qualname": "TestRuleFunctions.test_check_claude_agents_pairing_symlink_not_flagged",
@@ -486,15 +582,15 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 164,
-          "line_end": 167
+          "line_start": 195,
+          "line_end": 198
         }
       ]
     },
     {
       "qualname": "TestCollectAndMain",
-      "line_start": 170,
-      "line_end": 335,
+      "line_start": 201,
+      "line_end": 382,
       "decorators": [],
       "bases": [
         "unittest.TestCase"
@@ -514,8 +610,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 171,
-          "line_end": 175
+          "line_start": 202,
+          "line_end": 206
         },
         {
           "qualname": "TestCollectAndMain.tearDown",
@@ -530,8 +626,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 177,
-          "line_end": 179
+          "line_start": 208,
+          "line_end": 210
         },
         {
           "qualname": "TestCollectAndMain.run_main",
@@ -546,8 +642,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 181,
-          "line_end": 185
+          "line_start": 212,
+          "line_end": 216
         },
         {
           "qualname": "TestCollectAndMain.test_clean_repo_exits_zero",
@@ -562,8 +658,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 187,
-          "line_end": 191
+          "line_start": 218,
+          "line_end": 222
         },
         {
           "qualname": "TestCollectAndMain.test_root_md_over_budget_flagged",
@@ -578,8 +674,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 193,
-          "line_end": 197
+          "line_start": 224,
+          "line_end": 228
         },
         {
           "qualname": "TestCollectAndMain.test_nested_md_uses_nested_budget",
@@ -594,8 +690,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 199,
-          "line_end": 203
+          "line_start": 230,
+          "line_end": 234
         },
         {
           "qualname": "TestCollectAndMain.test_skill_over_line_budget_flagged",
@@ -610,8 +706,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 205,
-          "line_end": 210
+          "line_start": 236,
+          "line_end": 241
         },
         {
           "qualname": "TestCollectAndMain.test_description_over_word_budget_flagged",
@@ -626,8 +722,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 212,
-          "line_end": 218
+          "line_start": 243,
+          "line_end": 249
         },
         {
           "qualname": "TestCollectAndMain.test_volatile_content_flagged",
@@ -642,8 +738,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 220,
-          "line_end": 224
+          "line_start": 251,
+          "line_end": 255
         },
         {
           "qualname": "TestCollectAndMain.test_duplicate_rule_flagged_across_files",
@@ -658,8 +754,24 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 226,
-          "line_end": 232
+          "line_start": 257,
+          "line_end": 263
+        },
+        {
+          "qualname": "TestCollectAndMain.test_duplicate_rule_not_flagged_between_agent_yaml_and_its_compiled_md",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 265,
+          "line_end": 270
         },
         {
           "qualname": "TestCollectAndMain.test_dead_reference_flagged",
@@ -674,8 +786,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 234,
-          "line_end": 238
+          "line_start": 272,
+          "line_end": 276
         },
         {
           "qualname": "TestCollectAndMain.test_live_reference_not_flagged",
@@ -690,8 +802,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 240,
-          "line_end": 244
+          "line_start": 278,
+          "line_end": 282
         },
         {
           "qualname": "TestCollectAndMain.test_agents_and_claude_skill_symlink_deduped",
@@ -706,8 +818,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 246,
-          "line_end": 254
+          "line_start": 284,
+          "line_end": 292
         },
         {
           "qualname": "TestCollectAndMain.test_agents_only_skill_still_picked_up",
@@ -722,8 +834,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 256,
-          "line_end": 260
+          "line_start": 294,
+          "line_end": 298
         },
         {
           "qualname": "TestCollectAndMain.test_claude_md_agents_md_separate_files_flagged",
@@ -738,8 +850,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 262,
-          "line_end": 267
+          "line_start": 300,
+          "line_end": 305
         },
         {
           "qualname": "TestCollectAndMain.test_claude_md_symlink_to_agents_md_not_flagged",
@@ -754,8 +866,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 269,
-          "line_end": 273
+          "line_start": 307,
+          "line_end": 311
         },
         {
           "qualname": "TestCollectAndMain.test_agent_docs_md_classified_as_deep_dive",
@@ -770,11 +882,11 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 275,
-          "line_end": 278
+          "line_start": 313,
+          "line_end": 316
         },
         {
-          "qualname": "TestCollectAndMain.test_harness_index_excluded_from_classification",
+          "qualname": "TestCollectAndMain.test_agent_yaml_classified",
           "signature": "(self)",
           "args": [
             {
@@ -786,8 +898,24 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 280,
-          "line_end": 283
+          "line_start": 318,
+          "line_end": 321
+        },
+        {
+          "qualname": "TestCollectAndMain.test_agent_yaml_multi_sentence_flagged",
+          "signature": "(self)",
+          "args": [
+            {
+              "name": "self",
+              "annotation": null
+            }
+          ],
+          "returns": null,
+          "decorators": [],
+          "docstring": null,
+          "is_async": false,
+          "line_start": 323,
+          "line_end": 330
         },
         {
           "qualname": "TestCollectAndMain.test_root_readme_classified_as_other_md",
@@ -802,8 +930,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 285,
-          "line_end": 288
+          "line_start": 332,
+          "line_end": 335
         },
         {
           "qualname": "TestCollectAndMain.test_other_md_has_no_token_budget",
@@ -818,8 +946,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 290,
-          "line_end": 293
+          "line_start": 337,
+          "line_end": 340
         },
         {
           "qualname": "TestCollectAndMain.test_other_md_multi_sentence_line_flagged",
@@ -834,8 +962,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 295,
-          "line_end": 302
+          "line_start": 342,
+          "line_end": 349
         },
         {
           "qualname": "TestCollectAndMain.test_deep_dive_dead_reference_flagged",
@@ -850,8 +978,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 304,
-          "line_end": 308
+          "line_start": 351,
+          "line_end": 355
         },
         {
           "qualname": "TestCollectAndMain.test_deep_dive_has_no_token_budget",
@@ -866,8 +994,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 310,
-          "line_end": 313
+          "line_start": 357,
+          "line_end": 360
         },
         {
           "qualname": "TestCollectAndMain.test_multi_sentence_line_flagged",
@@ -882,8 +1010,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 315,
-          "line_end": 323
+          "line_start": 362,
+          "line_end": 370
         },
         {
           "qualname": "TestCollectAndMain.test_multi_sentence_skips_frontmatter_and_code_and_lists",
@@ -898,8 +1026,8 @@
           "decorators": [],
           "docstring": null,
           "is_async": false,
-          "line_start": 325,
-          "line_end": 335
+          "line_start": 372,
+          "line_end": 382
         }
       ]
     }
@@ -926,5 +1054,5 @@
       "line_end": 24
     }
   ],
-  "sha256": "8fe1425cafc10cc1c468869ccedd9298a9429d0ba4302244f744e2b0c826fa08"
+  "sha256": "943d56c1c62dcbbcbe05e702a62e10c94cf4b4250458b633f4021ab398140a1f"
 }

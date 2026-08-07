@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-07T15:00:56.387760+00:00",
+  "generated_at": "2026-08-07T16:57:32.780400+00:00",
   "files": {
     "hooks/ast_index/sync_hook.py": {
-      "sha256": "c8959b7bd47119783c7c14eefd46cb4c76a873f6238107e6cca27706f4e89b48",
-      "size": 1948,
+      "sha256": "1850dcb96ca0563cc9cacf906062ad4cb1b5043f769910696a41c984e0ba8641",
+      "size": 1992,
       "cache_path": "manifests/hooks/ast_index/sync_hook.py.json"
     },
     "hooks/ast_index/tests/__init__.py": {
@@ -28,13 +28,13 @@
       "cache_path": "manifests/hooks/guard_destructive.py.json"
     },
     "hooks/harness_audit/audit.py": {
-      "sha256": "935b43e0bddd6919f579b9cef8f84ba793d4d9d11268244356dbe663e4f0af28",
-      "size": 11092,
+      "sha256": "93dd42a602a1f9986c709c1fa17cc0387196249b943fedfdcc91bed9298fedda",
+      "size": 11842,
       "cache_path": "manifests/hooks/harness_audit/audit.py.json"
     },
     "hooks/harness_audit/audit_hook.py": {
-      "sha256": "f1ac87c97e4d05832422703c90871a5822c18d082560fb958c1f817974fce60d",
-      "size": 3820,
+      "sha256": "1f8ddd86779980cf5f19755843b4eccd18d41875d6fa5ca0209dbf2d605d679a",
+      "size": 3965,
       "cache_path": "manifests/hooks/harness_audit/audit_hook.py.json"
     },
     "hooks/harness_audit/budgets.py": {
@@ -43,13 +43,13 @@
       "cache_path": "manifests/hooks/harness_audit/budgets.py.json"
     },
     "hooks/harness_audit/comment_format.py": {
-      "sha256": "0944ef82a9fd6ca6b1a6f3470c704ab6fa29dc19ba30d03e7f0f725b66ad62c5",
-      "size": 9315,
+      "sha256": "63c4b460e4caf740a54f7bc389c1fe06cc175d332173060dadbe3c904fdd2758",
+      "size": 10836,
       "cache_path": "manifests/hooks/harness_audit/comment_format.py.json"
     },
     "hooks/harness_audit/comment_format_hook.py": {
-      "sha256": "95de0571060e85ca54ee3b99b72b815c01b00e7588004f3778656250575092df",
-      "size": 2210,
+      "sha256": "720f8b2a57bd15da32c576eccd87277c7a302044191678168da170fd49dd9b2d",
+      "size": 2448,
       "cache_path": "manifests/hooks/harness_audit/comment_format_hook.py.json"
     },
     "hooks/harness_audit/md_format_bash_gate.py": {
@@ -58,8 +58,8 @@
       "cache_path": "manifests/hooks/harness_audit/md_format_bash_gate.py.json"
     },
     "hooks/harness_audit/md_format_skill_gate.py": {
-      "sha256": "5ce0b7483c95925879aacb534597e66dbecec4c0e767fbef5fd432041d43c113",
-      "size": 7848,
+      "sha256": "05b02950d71a2cc2f393b31276764540b269f911b457c1e4b2718160eb8bf790",
+      "size": 8002,
       "cache_path": "manifests/hooks/harness_audit/md_format_skill_gate.py.json"
     },
     "hooks/harness_audit/self_delegation_gate.py": {
@@ -68,8 +68,8 @@
       "cache_path": "manifests/hooks/harness_audit/self_delegation_gate.py.json"
     },
     "hooks/harness_audit/sync_hook.py": {
-      "sha256": "240df7bf827c51d4b549c5878370ff4b44ae153d486e4bfa7979e6621193ee8b",
-      "size": 1870,
+      "sha256": "4aa044554386c2bc26043122379c3bb9e30a65ba0dfa3a48e1acd040bd1c51ed",
+      "size": 2013,
       "cache_path": "manifests/hooks/harness_audit/sync_hook.py.json"
     },
     "hooks/harness_audit/tests/__init__.py": {
@@ -78,8 +78,8 @@
       "cache_path": "manifests/hooks/harness_audit/tests/__init__.py.json"
     },
     "hooks/harness_audit/tests/test_audit.py": {
-      "sha256": "8fe1425cafc10cc1c468869ccedd9298a9429d0ba4302244f744e2b0c826fa08",
-      "size": 14766,
+      "sha256": "943d56c1c62dcbbcbe05e702a62e10c94cf4b4250458b633f4021ab398140a1f",
+      "size": 17440,
       "cache_path": "manifests/hooks/harness_audit/tests/test_audit.py.json"
     },
     "hooks/harness_audit/tests/test_audit_hook.py": {
@@ -88,8 +88,8 @@
       "cache_path": "manifests/hooks/harness_audit/tests/test_audit_hook.py.json"
     },
     "hooks/harness_audit/tests/test_comment_format.py": {
-      "sha256": "e531eeb54b11dbe78690eeb43f0c1a030d7c456676e3cc5e4a068f1bc248ce97",
-      "size": 10069,
+      "sha256": "d233c016f8bf980120232f892a38128aeb7868bf18a7c60f861746a2274e0f0b",
+      "size": 12411,
       "cache_path": "manifests/hooks/harness_audit/tests/test_comment_format.py.json"
     },
     "hooks/harness_audit/tests/test_md_format_bash_gate.py": {
@@ -98,13 +98,13 @@
       "cache_path": "manifests/hooks/harness_audit/tests/test_md_format_bash_gate.py.json"
     },
     "hooks/harness_audit/tests/test_md_format_skill_gate.py": {
-      "sha256": "e8d05efb288ad7887883f9ac5da14c680180ebd3294b44223641ed246ac70c4d",
-      "size": 7975,
+      "sha256": "6278d07354072cb27c6afb536fc79b5dfd08d9cf921424f2a5d5c70a9ab96419",
+      "size": 8912,
       "cache_path": "manifests/hooks/harness_audit/tests/test_md_format_skill_gate.py.json"
     },
     "hooks/harness_audit/tests/test_sync_hook.py": {
-      "sha256": "3283adf2c65ed588149f2712c1bead3e0c6f0bf6d7091948f2511f723b1f9b8b",
-      "size": 3656,
+      "sha256": "2c6fcf44ae008ab435ce4916efc020f7f3049428ed92521891f1df51abb084de",
+      "size": 4176,
       "cache_path": "manifests/hooks/harness_audit/tests/test_sync_hook.py.json"
     },
     "hooks/model_tier_guard.py": {
@@ -127,15 +127,15 @@
       "size": 17662,
       "cache_path": "manifests/scripts/ast_index.py.json"
     },
+    "scripts/compile_agents.py": {
+      "sha256": "ddaf3214d739b73c5c03ad3247126a4acfd49d84a00b42810f486ab4530f4dac",
+      "size": 6884,
+      "cache_path": "manifests/scripts/compile_agents.py.json"
+    },
     "scripts/resolve_image_version.py": {
       "sha256": "189116290937c3fa1f650811e9c631c6bf219bb423e9a7183d2327edb59f6df8",
       "size": 2430,
       "cache_path": "manifests/scripts/resolve_image_version.py.json"
-    },
-    "scripts/sync_harness.py": {
-      "sha256": "a4ef688fb0cc432c75a0c90c57a1db56f8cb12739f1065d7098f969e9bc0e6ea",
-      "size": 4220,
-      "cache_path": "manifests/scripts/sync_harness.py.json"
     },
     "scripts/wait_for_stack_healthy.py": {
       "sha256": "8e6b75a5df9764621cdd43b74fe934fcc26a36e0cfdbf84309ab76e06487b021",
@@ -213,8 +213,8 @@
       "cache_path": "manifests/services/_common/src/side_ingest.py.json"
     },
     "services/_common/tests/conftest.py": {
-      "sha256": "35aad47ae1c453b6d007828b4471bf6a13888a489b8523f986d83bdef5f82308",
-      "size": 1199,
+      "sha256": "81c25bfe9d82143afb8ed1cd3ecb0b31d90fc8764263982801cb496a3dd9a1ed",
+      "size": 1215,
       "cache_path": "manifests/services/_common/tests/conftest.py.json"
     },
     "services/_common/tests/test_fastjson.py": {
@@ -258,8 +258,8 @@
       "cache_path": "manifests/services/grafana/scripts/query_perf.py.json"
     },
     "services/grafana/scripts/tag_panel_queries.py": {
-      "sha256": "14b875bd12ef4f0faa4ab28a9d93bc49c66d38f8c426ec0c0c4c8177f5342ab4",
-      "size": 3030,
+      "sha256": "6033cb8d4c76ca84b15aba2b3045bec156c0d08f2a3cc4e212c6d5c84f98cb0d",
+      "size": 3183,
       "cache_path": "manifests/services/grafana/scripts/tag_panel_queries.py.json"
     },
     "services/init/ch_roles.py": {
@@ -271,6 +271,26 @@
       "sha256": "6d2dd7f9c19a6c19e9fb4cf21b4c77b87965bbf3474806c663ac485ed8b19e45",
       "size": 10422,
       "cache_path": "manifests/services/init/init_clickhouse_users.py.json"
+    },
+    "services/init/init_common.py": {
+      "sha256": "a5e7a2985dcd1e905bddc8659dd64cb1a66ad95501e181867aa5f5f300b5198c",
+      "size": 4379,
+      "cache_path": "manifests/services/init/init_common.py.json"
+    },
+    "services/init/init_environment.py": {
+      "sha256": "f748d6271e527f416f8877084a4030d33cac2d5d74a59ff9af9589f7d858f803",
+      "size": 2871,
+      "cache_path": "manifests/services/init/init_environment.py.json"
+    },
+    "services/init/init_litellm_key.py": {
+      "sha256": "0cb52d1fb03b0a75f3a2cdbf456a859266b922e3e60529d4afc736715ef8921e",
+      "size": 5518,
+      "cache_path": "manifests/services/init/init_litellm_key.py.json"
+    },
+    "services/init/litellm_provision.py": {
+      "sha256": "0e14d1e4c3178d561bf325e3ac534f4144b06316beb9dfdb43a19810c84df4ab",
+      "size": 1863,
+      "cache_path": "manifests/services/init/litellm_provision.py.json"
     },
     "services/litellm/custom_callbacks.py": {
       "sha256": "93553212d23fd519c7652d734a36932ae1b079cd31313cd9e8e90ee43c80e154",
@@ -416,51 +436,6 @@
       "sha256": "4d89ceb23bf03873351269e5a54b7207b7a38ca0f576ff0273f1b1e70b2a47c5",
       "size": 7026,
       "cache_path": "manifests/services/worker/tests/test_worker.py.json"
-    },
-    "services/init/init_common.py": {
-      "sha256": "a5e7a2985dcd1e905bddc8659dd64cb1a66ad95501e181867aa5f5f300b5198c",
-      "size": 4379,
-      "cache_path": "manifests/services/init/init_common.py.json"
-    },
-    "services/init/litellm_provision.py": {
-      "sha256": "0e14d1e4c3178d561bf325e3ac534f4144b06316beb9dfdb43a19810c84df4ab",
-      "size": 1863,
-      "cache_path": "manifests/services/init/litellm_provision.py.json"
-    },
-    "services/init/init_litellm_key.py": {
-      "sha256": "0cb52d1fb03b0a75f3a2cdbf456a859266b922e3e60529d4afc736715ef8921e",
-      "size": 5518,
-      "cache_path": "manifests/services/init/init_litellm_key.py.json"
-    },
-    "services/init/init_environment.py": {
-      "sha256": "f748d6271e527f416f8877084a4030d33cac2d5d74a59ff9af9589f7d858f803",
-      "size": 2871,
-      "cache_path": "manifests/services/init/init_environment.py.json"
-    },
-    "../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/26f4eff0-7ee3-432c-b6f1-5ccbd5900728/scratchpad/test_init_environment.py": {
-      "sha256": "84ac20a38b91aea32b85fb35011f60df1425f49f29a637c15f1a113e8970dfae",
-      "size": 1753,
-      "cache_path": "manifests/../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/26f4eff0-7ee3-432c-b6f1-5ccbd5900728/scratchpad/test_init_environment.py.json"
-    },
-    "../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/279b7a75-a993-4a91-b78e-0649fe7230e8/scratchpad/analyze_layout.py": {
-      "sha256": "84076f2bd916c854c568dfd590e3f7a030224db0f9bc366d753e7442913b9b97",
-      "size": 9967,
-      "cache_path": "manifests/../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/279b7a75-a993-4a91-b78e-0649fe7230e8/scratchpad/analyze_layout.py.json"
-    },
-    "../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/279b7a75-a993-4a91-b78e-0649fe7230e8/scratchpad/analyze_layout_v2.py": {
-      "sha256": "81e07be2c61e1e838fc516b8950b16adb9be2c05916f36c2c627dc00a466e801",
-      "size": 11163,
-      "cache_path": "manifests/../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/279b7a75-a993-4a91-b78e-0649fe7230e8/scratchpad/analyze_layout_v2.py.json"
-    },
-    "../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/279b7a75-a993-4a91-b78e-0649fe7230e8/scratchpad/analyze_layout_v3.py": {
-      "sha256": "de37e42bec1af73a2ada05a38d22471b0d277a9c438d22bfa53d87e33c9e406a",
-      "size": 13029,
-      "cache_path": "manifests/../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/279b7a75-a993-4a91-b78e-0649fe7230e8/scratchpad/analyze_layout_v3.py.json"
-    },
-    "../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/f21b0dbf-8a1c-413a-b189-853aa9ba7185/scratchpad/legend_bottom.py": {
-      "sha256": "b7a12c49b7becc1a9125a80df0dcdd04323db231ef5a33647f10287e639c8bd0",
-      "size": 1809,
-      "cache_path": "manifests/../../../../private/tmp/claude-502/-Users-vyacheslavglushko-Projects-receipt-goblin/f21b0dbf-8a1c-413a-b189-853aa9ba7185/scratchpad/legend_bottom.py.json"
     }
   }
 }

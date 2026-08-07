@@ -20,17 +20,20 @@ sync_hook = importlib.import_module("sync_hook")
 
 
 class TestIsIndexSource(unittest.TestCase):
-    def test_skill_md_matches(self):
-        self.assertTrue(sync_hook.is_index_source(os.path.join(".claude", "skills", "x", "SKILL.md")))
+    def test_agent_yaml_matches(self):
+        self.assertTrue(sync_hook.is_index_source(os.path.join(".agents", "agents", "x.yaml")))
 
-    def test_codex_skill_md_matches(self):
-        self.assertTrue(sync_hook.is_index_source(os.path.join(".codex", "skills", "x", "SKILL.md")))
+    def test_skill_md_does_not_match(self):
+        self.assertFalse(sync_hook.is_index_source(os.path.join(".claude", "skills", "x", "SKILL.md")))
 
-    def test_agent_md_matches(self):
-        self.assertTrue(sync_hook.is_index_source(os.path.join(".claude", "agents", "x.md")))
+    def test_compiled_agent_md_does_not_match(self):
+        self.assertFalse(sync_hook.is_index_source(os.path.join(".claude", "agents", "x.md")))
 
-    def test_unrelated_claude_md_does_not_match(self):
-        self.assertFalse(sync_hook.is_index_source(os.path.join(".claude", "rules", "x.md")))
+    def test_agent_yaml_wrong_extension_does_not_match(self):
+        self.assertFalse(sync_hook.is_index_source(os.path.join(".agents", "agents", "x.md")))
+
+    def test_unrelated_agents_dir_file_does_not_match(self):
+        self.assertFalse(sync_hook.is_index_source(os.path.join(".agents", "skills", "x", "SKILL.md")))
 
     def test_agents_md_does_not_match(self):
         self.assertFalse(sync_hook.is_index_source("AGENTS.md"))
@@ -40,24 +43,24 @@ class TestIsIndexSource(unittest.TestCase):
 
 
 class TestMainEndToEnd(unittest.TestCase):
-    """Patches SYNC_HARNESS_SCRIPT to a fake script - never invokes the real
-    scripts/sync_harness.py, so these tests never touch this repo's own
-    agent_docs/harness-index.md."""
+    """Patches COMPILE_AGENTS_SCRIPT to a fake script - never invokes the real
+    scripts/compile_agents.py, so these tests never touch this repo's own
+    .claude/agents/*.md or .codex/agents/*.toml."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
-        self._old_script = sync_hook.SYNC_HARNESS_SCRIPT
+        self._old_script = sync_hook.COMPILE_AGENTS_SCRIPT
         self._old_cwd = os.getcwd()
         os.chdir(self.root)
 
     def tearDown(self):
         os.chdir(self._old_cwd)
-        sync_hook.SYNC_HARNESS_SCRIPT = self._old_script
+        sync_hook.COMPILE_AGENTS_SCRIPT = self._old_script
         self._tmp.cleanup()
 
     def write_fake_script(self, exit_code: int, stderr: str = "") -> Path:
-        script = self.root / "fake_sync.py"
+        script = self.root / "fake_compile.py"
         script.write_text(
             "import sys\n"
             f"sys.stderr.write({stderr!r})\n"
@@ -65,11 +68,11 @@ class TestMainEndToEnd(unittest.TestCase):
             encoding="utf-8",
         )
         script.chmod(script.stat().st_mode | stat.S_IEXEC)
-        sync_hook.SYNC_HARNESS_SCRIPT = script
+        sync_hook.COMPILE_AGENTS_SCRIPT = script
         return script
 
     def run_hook(self, file_path: str):
-        # sync_hook.main() forwards the sync script's stderr on failure -
+        # sync_hook.main() forwards the compile script's stderr on failure -
         # intended for the live hook, but noise a passing test shouldn't print.
         payload = json.dumps({"tool_input": {"file_path": file_path}})
         old_stdin = sys.stdin
@@ -85,16 +88,22 @@ class TestMainEndToEnd(unittest.TestCase):
         code = self.run_hook(str(self.root / "README.md"))
         self.assertEqual(code, 0)
 
-    def test_skill_edit_invokes_script_success(self):
-        self.write_fake_script(exit_code=0)
-        skill = self.root / ".claude" / "skills" / "x" / "SKILL.md"
-        code = self.run_hook(str(skill))
+    def test_compiled_agent_md_edit_does_not_invoke_script(self):
+        self.write_fake_script(exit_code=1)  # would fail if invoked
+        agent_md = self.root / ".claude" / "agents" / "x.md"
+        code = self.run_hook(str(agent_md))
         self.assertEqual(code, 0)
 
-    def test_agent_edit_invokes_script_failure(self):
+    def test_agent_yaml_edit_invokes_script_success(self):
+        self.write_fake_script(exit_code=0)
+        agent_yaml = self.root / ".agents" / "agents" / "x.yaml"
+        code = self.run_hook(str(agent_yaml))
+        self.assertEqual(code, 0)
+
+    def test_agent_yaml_edit_invokes_script_failure(self):
         self.write_fake_script(exit_code=1, stderr="boom")
-        agent = self.root / ".claude" / "agents" / "x.md"
-        code = self.run_hook(str(agent))
+        agent_yaml = self.root / ".agents" / "agents" / "x.yaml"
+        code = self.run_hook(str(agent_yaml))
         self.assertEqual(code, 2)
 
 

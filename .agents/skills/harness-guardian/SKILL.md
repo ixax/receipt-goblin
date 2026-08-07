@@ -4,7 +4,7 @@ description: >
   Token-economy audit workflow for the agent harness: file budgets, rule classification and relocation, cache hygiene, dual-harness (Claude Code + Codex) layout checks.
   Never triggers proactively - invoked explicitly by name, or read by the harness-expert subagent before a structural audit or relocation pass.
   SKIP for routine per-edit budget checks - already automatic.
-  v1.5.3
+  v1.5.4
 ---
 
 Keep the always-loaded context layer minimal.
@@ -45,7 +45,7 @@ An under-triggered skill costs one missed load; a bloated AGENTS.md costs every 
 ## 4. Verify
 
 Re-run `hooks/harness_audit/audit.py` - must exit 0.
-Run `uv run python3 scripts/sync_harness.py --check`; nonzero means `agent_docs/harness-index.md` is stale - regenerate via `make harness-index`.
+Run `uv run python3 scripts/compile_agents.py --check`; nonzero means a compiled `.claude/agents/*.md`/`.codex/agents/*.toml` is stale or orphaned - regenerate via `make compile-agents`.
 For each ENFORCEABLE rule converted to a hook: trigger it once, confirm the hook blocks/fixes as the prose used to instruct.
 
 ## 5. Report
@@ -74,6 +74,8 @@ The harness must behave identically under both tools:
 - `.agents/skills/` is the canonical skills directory (Agent Skills open standard, read natively by Codex CLI); `.claude/skills` is a single directory-level symlink to it.
   A new skill goes directly under `.agents/skills/<name>/`; nothing extra on the `.claude/` side.
   Descriptions must work for both trigger mechanics (Claude implicit + Codex implicit/`$skill`).
+- `.agents/agents/<name>.yaml` is each Subagent's single source; `scripts/compile_agents.py` renders both `.claude/agents/*.md` and `.codex/agents/*.toml` from it.
+  Hand-edit only the YAML source - the compiled `.md`/`.toml` are generated output.
 - `.claude/rules/` with globs is a Claude-only optimisation.
   Anything that must hold in both harnesses goes into a nested AGENTS.md; glob rules may only duplicate-as-scoping, never carry unique rules.
 - Enforcement that must hold everywhere lives in pre-commit/CI and linters; `.claude/hooks` and Codex config are thin per-tool adapters of the same checks, not the source of truth.

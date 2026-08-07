@@ -3,7 +3,10 @@ name: clickhouse-analyst
 description: >
   Delegate target for questions answerable from any table in the agent-tracking ClickHouse database - cost/token/error/latency/adoption analysis, debugging a Grafana panel's query, one-off lookups.
   v1.6.5
-tools: mcp__dev__query, mcp__stats__me, Skill
+tools:
+  - mcp__dev__query
+  - mcp__stats__me
+  - Skill
 model: claude-haiku-4-5
 ---
 

@@ -5,9 +5,14 @@ description: >
   Reads each match and judges relevance (script-ops runs raw shell without judging relevance; Explore does broad multi-step exploration) - this agent only locates.
   SKIP for code review, open-ended analysis, or editing.
   v1.2.1
-tools: Glob, Grep, Read, Skill
+tools:
+  - Glob
+  - Grep
+  - Read
+  - Skill
 model: claude-haiku-4-5
 ---
+
 Locate code relevant to the request.
 Return only:
 
