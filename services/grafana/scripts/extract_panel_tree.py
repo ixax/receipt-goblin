@@ -111,7 +111,9 @@ def main():
     src = load(args.source)
     tree = build_tree(src["spec"])
 
-    with open(args.out, "w", encoding="utf-8") as f:
+    # newline="": these files are LF-only, and Windows would otherwise translate
+    # every line ending to CRLF and rewrite the whole file.
+    with open(args.out, "w", encoding="utf-8", newline="") as f:
         json.dump(tree, f, indent=2, ensure_ascii=True)
         f.write("\n")
 

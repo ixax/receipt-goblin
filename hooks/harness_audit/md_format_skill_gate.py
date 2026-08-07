@@ -41,7 +41,7 @@ sys.path.insert(0, str(HOOK_DIR))
 from comment_format import comment_lines_in_text  # noqa: E402
 
 SKILL_NAME = "md-format"
-SKILL_FILE_SUFFIX = str(Path(".claude") / "skills" / "md-format" / "SKILL.md")
+SKILL_FILE_SUFFIX = ".claude/skills/md-format/SKILL.md"
 
 # Directories exempt from the md-format gate entirely (freeform docs, not harness prose).
 # Add more names here as needed.
@@ -59,7 +59,7 @@ def _block_satisfies_gate(block: dict) -> bool:
     tool_input = block.get("input") or {}
     if name == "Skill" and tool_input.get("skill") == SKILL_NAME:
         return True
-    if name == "Read" and str(tool_input.get("file_path", "")).endswith(SKILL_FILE_SUFFIX):
+    if name == "Read" and str(tool_input.get("file_path", "")).replace("\\", "/").endswith(SKILL_FILE_SUFFIX):
         return True
     return False
 
