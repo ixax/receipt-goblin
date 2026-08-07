@@ -1,14 +1,15 @@
-# Prod image - config/entrypoint baked in at build time (this repo's
-# convention), not bind-mounted.
-#
-# user_configs/*.yaml (gitignored, may carry real remote-model hosts/keys)
-# is baked in here too - whatever's actually present on disk at build time,
-# secrets included. Prod deploys are expected to drop the real *.yaml files
-# under services/litellm/user_configs/ before running `docker compose build
-# litellm` - see README "Remote model sources". docker-compose.dev.yml
-# bind-mounts the directory back for live editing without a rebuild; prod
-# needs a rebuild to pick up a new/changed source.
 FROM ghcr.io/berriai/litellm:main-latest
+
+USER root
+RUN mkdir -p /app/litellm-config
+
+# LITELLM_LOCAL_MODEL_COST_MAP/LITELLM_MODEL_COST_MAP_PATH deliberately unset:
+# litellm's default behavior already fetches
+# model_prices_and_context_window.json from GitHub at startup.
+# Pinning a baked-in copy here would disable that auto-update instead of
+# enabling it.
+
+USER 1000
 
 COPY config.yaml /app/litellm-config/config.yaml
 COPY custom_callbacks.py /app/litellm-config/custom_callbacks.py

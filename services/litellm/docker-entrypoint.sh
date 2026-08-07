@@ -58,7 +58,8 @@ fi
 # services/litellm/ - it's written fresh on every start instead. It is never
 # a real credential (only per-caller forwarded tokens are), so an
 # unauthenticated call just gets a real 401/403 from chatgpt.com.
-CHATGPT_AUTH_DIR="${CHATGPT_TOKEN_DIR:-$HOME/.config/litellm/chatgpt}"
+# Use /tmp if CHATGPT_TOKEN_DIR is not set (HOME may not be available for the non-root user UID 1000).
+CHATGPT_AUTH_DIR="${CHATGPT_TOKEN_DIR:-/tmp/litellm-chatgpt}"
 mkdir -p "$CHATGPT_AUTH_DIR"
 cat > "$CHATGPT_AUTH_DIR/${CHATGPT_AUTH_FILE:-auth.json}" <<'EOF'
 {
@@ -68,4 +69,5 @@ cat > "$CHATGPT_AUTH_DIR/${CHATGPT_AUTH_FILE:-auth.json}" <<'EOF'
 }
 EOF
 
+export CHATGPT_TOKEN_DIR="$CHATGPT_AUTH_DIR"
 exec docker/prod_entrypoint.sh --config "$EFFECTIVE_CONFIG" "$@"

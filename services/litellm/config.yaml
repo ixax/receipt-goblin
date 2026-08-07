@@ -18,35 +18,33 @@ model_list:
   # ChatGPT login - see custom_callbacks.py's "Codex/ChatGPT subscription
   # passthrough" section for why plain forward_client_headers can't do this.
   #
-  # model_info.*_cost_per_token below isn't in LiteLLM's built-in cost map
-  # (these model strings are Codex/ChatGPT-specific, not published OpenAI API
-  # model names), so response_cost/cost_breakdown came back $0 for every
-  # gpt-5.6-* call until this was added. Rates are OpenAI's public per-token
-  # API pricing for these models (developers.openai.com/api/docs/models/
-  # gpt-5.6-{sol,terra,luna}, confirmed 2026-07-25) - a cost proxy, not an
-  # actual charge: usage here rides the caller's ChatGPT subscription, which
-  # bills flat, not per token.
+  # No hardcoded cost numbers here on purpose.
+  # "chatgpt/<model>" isn't a cost-map key on its own.
+  # Each model_info instead points litellm at the matching bare entry via
+  # base_model
+  # (docs.litellm.ai/docs/proxy/custom_pricing#set-base_model-for-cost-tracking),
+  # the standard mechanism for a non-standard model string borrowing another
+  # entry's pricing.
+  # Lookup still hits litellm's live-fetched map each time, so pricing stays
+  # current via its own auto-refresh instead of freezing at a hardcoded
+  # number.
+  # This is still a cost proxy, not an actual charge: usage here rides the
+  # caller's ChatGPT subscription, which bills flat, not per token.
   - model_name: gpt-5.6-sol
     litellm_params:
       model: chatgpt/gpt-5.6-sol
     model_info:
-      input_cost_per_token: 0.000005
-      output_cost_per_token: 0.00003
-      cache_read_input_token_cost: 0.0000005
+      base_model: gpt-5.6-sol
   - model_name: gpt-5.6-terra
     litellm_params:
       model: chatgpt/gpt-5.6-terra
     model_info:
-      input_cost_per_token: 0.0000025
-      output_cost_per_token: 0.000015
-      cache_read_input_token_cost: 0.00000025
+      base_model: gpt-5.6-terra
   - model_name: gpt-5.6-luna
     litellm_params:
       model: chatgpt/gpt-5.6-luna
     model_info:
-      input_cost_per_token: 0.000001
-      output_cost_per_token: 0.000006
-      cache_read_input_token_cost: 0.0000001
+      base_model: gpt-5.6-luna
 
 general_settings:
   store_model_in_db: true
