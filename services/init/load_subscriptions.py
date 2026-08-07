@@ -51,7 +51,7 @@ def _sql_string_literal(value: str) -> str:
 
 
 def _clickhouse(compose_files: list[str], env: dict[str, str], query: str) -> None:
-    """Runs one statement as the bootstrap superuser.
+    """Runs one or more `;`-separated statements as the bootstrap superuser.
 
     TRUNCATE is DDL-adjacent and no least-privilege role in services/init/config.yml holds it, so this uses the same bootstrap identity `make migrate` does rather than the ingest role.
     """
@@ -60,7 +60,7 @@ def _clickhouse(compose_files: list[str], env: dict[str, str], query: str) -> No
         "--user", env["CLICKHOUSE_BOOTSTRAP_USER"],
         "--password", env["CLICKHOUSE_BOOTSTRAP_PASSWORD"],
         "--database", env.get("CLICKHOUSE_DATABASE", "default"),
-        "--query", query,
+        "--multiquery", "--query", query,
     ]
     subprocess.run(cmd, cwd=REPO_ROOT, check=True, stdin=subprocess.DEVNULL, timeout=60)
 
@@ -111,18 +111,21 @@ def main() -> None:
     identity_values = _identity_values(people)
     subscription_values = _subscription_values(subscriptions)
 
-    _clickhouse(compose_files, env, "TRUNCATE TABLE IF EXISTS person_identities")
+    # Each table's TRUNCATE and INSERT ride one clickhouse-client invocation: there is no between-process window where a crash leaves the table emptied for good.
+    # A failure inside the pair still empties the table, but the pair is idempotent as a unit - re-running `make subscriptions` fully recovers.
+    identity_load = "TRUNCATE TABLE IF EXISTS person_identities"
     if identity_values:
-        _clickhouse(compose_files, env, f"INSERT INTO person_identities (user_id, person_id, updated_at) VALUES {identity_values}")
+        identity_load += f"; INSERT INTO person_identities (user_id, person_id, updated_at) VALUES {identity_values}"
+    _clickhouse(compose_files, env, identity_load)
 
-    _clickhouse(compose_files, env, "TRUNCATE TABLE IF EXISTS subscriptions")
+    subscription_load = "TRUNCATE TABLE IF EXISTS subscriptions"
     if subscription_values:
-        _clickhouse(
-            compose_files, env,
-            "INSERT INTO subscriptions "
+        subscription_load += (
+            "; INSERT INTO subscriptions "
             "(person_id, provider, plan, monthly_price, currency, seats, valid_from, valid_to, updated_at) "
-            f"VALUES {subscription_values}",
+            f"VALUES {subscription_values}"
         )
+    _clickhouse(compose_files, env, subscription_load)
 
     identity_count = sum(len(person.user_ids) for person in people)
     print(f"loaded {len(people)} people ({identity_count} key identities) and {len(subscriptions)} subscriptions")

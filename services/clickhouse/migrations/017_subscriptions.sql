@@ -59,10 +59,14 @@
 --   1. Apply this file:
 --      docker exec -i receipt-goblin-clickhouse clickhouse-client \
 --        --database "$CLICKHOUSE_DATABASE" --multiquery < services/clickhouse/migrations/017_subscriptions.sql
---   2. Deploy the updated webhook/webhook-worker images (billing_mode at
+--   2. Re-run `make init` (idempotent, reuses existing credentials) so the
+--      new person_identities/subscriptions grants in services/init/config.yml
+--      reach the reader roles - without them person_identities_dict never
+--      loads and every subscription panel returns ACCESS_DENIED.
+--   3. Deploy the updated webhook/webhook-worker images (billing_mode at
 --      ingest).
---   3. `make subscriptions` to load services/init/subscriptions.yml.
---   4. Optionally `make reparse-all` to backfill billing_mode on existing
+--   4. `make subscriptions` to load services/init/subscriptions.yml.
+--   5. Optionally `make reparse-all` to backfill billing_mode on existing
 --      rows; without it they keep the 'unknown' default, which the panels
 --      below treat as notional. Purely cosmetic while every model is
 --      subscription-billed.
