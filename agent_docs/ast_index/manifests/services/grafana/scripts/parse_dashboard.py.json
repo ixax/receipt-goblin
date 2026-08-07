@@ -1,6 +1,6 @@
 {
   "path": "services/grafana/scripts/parse_dashboard.py",
-  "line_count": 171,
+  "line_count": 180,
   "module_docstring": "Parse a Grafana v2beta1 dashboard JSON file.\n\nSchema recap: top-level apiVersion/kind/metadata/spec. spec.elements maps\n\"panel-<id>\" -> {kind: \"Panel\", spec: {id, title, description, data: {\nspec: {queries: [...]}}, vizConfig: {kind: <panel type>}}}. spec.layout is a\nTabsLayout of tabs, each a GridLayout of items referencing elements by name.",
   "imports": [
     {
@@ -39,7 +39,7 @@
       "docstring": null,
       "is_async": false,
       "line_start": 14,
-      "line_end": 16
+      "line_end": 19
     },
     {
       "qualname": "_iter_leaf_tabs",
@@ -58,8 +58,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 19,
-      "line_end": 35
+      "line_start": 22,
+      "line_end": 44
     },
     {
       "qualname": "iter_tabs",
@@ -74,8 +74,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 38,
-      "line_end": 39
+      "line_start": 47,
+      "line_end": 48
     },
     {
       "qualname": "iter_panel_refs",
@@ -90,8 +90,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 42,
-      "line_end": 49
+      "line_start": 51,
+      "line_end": 58
     },
     {
       "qualname": "panel_by_ref",
@@ -110,8 +110,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 52,
-      "line_end": 53
+      "line_start": 61,
+      "line_end": 62
     },
     {
       "qualname": "cmd_list_tabs",
@@ -126,8 +126,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 56,
-      "line_end": 60
+      "line_start": 65,
+      "line_end": 69
     },
     {
       "qualname": "cmd_list_panels",
@@ -142,8 +142,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 63,
-      "line_end": 75
+      "line_start": 72,
+      "line_end": 84
     },
     {
       "qualname": "find_panel",
@@ -166,8 +166,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 78,
-      "line_end": 85
+      "line_start": 87,
+      "line_end": 94
     },
     {
       "qualname": "cmd_show_panel",
@@ -182,8 +182,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 88,
-      "line_end": 103
+      "line_start": 97,
+      "line_end": 112
     },
     {
       "qualname": "cmd_show_variable",
@@ -198,8 +198,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 106,
-      "line_end": 113
+      "line_start": 115,
+      "line_end": 122
     },
     {
       "qualname": "cmd_summary",
@@ -214,8 +214,8 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 116,
-      "line_end": 133
+      "line_start": 125,
+      "line_end": 142
     },
     {
       "qualname": "main",
@@ -225,9 +225,9 @@
       "decorators": [],
       "docstring": null,
       "is_async": false,
-      "line_start": 136,
-      "line_end": 167
+      "line_start": 145,
+      "line_end": 176
     }
   ],
-  "sha256": "5ecff3d2c8f70e5811a9ec1a79a1d4c7ffb749d48bb5ab715eabb7316ebc9b69"
+  "sha256": "3fdbd9ee267e52f7f86f964642621906d56da12c880ac2aae2543a54d4d8b2b1"
 }

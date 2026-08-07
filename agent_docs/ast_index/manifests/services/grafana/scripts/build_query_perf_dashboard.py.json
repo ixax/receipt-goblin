@@ -1,6 +1,6 @@
 {
   "path": "services/grafana/scripts/build_query_perf_dashboard.py",
-  "line_count": 624,
+  "line_count": 626,
   "module_docstring": "Render the query-performance companion dashboard from a panel tree.\n\nThis is the \"template\" half of a two-script pipeline - the other half,\nextract_panel_tree.py, parses services/grafana/dashboards/agents_overview.json\ninto a tree JSON (every top-level tab, its sub-tabs, and each panel's\nid/title/tagged state). This script reads that tree (--tree) and stamps it\nonto services/grafana/dashboards-health/query_performance.json, without\ntouching agents_overview.json itself.\n\nFor each tree panel already tagged by tag_panel_queries.py, emits a\ncollapsible row titled \"[<id>] <source title>\", containing 5 panels:\n\n  - Duration: query_duration_ms over time\n  - Memory usage: memory_usage (bytes) over time\n  - Rows / bytes read: read_rows / read_bytes over time\n  - Latency percentiles: p50/p90/p95 of query_duration_ms, bucketed over time\n  - Recent executions: table of event_time, duration, memory, rows, bytes, query_id\n\nAll five are filtered by `log_comment = 'agents_overview:panel_<id>'`\nagainst system.query_log - see tag_panel_queries.py for how that tag\ngets onto the source panel's rawSql, and AGENTS.md for the known\nCLICKHOUSE_USER grant fragility this depends on\n(SELECT ON system.query_log).\n\nThe output dashboard's tab/sub-tab layout mirrors each tree tab's\nstructure 1:1 (flat tab -> a RowsLayout of one collapsible row per\nsource panel; tab with sub-tabs -> nested TabsLayout, one level deep,\nmatching what agents_overview.json itself uses, with a RowsLayout at\neach sub-tab leaf - see parse_dashboard.py's module docstring for the\nv2beta1 TabsLayout/GridLayout shape, and dashboards-health/infra_overview.json\nor docker_containers.json for the RowsLayout/RowsLayoutRow shape this\nreuses).\n\nUsage:\n  # full rebuild - every tab in the tree, one command\n  extract_panel_tree.py --out services/grafana/scripts/panel_tree.json\n  build_query_perf_dashboard.py --tree services/grafana/scripts/panel_tree.json \\\n      --out services/grafana/dashboards-health/query_performance.json\n\n  # scoped sync - just one tab, other tabs in --out left untouched\n  build_query_perf_dashboard.py --tree services/grafana/scripts/panel_tree.json \\\n      --out services/grafana/dashboards-health/query_performance.json --tab \"Top N\"\n\nAlways re-run extract_panel_tree.py first if agents_overview.json's panels,\ntags, or tabs changed since the tree was last written - this script only ever\nreads the tree, never the source dashboard, so a stale tree silently renders\nstale data.",
   "imports": [
     {
@@ -397,8 +397,8 @@
       "docstring": null,
       "is_async": false,
       "line_start": 546,
-      "line_end": 620
+      "line_end": 622
     }
   ],
-  "sha256": "40317c40706ff641d1cf309ca25b35abbcf038410c26ab5ac5306673ee2159b2"
+  "sha256": "7e5d8a5734754448b2b3aa69587dab6aff06a45ee47a73e9eb2e1178b4ee896e"
 }

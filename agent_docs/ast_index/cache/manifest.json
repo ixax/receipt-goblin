@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-07T12:37:29.424778+00:00",
+  "generated_at": "2026-08-07T14:42:58.612739+00:00",
   "files": {
     "hooks/ast_index/sync_hook.py": {
       "sha256": "c8959b7bd47119783c7c14eefd46cb4c76a873f6238107e6cca27706f4e89b48",
@@ -238,18 +238,18 @@
       "cache_path": "manifests/services/_common/tests/test_side_ingest.py.json"
     },
     "services/grafana/scripts/build_query_perf_dashboard.py": {
-      "sha256": "40317c40706ff641d1cf309ca25b35abbcf038410c26ab5ac5306673ee2159b2",
-      "size": 24929,
+      "sha256": "7e5d8a5734754448b2b3aa69587dab6aff06a45ee47a73e9eb2e1178b4ee896e",
+      "size": 25082,
       "cache_path": "manifests/services/grafana/scripts/build_query_perf_dashboard.py.json"
     },
     "services/grafana/scripts/extract_panel_tree.py": {
-      "sha256": "374232895f35a6cbd3bce64dc53e310001041cd5eaedac2907d9a74ec3d6eec7",
-      "size": 5752,
+      "sha256": "7f57edee4184ae72c39c4e291c697b98c2e130f98a551c0429e030f686af7c52",
+      "size": 5905,
       "cache_path": "manifests/services/grafana/scripts/extract_panel_tree.py.json"
     },
     "services/grafana/scripts/parse_dashboard.py": {
-      "sha256": "5ecff3d2c8f70e5811a9ec1a79a1d4c7ffb749d48bb5ab715eabb7316ebc9b69",
-      "size": 5867,
+      "sha256": "3fdbd9ee267e52f7f86f964642621906d56da12c880ac2aae2543a54d4d8b2b1",
+      "size": 6421,
       "cache_path": "manifests/services/grafana/scripts/parse_dashboard.py.json"
     },
     "services/grafana/scripts/query_perf.py": {
