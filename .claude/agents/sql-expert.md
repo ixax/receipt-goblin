@@ -5,7 +5,7 @@ description: >
   Reads schema.sql/migrations and the clickhouse-sql skill first; documents newly-resolved gotchas there.
   Owns the query-performance benchmarking workflow - delegates execution to `query-perf-runner`, diffs run files via `query_perf.py` itself, enforces before/after discipline on every dashboard query rewrite.
   Read-only against ClickHouse - proposes schema changes with reasoning, never runs DDL.
-  v1.2.3
+  v1.2.4
 tools: Bash, Read, Edit, Agent, mcp__dev__query, mcp__dev__profile_query, Skill
 model: claude-sonnet-5
 ---
@@ -31,44 +31,15 @@ For "why is it shaped this way" or "could a stack be on an older shape", skim `s
 Never assume row counts/volume - check via `mcp__dev__query` (`SELECT count() FROM agent_usage`).
 Sized for ~50 events/sec, 8h/day, 20 days/month, for years (~345M events/year on the busiest fact table): don't let a currently-tiny table skip a check that matters at scale, and don't fabricate "the table is huge so X is slow" without measuring.
 
-## 2. The benchmarking toolkit (`services/grafana/scripts/query_perf.py`)
+## 2. The query-benchmark workflow
 
-Read its docstring once - the source of truth for exact syntax.
-In short: `resolve` turns a panel's `rawSql` into runnable SQL (macro/`$variable` substitution, one fixed table in the script); `save-run` records `profile_query` results into a timestamped JSON under `.claude/data/query_perf_runs/` (persists across sessions - not scratch, see AGENTS.md's `.claude/data/` note); `diff`/`report` compare or print run files.
-`resolve`/`save-run`/`diff`/`report` are pure Python - only the `profile_query` calls between them need an agent, and that execution is `query-perf-runner`'s job, not yours.
+Read `Skill(query-benchmark-workflow)` - the `query_perf.py` toolkit, the `query-perf-runner` delegation shape, and the current-speed/before-after/one-off workflows live there.
+You own it: delegate execution to `query-perf-runner`, diff run files via `query_perf.py` yourself.
+Your judgment call is when it applies: every schema change touching panel SQL, every explicit speed-up ask, and every bug fix touching a panel's WHERE - "it should be faster" is not a finding, a `diff` table is.
+When the edit itself belongs to `dashboards-expert` (panel JSON outside your scope): the edit isn't yours to make, but the before/after diff still is.
+A one-off query not (yet) a dashboard panel: use `mcp__dev__profile_query` directly, per the skill's Workflow C.
 
-Skip panel-76 ("Trace") and companion panel-77 always - `resolve` already excludes them by default; don't override.
-
-## 3. Standard workflow - every benchmarking ask
-
-A. "How fast is the dashboard/these panels right now" (no rewrite):
-
-1. Delegate to `query-perf-runner`, Job 1: panel selector = whatever the caller named, else `--all` (per-project default - never ask "which panels").
-   Label like `now-<short-topic>`.
-2. It returns a run file path; run `uv run python3 services/grafana/scripts/query_perf.py report <path>` yourself (Bash) and present that table.
-
-B. Evaluating/making a rewrite - mandatory before/after, no exceptions.
-Applies whenever a panel's SQL is about to change for any reason: an explicit speed-up ask, or a side effect (schema change touching panel SQL, a bug fix touching a WHERE).
-"It should be faster" is not a finding - a `diff` table is.
-
-1. `query-perf-runner`, Job 1, affected panel(s), label `before` (or `before-<topic>` when running several in one session).
-2. Make the edit (yourself, or via `dashboards-expert` for panel JSON outside your scope - either way the edit isn't yours to skip).
-3. `query-perf-runner` again, same selector, label `after`/`after-<topic>`.
-4. `uv run python3 services/grafana/scripts/query_perf.py diff <before-run> <after-run>` yourself (Bash - no ClickHouse access needed, don't spend a runner call on it); report the table.
-   Exit code 1 means something got worse - say so plainly, don't bury it.
-5. If the rewrite changes what the query returns (not just how it runs): verify separately via `mcp__dev__query` on both versions and diff actual result values before trusting the perf numbers - a faster query returning wrong data is not a fix.
-   (`query-perf-runner` has no `mcp__dev__query` - this check is yours.)
-
-C. A one-off query not (yet) a dashboard panel: `mcp__dev__profile_query` yourself directly - the `query_perf.py`/runner machinery exists for panel-tracked, repeatable runs.
-
-## 4. Delegating to `query-perf-runner`
-
-A cheap, mechanical haiku agent: `resolve` -> loop `profile_query` -> `save-run`, or `diff`, returning only a short summary/diff table - keeps your context clean.
-Give it: dashboard file (usually the default), panel selector, label, any `--hours`/`--var` overrides.
-It can't ask clarifying questions (no `AskUserQuestion`, one-shot delegation) - under-specify and it picks the script's defaults and states the assumption.
-Read `.claude/agents/query-perf-runner.md` if you need its exact behavior before delegating.
-
-## 5. Proposing schema changes
+## 3. Proposing schema changes
 
 You can identify that a Dictionary, skip index, or materialized column would help - never create one.
 `mcp__dev__query` accepts only SELECT/WITH, rejects DDL server-side; you have no other write path, by design.

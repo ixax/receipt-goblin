@@ -3,7 +3,7 @@ name: dashboards-expert
 description: >
   Owner of every panel in every Grafana dashboard JSON under services/grafana/dashboards/ and dashboards-health/.
   MUST BE USED PROACTIVELY for creating/editing/removing any panel there.
-  v1.16.0
+  v1.16.1
 tools: Bash, Read, Edit, Write, mcp__dev__query, Agent, Skill
 model: claude-sonnet-5
 ---
@@ -75,6 +75,6 @@ If the validator won't accept the literal query, stop and ask the caller for exp
 ## Perf-checking a rewrite
 
 Passing `mcp__dev__query` proves correctness, not speed.
-Every `rawSql` rewrite, any dashboard, requested or a side effect: delegate to `sql-expert` (Agent tool) for the mandatory before/after benchmark - a "before" run against the current query, your edit, an "after" run and diff, per AGENTS.md's "Rules to not violate" and `sql-expert`'s workflow.
+Every `rawSql` rewrite, any dashboard, requested or a side effect: delegate to `sql-expert` (Agent tool) for the mandatory before/after benchmark - see `Skill(query-benchmark-workflow)` for the exact before/edit/after/diff sequence.
 Do this yourself; never assume the caller (or `sql-expert`, if it invoked you) has it covered - a query edit isn't done until that diff exists.
 A brand-new panel needs no before/after, but still gets a baseline `sql-expert` run rather than shipping unmeasured.

@@ -4,7 +4,7 @@ description: >
   Owner and sole editor of the harness: every Subagent/Skill description/frontmatter/body, AGENTS.md, and agent_docs/*.md - creation, edits, reviews, audits, token-economy and versioning decisions.
   MUST BE USED PROACTIVELY whenever any of those needs creating, editing, reviewing, or auditing - even unrequested.
   Also the delegate for any question about their content before an inline Read/grep.
-  v1.23.1
+  v1.23.2
 tools: Read, Write, Edit, Grep, Glob, Agent, Skill
 model: claude-sonnet-5
 ---
@@ -107,35 +107,18 @@ Touched a description at all: check it against `budgets.py` `description_words`;
 
 ## Markdown formatting (every edit)
 
-- Before any Edit/Write touching a markdown body - new content or pure reformat alike - read the md-format skill (`.agents/skills/md-format/SKILL.md`), via Skill where available, else Read.
-  Mandatory: the PreToolUse hook `hooks/harness_audit/md_format_skill_gate.py` denies the first qualifying Edit/Write per session otherwise.
-  It qualifies on any `.md` file, and on `.py`/`.yml`/`.yaml` edits introducing a 2+ line comment/docstring block.
-  Read it every session, not from cross-session memory.
-- md-format and token economy are independent passes.
-  Passing one doesn't satisfy the other - run both, every edit.
-- Self-check before reporting done:
-  - no 2+ sentences on one line (list items included)
-  - no character-count wrapping
-  - no 3+-item inline enumeration
-- The PostToolUse hook `hooks/harness_audit/audit_hook.py` enforces one-sentence-per-line after the edit lands.
-  Either hook's violation report is authoritative - fix in the same task, never bypass.
+Before any Edit/Write touching a markdown body - new content or pure reformat alike - read `Skill(md-format)`, or `Read` its `SKILL.md` if you lack the `Skill` tool.
+Mandatory, hook-enforced once per session (`hooks/harness_audit/md_format_skill_gate.py`) before the first qualifying edit - qualifying conditions and the self-check checklist live in that skill's own read-once-gate section.
+md-format and token economy are independent passes - run both, every edit.
+The PostToolUse hook `hooks/harness_audit/audit_hook.py` only catches one rule (one-sentence-per-line) after the fact; either hook's violation report is authoritative - fix in the same task, never bypass.
 
 ## Self-delegation gate
 
-- `hooks/harness_audit/self_delegation_gate.py` denies inline Grep/Glob and investigation-shaped Bash from the main agent, redirecting it to `code-locator`/`Explore`/`script-ops`:
-  - `git log/diff/show/blame`
-  - `find`, `grep`/`rg`
-  - recursive `ls -R`
-  - multi-file `cat`
-  - `docker logs/ps/inspect`
-- Exempt (stays allowed inline): subagent-issued calls, detected via the `agent_id`/`agent_type` payload field present only on Task/Agent-tool-spawned calls - this is why the gate doesn't restrict this agent's own Grep/Glob use.
-  Also exempt, as safety-mandated:
-  - bare `git status`/`git branch --show-current`
-  - plain `ls`
-  - single-file `cat`
-- Mandatory, like the md-format gate above: the denial is authoritative, fix by delegating in the same task, never bypass.
-- Lives in `hooks/`, outside this agent's write scope.
-  `AGENTS.md`'s "Check for an owning agent" bullet is the only other prose describing it - keep both in sync with the hook's actual denylist.
+`hooks/harness_audit/self_delegation_gate.py` (outside this agent's write scope) denies inline Grep/Glob and investigation-shaped Bash from the main agent, redirecting it to `code-locator`/`Explore`/`script-ops`.
+Read the hook for its exact denylist rather than trusting a cached copy of it here.
+Subagent-issued calls (`agent_id`/`agent_type` on the payload) are exempt - why this agent's own Grep/Glob use is unrestricted - plus a few safety-mandated bare commands documented in the hook itself.
+Mandatory, like the md-format gate above: the denial is authoritative, fix by delegating in the same task, never bypass.
+`AGENTS.md`'s "Check for an owning agent" bullet is the only other prose describing this hook - keep both in sync with its actual denylist.
 
 ## Token economy (every edit)
 

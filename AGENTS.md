@@ -68,7 +68,7 @@ Root-level:
 ## Agent & skill routing
 
 Trigger conditions live in each entity's own frontmatter `description` - Claude Code lists them natively; Codex CLI reads `agent_docs/harness-index.md` instead (adapter notes: `agent_docs/architecture.md`).
-Check for an owning agent before inline Bash/Read/Grep - hook-enforced for Grep/Glob and investigation-shaped Bash (denylist: `harness-expert`); `Read` stays advisory.
+Check for an owning agent before inline Bash/Read/Grep - hook-enforced for Grep/Glob and investigation-shaped Bash (denylist: `hooks/harness_audit/self_delegation_gate.py`); `Read` stays advisory.
 
 PROACTIVE (dispatch without being asked):
 
@@ -99,9 +99,17 @@ SKILLS:
 - `dashboard-panels`
 - `dynamictext-panel-queries`
 - `dynamictext-panel-design-system`
+- `grafana-dashboard-parsing`
+- `grafana-query-macros`
+- `query-performance-sync`
 - `trace-debugging`
 - `ast-index`
 - `harness-guardian`
+- `litellm-alerting-mechanics`
+- `service-lifecycle`
+- `loadtest-workflow`
+- `query-benchmark-workflow`
+- `stale-ref-sweep`
 - `me`
 - `min`
 
@@ -132,11 +140,14 @@ Creating/editing a panel, query, variable, or layout in a dashboard JSON under `
 
 - Build a `TodoWrite` list for multiple asks; keep current.
 - `/plan` output always saves directly to `plans/<NN-name>.md` - never via a plan-mode scratch file.
-- Every plan filename carries a numeric prefix (`01-`, `02-`, ...) ordering plans, e.g. `01-remove-services-common-symlink.md`, `02-agent-invocations-tracking-gap.md`.
+- Every plan filename carries a numeric prefix (`01-`, `02-`, ...) ordering plans by creation, e.g. `01-remove-services-common-symlink.md`, `02-agent-invocations-tracking-gap.md`.
+  As soon as a plan is finalized, place it in `plans/` under this scheme.
+  Determine the next number by checking the highest existing prefix across `plans/` and `plans/resolved/`, never by guessing.
   Applies going forward - existing unprefixed files in `plans/` are not retroactively renamed.
 - Any plan presented for approval (EnterPlanMode/ExitPlanMode or a plan doc) carries frontmatter `date` and `context` fields.
   `context` summarizes the session before the decision to plan; empty if the session opened with the plan request.
-- After a plan's work is done, move its file into `plans/resolved/` - still an explicit action, never automatic or unasked.
+- After a plan's work is done - whether implemented in the current session or separately via `/goal` - ask the user to confirm it's actually done before moving it.
+  Only after confirmation, move the file into `plans/resolved/` (create the subdirectory if it doesn't exist yet) - still an explicit action, never automatic or unasked.
 - Translate non-English subagent prompts to English (1:1 meaning).
 - A dispatch's `prompt`/`description` carry the content - no prose recap alongside.
 - After a significant change, check `.env.example`/`README.md`/`AGENTS.md` for updates.
